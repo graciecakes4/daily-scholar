@@ -1,0 +1,361 @@
+# Daily Scholar - Research Interests Configuration
+# 
+# OPTIMIZED VERSION - Max 20 keywords per interest, duplicates removed
+# Each keyword is carefully selected for maximum search effectiveness
+
+interests:
+  # Primary research areas - searched most frequently
+  primary:
+    - name: "Artificial Intelligence"
+      keywords:
+        - "artificial intelligence"
+        - "AI alignment"
+        - "AI safety"
+        - "intelligent agents"
+        - "multi-agent systems"
+        - "neuro-symbolic"
+        - "knowledge representation"
+        - "reasoning systems"
+        - "planning algorithms"
+        - "Monte Carlo tree search"
+        - "constraint satisfaction"
+        - "heuristic search"
+        - "goal-oriented agents"
+      weight: 1.5
+      arxiv_categories: ["cs.AI", "cs.LG", "cs.MA"]
+    
+    - name: "Machine Learning"
+      keywords:
+        # Core
+        - "deep learning"
+        - "neural networks"
+        - "representation learning"
+        - "foundation models"
+        - "large language models"
+        # Architectures
+        - "residual networks"
+        - "variational autoencoder"
+        - "encoder-decoder"
+        # Optimization
+        - "Adam optimizer"
+        - "backpropagation"
+        - "cosine annealing"
+        # Regularization
+        - "dropout"
+        - "mixup"
+        - "label smoothing"
+        # Loss Functions
+        - "contrastive loss"
+        - "triplet loss"
+        - "InfoNCE"
+        # Training
+        - "batch normalization"
+        - "gradient clipping"
+      weight: 2.0  
+      arxiv_categories: ["cs.LG", "stat.ML"]
+    
+    - name: "Natural Language Processing"
+      keywords:
+        # Core
+        - "natural language processing"
+        - "language models"
+        - "transformers"
+        # Attention
+        - "self-attention"
+        - "flash attention"
+        - "rotary position embeddings"
+        # Architectures
+        - "mixture of experts"
+        - "encoder-decoder"
+        # Training
+        - "instruction tuning"
+        - "RLHF"
+        - "direct preference optimization"
+        # Tokenization
+        - "byte pair encoding"
+        - "subword tokenization"
+        # Decoding
+        - "speculative decoding"
+        - "nucleus sampling"
+        # Efficiency
+        - "KV cache"
+        - "continuous batching"
+        # Tasks
+        - "question answering"
+        - "named entity recognition"
+      weight: 2.0 
+      arxiv_categories: ["cs.CL", "cs.LG"]
+
+    - name: "Reinforcement Learning"
+      keywords:
+        - "reinforcement learning"
+        - "policy gradient"
+        - "Q-learning"
+        - "multi-agent reinforcement learning"
+        - "reward modeling"
+        - "exploration exploitation"
+        - "actor-critic"
+        - "PPO"
+        - "model-based RL"
+        - "offline reinforcement learning"
+      weight: 1.5
+      arxiv_categories: ["cs.LG", "cs.AI"]
+
+    - name: "Computer Vision"
+      keywords:
+        - "computer vision"
+        - "object detection"
+        - "image classification"
+        - "image segmentation"
+        - "vision transformer"
+        - "convolutional neural networks"
+        - "YOLO"
+        - "feature extraction"
+        - "visual representation learning"
+        - "multi-modal vision"
+      weight: 1.0
+      arxiv_categories: ["cs.CV", "cs.LG"]
+
+    - name: "Hyperparameter Tuning"
+      keywords:
+        # Core
+        - "hyperparameter optimization"
+        - "AutoML"
+        - "neural architecture search"
+        # Search Methods
+        - "Bayesian optimization"
+        - "Tree Parzen Estimator"
+        - "SMAC"
+        # Efficiency
+        - "hyperband"
+        - "ASHA"
+        - "successive halving"
+        - "multi-fidelity optimization"
+        - "population-based training"
+        # Architecture Search
+        - "DARTS"
+        - "differentiable architecture search"
+        - "weight sharing"
+        # Practical
+        - "early stopping"
+        - "cross-validation"
+        - "model selection"
+      weight: 1.5
+      arxiv_categories: ["cs.LG", "stat.ML", "cs.NE"]
+
+    - name: "Small Language Models"
+      keywords:
+        # Core
+        - "efficient language models"
+        - "model compression"
+        - "knowledge distillation"
+        # Pruning
+        - "structured pruning"
+        - "lottery ticket hypothesis"
+        # Quantization
+        - "quantization"
+        - "GPTQ"
+        - "AWQ"
+        - "mixed precision"
+        # PEFT
+        - "LoRA"
+        - "QLoRA"
+        - "parameter efficient fine-tuning"
+        - "adapters"
+        - "prompt tuning"
+        # Models
+        - "Phi"
+        - "Mistral"
+        - "DistilBERT"
+        # Deployment
+        - "edge deployment"
+        - "TinyML"
+      weight: 1.8
+      arxiv_categories: ["cs.CL", "cs.LG"]
+
+    - name: "Model Training"
+      keywords:
+        # Optimizers
+        - "AdamW"
+        - "Lion optimizer"
+        - "Sophia"
+        - "natural gradient"
+        # Learning Rate
+        - "learning rate schedule"
+        - "cosine decay"
+        - "one-cycle policy"
+        # Initialization
+        - "Xavier initialization"
+        - "Kaiming initialization"
+        # Normalization
+        - "layer normalization"
+        - "RMSNorm"
+        # Stability
+        - "gradient clipping"
+        - "vanishing gradients"
+        - "loss scaling"
+        # Techniques
+        - "curriculum learning"
+        - "mixed precision training"
+        - "gradient checkpointing"
+        # Theory
+        - "loss landscape"
+        - "grokking"
+        - "double descent"
+      weight: 1.5
+      arxiv_categories: ["cs.LG", "stat.ML"]
+
+  # Secondary interests - searched regularly
+  secondary:
+    - name: "Statistics for ML"
+      keywords:
+        # Bayesian
+        - "variational inference"
+        - "MCMC"
+        - "Hamiltonian Monte Carlo"
+        - "Gaussian processes"
+        # Probabilistic
+        - "normalizing flows"
+        - "diffusion models"
+        - "score matching"
+        - "graphical models"
+        # Theory
+        - "maximum likelihood estimation"
+        - "expectation maximization"
+        - "PAC learning"
+        - "bias-variance tradeoff"
+        # Causal
+        - "causal inference"
+        - "causal discovery"
+        - "structural causal models"
+        - "average treatment effect"
+        # Core
+        - "uncertainty quantification"
+        - "Bayesian neural networks"
+      weight: 1.0
+      arxiv_categories: ["stat.ML", "stat.ME", "stat.TH"]
+    
+    - name: "Applied Mathematics"
+      keywords:
+        # Optimization
+        - "convex optimization"
+        - "non-convex optimization"
+        - "proximal gradient methods"
+        - "ADMM"
+        - "mirror descent"
+        # Linear Algebra
+        - "matrix factorization"
+        - "singular value decomposition"
+        - "tensor decomposition"
+        - "low-rank approximation"
+        # Neural Differential Equations
+        - "neural ODE"
+        - "physics-informed neural networks"
+        - "Fourier neural operator"
+        - "DeepONet"
+        # Numerical
+        - "automatic differentiation"
+        - "numerical stability"
+        - "implicit differentiation"
+        # Theory
+        - "loss surface"
+        - "saddle points"
+      weight: 0.8
+      arxiv_categories: ["math.OC", "cs.NA", "math.NA", "cs.LG"]
+    
+    - name: "Software Engineering & MLOps"
+      keywords:
+        # Distributed
+        - "distributed training"
+        - "data parallelism"
+        - "tensor parallelism"
+        - "pipeline parallelism"
+        - "ZeRO"
+        - "FSDP"
+        - "DeepSpeed"
+        # Inference
+        - "model serving"
+        - "inference optimization"
+        - "TensorRT"
+        - "ONNX"
+        - "dynamic batching"
+        # Memory
+        - "gradient checkpointing"
+        - "memory efficient attention"
+        - "CPU offload"
+        # Hardware
+        - "GPU optimization"
+        - "CUDA kernels"
+        - "hardware-aware training"
+      weight: 1.0
+      arxiv_categories: ["cs.SE", "cs.DC", "cs.LG", "cs.PF"]
+    
+    - name: "Data Engineering"
+      keywords:
+        # Features
+        - "feature engineering"
+        - "feature stores"
+        - "automated feature engineering"
+        # Processing
+        - "data pipelines"
+        - "stream processing"
+        - "Apache Spark"
+        - "Apache Flink"
+        # Storage
+        - "vector databases"
+        - "approximate nearest neighbor"
+        - "HNSW"
+        - "columnar storage"
+        - "data lakes"
+        # Quality
+        - "data drift"
+        - "concept drift"
+        - "data validation"
+        - "data versioning"
+        # Core
+        - "distributed systems"
+        - "batch processing"
+      weight: 1.5 
+      arxiv_categories: ["cs.DB", "cs.DC", "cs.IR"]
+
+  # Exploratory interests - occasional searches
+  exploratory:
+    - name: "Physics & ML"
+      keywords:
+        - "physics-informed neural networks"
+        - "scientific machine learning"
+        - "physics simulation"
+        - "computational physics"
+        - "neural operators"
+        - "surrogate modeling"
+      weight: 0.5
+      arxiv_categories: ["physics.comp-ph", "cs.LG"]
+    
+    - name: "Astronomy & ML"
+      keywords:
+        - "astrophysics machine learning"
+        - "galaxy classification"
+        - "exoplanet detection"
+        - "cosmology machine learning"
+        - "astrostatistics"
+        - "astronomical data"
+      weight: 0.5
+      arxiv_categories: ["astro-ph.IM", "astro-ph.GA"]
+
+# Search configuration
+search_config:
+  recency_days: 30
+  min_relevance: 0.6
+  papers_per_search: 20
+  prefer_with_code: true
+  exclude_seen: true
+  sources:
+    - arxiv
+    - semantic_scholar
+    - core
+
+# Daily paper selection
+daily_selection:
+  papers_per_day: 3
+  strategy: "balanced"
+  ensure_diversity: true

@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom font imports */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-inter: 'Inter', system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font-inter);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom utilities */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .animate-in {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+  
+  .stagger-1 { animation-delay: 0.1s; }
+  .stagger-2 { animation-delay: 0.2s; }
+  .stagger-3 { animation-delay: 0.3s; }
+  .stagger-4 { animation-delay: 0.4s; }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Card hover effects */
+.card-hover {
+  @apply transition-all duration-300 ease-out;
+}
+
+.card-hover:hover {
+  @apply -translate-y-1 shadow-xl;
+}
+
+/* Gradient text */
+.gradient-text {
+  @apply bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent;
+}
+
+/* Glass effect */
+.glass {
+  @apply backdrop-blur-xl bg-white/70 border border-white/20;
+}
+
+/* Prose styles for generated content */
+.prose-scholar {
+  @apply text-slate-700 leading-relaxed;
+}
+
+.prose-scholar h1 {
+  @apply text-2xl font-bold text-slate-900 mb-4;
+}
+
+.prose-scholar h2 {
+  @apply text-xl font-semibold text-slate-800 mb-3 mt-6;
+}
+
+.prose-scholar h3 {
+  @apply text-lg font-medium text-slate-800 mb-2 mt-4;
+}
+
+.prose-scholar p {
+  @apply mb-4;
+}
+
+.prose-scholar ul {
+  @apply list-disc list-inside mb-4 space-y-2;
+}
+
+.prose-scholar ol {
+  @apply list-decimal list-inside mb-4 space-y-2;
+}
+
+.prose-scholar li {
+  @apply text-slate-700;
+}
+
+.prose-scholar code {
+  @apply bg-slate-100 px-1.5 py-0.5 rounded text-sm font-mono text-slate-800;
+}
+
+.prose-scholar pre {
+  @apply bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto mb-4;
+}
+
+.prose-scholar blockquote {
+  @apply border-l-4 border-blue-500 pl-4 italic text-slate-600 my-4;
+}
