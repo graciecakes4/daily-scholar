@@ -21,7 +21,7 @@ from sqlalchemy import (
     DateTime, Date, ForeignKey, JSON, create_engine
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import relationship, sessionmaker, Session
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
@@ -30,7 +30,106 @@ Base = declarative_base()
 
 
 # =============================================================================
-# PAPER TRACKING
+# ARCHIVE TABLES
+# =============================================================================
+
+class ArchivedPaper(Base):
+    """
+    Papers that the user has read and archived.
+    """
+    __tablename__ = "archived_papers"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Paper identifiers
+    arxiv_id = Column(String(50), nullable=True)
+    semantic_scholar_id = Column(String(100), nullable=True)
+    doi = Column(String(100), nullable=True)
+    
+    # Paper metadata
+    title = Column(String(500), nullable=False)
+    authors = Column(Text)  # JSON string of author names
+    abstract = Column(Text)
+    published_date = Column(String(50))
+    source = Column(String(50))  # "arxiv", "semantic_scholar", "core"
+    url = Column(String(500))
+    pdf_url = Column(String(500))
+    
+    # Our categorization
+    primary_category = Column(String(100))
+    relevance_score = Column(Float)
+    
+    # AI-generated summary
+    summary = Column(Text)
+    key_findings = Column(JSON)  # List of key findings
+    
+    # User interaction
+    user_rating = Column(Integer, nullable=True)  # 1-5 stars
+    user_notes = Column(Text, nullable=True)
+    read_status = Column(String(20), default="unread")  # "unread", "reading", "completed"
+    
+    # Timestamps
+    archived_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    
+
+class ArchivedTopicReview(Base):
+    """
+    Topic reviews that the user has completed and archived.
+    """
+    __tablename__ = "archived_topic_reviews"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Topic identification
+    topic_id = Column(String(100), nullable=False)
+    topic_name = Column(String(200), nullable=False)
+    course_id = Column(String(100), nullable=False)
+    course_name = Column(String(200), nullable=False)
+    week_covered = Column(Integer)
+    
+    # Review content
+    review_content = Column(Text)
+    key_points = Column(JSON)  # List of key points
+    connections = Column(JSON)  # List of connections
+    practice_suggestions = Column(JSON)  # List of suggestions
+    key_concepts = Column(JSON)  # From the topic config
+    
+    # User interaction
+    user_notes = Column(Text, nullable=True)
+    confidence_level = Column(Integer, nullable=True)  # 1-5 self-assessment
+    review_count = Column(Integer, default=1)  # How many times reviewed
+    
+    # Timestamps
+    first_reviewed_at = Column(DateTime, default=datetime.utcnow)
+    last_reviewed_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ArchivedQuiz(Base):
+    """
+    Completed quizzes that the user has archived.
+    """
+    __tablename__ = "archived_quizzes"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Quiz metadata
+    topics = Column(JSON)  # List of topic names covered
+    total_questions = Column(Integer)
+    total_points = Column(Integer)
+    score_earned = Column(Float)
+    percentage = Column(Float)
+    
+    # Questions and answers (stored as JSON)
+    questions = Column(JSON)  # Full question data with user answers and results
+    
+    # Timestamps
+    taken_at = Column(DateTime, default=datetime.utcnow)
+    duration_seconds = Column(Integer, nullable=True)
+
+
+# =============================================================================
+# PAPER TRACKING (Original)
 # =============================================================================
 
 class SeenPaper(Base):
@@ -216,13 +315,14 @@ class UploadedFile(Base):
 # DATABASE SETUP
 # =============================================================================
 
-def get_database_url(async_mode: bool = True) -> str:
+# Global engine and session factory
+_engine = None
+_SessionLocal = None
+
+
+def get_database_url(async_mode: bool = False) -> str:
     """
     Get the database URL, optionally configured for async.
-    
-    SQLite URLs need to be different for sync vs async:
-    - Sync: sqlite:///./data/daily_scholar.db
-    - Async: sqlite+aiosqlite:///./data/daily_scholar.db
     """
     from .config import get_settings
     
@@ -232,6 +332,26 @@ def get_database_url(async_mode: bool = True) -> str:
         return base_url.replace("sqlite:", "sqlite+aiosqlite:")
     
     return base_url
+
+
+def get_engine():
+    """Get or create the database engine."""
+    global _engine
+    if _engine is None:
+        _engine = create_engine(
+            get_database_url(async_mode=False),
+            echo=False,
+            connect_args={"check_same_thread": False}  # Needed for SQLite
+        )
+    return _engine
+
+
+def get_session() -> Session:
+    """Get a database session."""
+    global _SessionLocal
+    if _SessionLocal is None:
+        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=get_engine())
+    return _SessionLocal()
 
 
 def create_tables():
@@ -247,11 +367,7 @@ def create_tables():
     db_path = Path("./data")
     db_path.mkdir(parents=True, exist_ok=True)
     
-    # Create sync engine for table creation
-    engine = create_engine(
-        get_database_url(async_mode=False),
-        echo=True  # Set to False in production
-    )
+    engine = get_engine()
     
     # Create all tables
     Base.metadata.create_all(engine)
@@ -265,7 +381,7 @@ async def get_async_engine():
     """Create an async database engine."""
     return create_async_engine(
         get_database_url(async_mode=True),
-        echo=True  # Set to False in production
+        echo=False
     )
 
 

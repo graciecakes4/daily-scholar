@@ -73,6 +73,16 @@ export interface QuizResult {
   feedback: string;
 }
 
+export interface Resource {
+  title: string;
+  type: string;
+  description: string;
+  url?: string;
+  pdf_url?: string;
+  search_term?: string;
+  source?: string;
+}
+
 export interface DailyContent {
   date: string;
   paper: Paper | null;
@@ -85,12 +95,7 @@ export interface DailyContent {
     questions: QuizQuestion[];
     total_points: number;
   };
-  resources: Array<{
-    title: string;
-    type: string;
-    description: string;
-    search_term: string;
-  }>;
+  resources: Resource[];
   estimated_time_minutes: number;
 }
 
@@ -102,6 +107,12 @@ export interface ConfigStatus {
   interests_count: number;
   courses_count: number;
   topics_count: number;
+}
+
+export interface RegeneratedQuiz {
+  topics: string[];
+  questions: QuizQuestion[];
+  total_points: number;
 }
 
 // =============================================================================
@@ -177,6 +188,15 @@ export async function generateQuiz(
   return fetchAPI(`/quiz/generate/${topicId}?count=${count}&difficulty=${difficulty}`);
 }
 
+export async function regenerateQuiz(
+  count = 5,
+  difficulty = 'medium'
+): Promise<RegeneratedQuiz> {
+  return fetchAPI(`/quiz/regenerate?count=${count}&difficulty=${difficulty}`, {
+    method: 'POST',
+  });
+}
+
 export async function submitAnswer(questionId: string, answer: string): Promise<QuizResult> {
   return fetchAPI(`/quiz/answer?question_id=${questionId}&answer=${encodeURIComponent(answer)}`, {
     method: 'POST',
@@ -197,4 +217,81 @@ export async function getDailyContent(): Promise<DailyContent> {
 
 export async function checkHealth(): Promise<{ status: string; configuration: Record<string, string> }> {
   return fetchAPI('/health');
+}
+
+// -----------------------------------------------------------------------------
+// Archive
+// -----------------------------------------------------------------------------
+
+export async function archivePaper(paper: any, summary?: any): Promise<{ id: number }> {
+  return fetchAPI('/archive/papers', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: paper.title,
+      authors: paper.authors,
+      abstract: paper.abstract,
+      url: paper.url,
+      pdf_url: paper.pdf_url,
+      source: paper.source,
+      primary_category: paper.primary_category,
+      relevance_score: paper.relevance_score,
+      published_date: paper.published_date,
+      arxiv_id: paper.arxiv_id,
+      summary: summary?.summary,
+      key_findings: summary?.key_findings,
+    }),
+  });
+}
+
+export async function archiveTopicReview(topic: any, review: any): Promise<{ id: number }> {
+  return fetchAPI('/archive/topics', {
+    method: 'POST',
+    body: JSON.stringify({
+      topic_id: topic.id,
+      topic_name: topic.name,
+      course_id: topic.course_id,
+      course_name: topic.course_name,
+      week_covered: topic.week_covered,
+      review_content: review.review_content,
+      key_points: review.key_points,
+      connections: review.connections,
+      practice_suggestions: review.practice_suggestions,
+      key_concepts: topic.key_concepts,
+    }),
+  });
+}
+
+export async function archiveQuiz(
+  topics: string[],
+  questions: any[],
+  results: Record<string, { correct: boolean; feedback: string }>,
+  totalPoints: number
+): Promise<{ id: number }> {
+  const answeredQuestions = questions.map(q => ({
+    ...q,
+    result: results[q.id] || null,
+  }));
+  
+  const scoreEarned = Object.values(results).filter(r => r.correct).length * 2; // Assuming 2 points per correct answer
+  const percentage = (scoreEarned / totalPoints) * 100;
+  
+  return fetchAPI('/archive/quizzes', {
+    method: 'POST',
+    body: JSON.stringify({
+      topics,
+      total_questions: questions.length,
+      total_points: totalPoints,
+      score_earned: scoreEarned,
+      percentage,
+      questions: answeredQuestions,
+    }),
+  });
+}
+
+export async function getArchiveStats(): Promise<{
+  papers: { total: number; completed: number };
+  topics: { unique_topics: number; total_reviews: number };
+  quizzes: { total: number; average_score: number };
+}> {
+  return fetchAPI('/archive/stats');
 }
