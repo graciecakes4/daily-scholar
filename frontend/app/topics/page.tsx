@@ -1,9 +1,9 @@
 'use client';
-
+// TODO: add topic reset buttons //
 import { useState, useEffect } from 'react';
-import { 
+import {
   getArchivedTopics, updateArchivedTopic, deleteArchivedTopic,
-  type ArchivedTopic 
+  type ArchivedTopic
 } from '@/lib/api';
 
 export default function TopicsPage() {
@@ -76,11 +76,10 @@ export default function TopicsPage() {
             <button
               key={n}
               onClick={() => handleConfidenceChange(topicId, n)}
-              className={`w-8 h-8 rounded-full text-sm font-medium transition-all ${
-                n <= level 
-                  ? 'bg-emerald-500 text-white' 
+              className={`w-8 h-8 rounded-full text-sm font-medium transition-all ${n <= level
+                  ? 'bg-emerald-500 text-white'
                   : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
-              }`}
+                }`}
             >
               {n}
             </button>
@@ -165,7 +164,7 @@ export default function TopicsPage() {
               {courseName}
               <span className="text-sm font-normal text-slate-500">({courseTopics.length} topics)</span>
             </h2>
-            
+
             <div className="space-y-3">
               {courseTopics.map((topic) => (
                 <div key={topic.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -181,20 +180,20 @@ export default function TopicsPage() {
                             {topic.review_count}x reviewed
                           </span>
                         </div>
-                        
+
                         <ConfidenceLevel level={topic.confidence_level || 0} topicId={topic.id} />
-                        
+
                         <p className="text-xs text-slate-400 mt-2">
                           Last reviewed: {new Date(topic.last_reviewed_at).toLocaleDateString()}
                         </p>
                       </div>
-                      
+
                       <button
                         onClick={() => setExpandedId(expandedId === topic.id ? null : topic.id)}
                         className="p-2 text-slate-400 hover:text-slate-600"
                       >
-                        <svg className={`w-5 h-5 transition-transform ${expandedId === topic.id ? 'rotate-180' : ''}`} 
-                             fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className={`w-5 h-5 transition-transform ${expandedId === topic.id ? 'rotate-180' : ''}`}
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                       </button>
@@ -233,7 +232,7 @@ export default function TopicsPage() {
                               </button>
                             )}
                           </div>
-                          
+
                           {editingNotes === topic.id ? (
                             <div className="space-y-2">
                               <textarea
