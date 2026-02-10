@@ -256,7 +256,7 @@ interests:
 # Search configuration
 search_config:
   recency_days: 30
-  min_relevance: 0.2      # Lowered - scoring is normalized across all interests
+  min_relevance: 0.2 
   papers_per_search: 20
   prefer_with_code: true
   exclude_seen: true
