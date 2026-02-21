@@ -3,6 +3,9 @@ name: Claude PR Review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    branches: 
+	- main
+	- develop
   issue_comment:
     types: [created]
 
