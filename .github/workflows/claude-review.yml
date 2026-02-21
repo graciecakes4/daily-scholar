@@ -1,0 +1,82 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  review:
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude Code Review
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          timeout_minutes: 30
+          prompt: |
+            Review this PR with the following strict standards. Organize feedback by severity (Critical, Warning, Suggestion).
+
+            ## 1. Syntax & Style Consistency
+            - Flag any syntax errors, typos, or malformed expressions in all languages (Python, R, SQL, JS, etc.)
+            - Enforce consistent style within each file (naming conventions, indentation, spacing, bracket style)
+            - Flag inconsistent patterns across the PR (e.g., mixing snake_case and camelCase within the same language)
+
+            ## 2. Efficiency & Vectorization
+            - Flag any explicit loops (for, while) in Python or R that could be replaced with vectorized operations (numpy, pandas, dplyr, purrr, etc.)
+            - Suggest vectorized alternatives with brief code examples
+            - Flag unnecessary intermediate variables or redundant computations
+            - Flag apply-family functions in R that could be replaced with native vectorized equivalents
+
+            ## 3. Comment Style (Strict)
+            - ALL comments must use lowercase letters only. Flag any comment containing uppercase letters.
+            - Comments must ONLY appear on the line ABOVE the code they describe, never inline.
+              - CORRECT:
+                # filter for active users
+                active <- dplyr::filter(df, status == "active")
+              - INCORRECT:
+                active <- dplyr::filter(df, status == "active") # Filter for active users
+            - Flag every violation of these rules individually with the file and line number.
+
+            ## 4. R Code: Package Namespacing (Strict)
+            - ALL R function calls must use explicit package::function() notation.
+              - CORRECT: dplyr::filter(), ggplot2::ggplot(), readr::read_csv()
+              - INCORRECT: filter(), ggplot(), read_csv()
+            - The ONLY exceptions are base R functions (c(), list(), data.frame(), print(), paste(), etc.)
+            - Flag every instance of an unnamespaced non-base function with the suggested package prefix.
+
+            ## 5. README Updates
+            - Identify any README.md or README files in the repo.
+            - If the PR introduces new functions, changes APIs, modifies dependencies, adds features, or alters usage patterns, suggest specific README updates.
+            - Provide the exact text additions or modifications as a diff-style suggestion.
+            - If no README updates are needed, explicitly state that.
+
+            ## Output Format
+            For each issue found, provide:
+            - **File and line number**
+            - **Severity**: Critical / Warning / Suggestion
+            - **Rule violated**: Which of the 5 categories above
+            - **What's wrong**: Brief description
+            - **Fix**: Concrete corrected code
+
+            If the PR passes all checks, respond with a brief approval message.
