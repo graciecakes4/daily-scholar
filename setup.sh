@@ -198,6 +198,141 @@ check_prerequisites() {
 }
 
 # =============================================================================
+# Step 4: Configure environment variables
+# =============================================================================
+# TODO: Add support for alternative LLM providers (OpenAI, Google Gemini, local
+#       models via Ollama, etc.) so users can choose their preferred provider
+#       during setup. This would involve:
+#       - Prompting the user to select an LLM provider
+#       - Accepting the appropriate API key for that provider
+#       - Writing the correct env vars (e.g., OPENAI_API_KEY, GOOGLE_API_KEY)
+#       - Backend changes to support multiple providers
+#       See GitHub Issue #XX for discussion.
+# =============================================================================
+configure_env() {
+    print_header "Configuring Environment"
+
+    # --- Check if .env already exists ---
+    if [[ -f ".env" ]]; then
+        print_warn ".env file already exists"
+        echo ""
+        read -p "  Do you want to reconfigure it? (y/n): " reconfigure
+        echo ""
+
+        if [[ "$reconfigure" != "y" && "$reconfigure" != "Y" ]]; then
+            print_info "Keeping existing .env configuration"
+            return 0
+        fi
+    fi
+
+    # --- Copy template ---
+    if [[ -f ".env.example" ]]; then
+        cp .env.example .env
+        print_pass "Created .env from template"
+    else
+        print_fail ".env.example not found — cannot create .env"
+        exit 1
+    fi
+
+    # --- Anthropic API Key (required) ---
+    echo ""
+    echo -e "  ${BOLD}Anthropic API Key (required)${NC}"
+    echo "  This is needed for AI-powered content generation."
+    echo "  Get your key at: https://console.anthropic.com/"
+    echo ""
+
+    while true; do
+        read -s -p "  Paste your Anthropic API key: " api_key
+        echo ""
+
+        # Check not empty
+        if [[ -z "$api_key" ]]; then
+            print_fail "API key cannot be empty"
+            continue
+        fi
+
+        # Check format (Anthropic keys start with sk-ant-)
+        if [[ ! "$api_key" =~ ^sk-ant- ]]; then
+            print_warn "Key doesn't start with 'sk-ant-' — this may not be a valid Anthropic key"
+            read -p "  Use it anyway? (y/n): " use_anyway
+            if [[ "$use_anyway" != "y" && "$use_anyway" != "Y" ]]; then
+                continue
+            fi
+        fi
+
+        # Show masked version for confirmation
+        local masked="${api_key:0:7}****${api_key: -4}"
+        echo ""
+        print_info "Key: $masked"
+        read -p "  Does this look correct? (y/n): " confirm
+
+        if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+            break
+        fi
+    done
+
+    # Write to .env (replace the placeholder line)
+    if [[ "$PLATFORM" == "macos" ]]; then
+        sed -i '' "s|ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=$api_key|" .env
+    else
+        sed -i "s|ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=$api_key|" .env
+    fi
+    print_pass "Anthropic API key saved"
+
+    # --- Semantic Scholar API Key (optional) ---
+    echo ""
+    echo -e "  ${BOLD}Semantic Scholar API Key (optional)${NC}"
+    echo "  Enhances paper discovery. Free tier works without a key."
+    echo "  Get one at: https://www.semanticscholar.org/product/api"
+    echo ""
+    read -p "  Do you have a Semantic Scholar API key? (y/n): " has_ss_key
+
+    if [[ "$has_ss_key" == "y" || "$has_ss_key" == "Y" ]]; then
+        read -s -p "  Paste your Semantic Scholar API key: " ss_key
+        echo ""
+
+        if [[ -n "$ss_key" ]]; then
+            if [[ "$PLATFORM" == "macos" ]]; then
+                sed -i '' "s|SEMANTIC_SCHOLAR_API_KEY=.*|SEMANTIC_SCHOLAR_API_KEY=$ss_key|" .env
+            else
+                sed -i "s|SEMANTIC_SCHOLAR_API_KEY=.*|SEMANTIC_SCHOLAR_API_KEY=$ss_key|" .env
+            fi
+            print_pass "Semantic Scholar API key saved"
+        fi
+    else
+        print_info "Skipped — you can add this later in .env"
+    fi
+
+    # --- CORE API Key (optional) ---
+    echo ""
+    echo -e "  ${BOLD}CORE API Key (optional)${NC}"
+    echo "  Provides access to a broader range of research papers."
+    echo "  Get one at: https://core.ac.uk/services/api"
+    echo ""
+    read -p "  Do you have a CORE API key? (y/n): " has_core_key
+
+    if [[ "$has_core_key" == "y" || "$has_core_key" == "Y" ]]; then
+        read -s -p "  Paste your CORE API key: " core_key
+        echo ""
+
+        if [[ -n "$core_key" ]]; then
+            if [[ "$PLATFORM" == "macos" ]]; then
+                sed -i '' "s|CORE_API_KEY=.*|CORE_API_KEY=$core_key|" .env
+            else
+                sed -i "s|CORE_API_KEY=.*|CORE_API_KEY=$core_key|" .env
+            fi
+            print_pass "CORE API key saved"
+        fi
+    else
+        print_info "Skipped — you can add this later in .env"
+    fi
+
+    echo ""
+    print_pass "${BOLD}Environment configured!${NC}"
+    print_info "You can edit .env manually at any time to change these settings"
+}
+
+# =============================================================================
 # Main
 # =============================================================================
 main() {
@@ -208,22 +343,21 @@ main() {
     detect_platform
     check_project_directory
     check_prerequisites
+    configure_env
 
     # Future steps will go here:
     # - Python virtual environment setup
-    # - Interactive .env configuration
     # - Install Python dependencies
     # - Install frontend dependencies
     # - Initialize database
 
     print_header "Setup Complete"
-    echo -e "  ${GREEN}${BOLD}Prerequisites check passed!${NC}"
+    echo -e "  ${GREEN}${BOLD}Environment is configured!${NC}"
     echo ""
     echo "  Next steps (coming soon in setup automation):"
     echo "    1. Set up Python virtual environment"
-    echo "    2. Configure API keys"
-    echo "    3. Install dependencies"
-    echo "    4. Initialize database"
+    echo "    2. Install dependencies"
+    echo "    3. Initialize database"
     echo ""
 }
 
