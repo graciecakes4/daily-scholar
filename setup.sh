@@ -333,6 +333,120 @@ configure_env() {
 }
 
 # =============================================================================
+# Step 5: Set up Python virtual environment
+# =============================================================================
+setup_python_env() {
+    print_header "Setting Up Python Environment"
+
+    # --- Check if venv already exists ---
+    if [[ -d "venv" ]]; then
+        print_warn "Virtual environment already exists"
+        echo ""
+        read -p "  Do you want to recreate it? (y/n): " recreate
+        echo ""
+
+        if [[ "$recreate" != "y" && "$recreate" != "Y" ]]; then
+            print_info "Keeping existing virtual environment"
+        else
+            print_info "Removing old virtual environment..."
+            rm -rf venv
+            print_info "Creating new virtual environment (this may take a moment)..."
+            $PYTHON_CMD -m venv venv
+            print_pass "Virtual environment created"
+        fi
+    else
+        print_info "Creating virtual environment (this may take a moment)..."
+        $PYTHON_CMD -m venv venv
+        print_pass "Virtual environment created"
+    fi
+
+    # --- Activate the venv ---
+    source venv/bin/activate
+    print_pass "Virtual environment activated"
+
+    # --- Upgrade pip (avoids warnings during dependency install) ---
+    print_info "Upgrading pip..."
+    pip install --upgrade pip --quiet
+    print_pass "pip upgraded to $(pip --version | awk '{print $2}')"
+}
+
+# =============================================================================
+# Step 6: Install Python dependencies
+# =============================================================================
+install_python_deps() {
+    print_header "Installing Python Dependencies"
+
+    print_info "Installing packages from requirements.txt..."
+    print_info "This may take 1-2 minutes on first run"
+    echo ""
+
+    # Run pip install — show output so users can see progress
+    if pip install -r requirements.txt; then
+        echo ""
+        print_pass "Python dependencies installed"
+    else
+        echo ""
+        print_fail "Failed to install Python dependencies"
+        print_info "Try running manually: source venv/bin/activate && pip install -r requirements.txt"
+        exit 1
+    fi
+}
+
+# =============================================================================
+# Step 7: Install frontend dependencies
+# =============================================================================
+install_frontend_deps() {
+    print_header "Installing Frontend Dependencies"
+
+    print_info "Installing Node.js packages..."
+    print_info "This may take 1-2 minutes on first run"
+    echo ""
+
+    cd frontend
+
+    if npm install; then
+        echo ""
+        print_pass "Frontend dependencies installed"
+    else
+        echo ""
+        print_fail "Failed to install frontend dependencies"
+        print_info "Try running manually: cd frontend && npm install"
+        cd ..
+        exit 1
+    fi
+
+    cd ..
+}
+
+# =============================================================================
+# Step 8: Initialize the database
+# =============================================================================
+initialize_database() {
+    print_header "Initializing Database"
+
+    # --- Create required directories ---
+    mkdir -p data
+    print_pass "Data directory ready"
+
+    mkdir -p uploads/course_materials
+    print_pass "Uploads directory ready"
+
+    # --- Run database setup ---
+    print_info "Creating database tables..."
+    echo ""
+
+    if $PYTHON_CMD scripts/setup_db.py; then
+        echo ""
+        print_pass "Database initialized"
+    else
+        echo ""
+        print_fail "Database initialization failed"
+        print_info "Try running manually: python scripts/setup_db.py"
+        exit 1
+    fi
+}
+
+# =============================================================================
 # Main
 # =============================================================================
 main() {
@@ -344,20 +458,24 @@ main() {
     check_project_directory
     check_prerequisites
     configure_env
+    setup_python_env
+    install_python_deps
+    install_frontend_deps
+    initialize_database
 
-    # Future steps will go here:
-    # - Python virtual environment setup
-    # - Install Python dependencies
-    # - Install frontend dependencies
-    # - Initialize database
-
-    print_header "Setup Complete"
-    echo -e "  ${GREEN}${BOLD}Environment is configured!${NC}"
+    print_header "🎉 Setup Complete!"
+    echo -e "  ${GREEN}${BOLD}Daily Scholar is ready to go!${NC}"
     echo ""
-    echo "  Next steps (coming soon in setup automation):"
-    echo "    1. Set up Python virtual environment"
-    echo "    2. Install dependencies"
-    echo "    3. Initialize database"
+    echo "  To start the application, run:"
+    echo ""
+    echo "    ./start.sh"
+    echo ""
+    echo "  Or start manually:"
+    echo ""
+    echo "    Terminal 1:  source venv/bin/activate && uvicorn backend.main:app --reload"
+    echo "    Terminal 2:  cd frontend && npm run dev"
+    echo ""
+    echo "  Then open http://localhost:3000 in your browser"
     echo ""
 }
 
