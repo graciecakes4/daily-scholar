@@ -3,7 +3,7 @@ name: Claude PR Review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    branches: 
+    branches:
       - main
       - develop
       - feature/**
@@ -36,11 +36,11 @@ jobs:
           fetch-depth: 0
 
       - name: Claude Code Review
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           timeout_minutes: 30
-          prompt: |
+          direct_prompt: |
             Review this PR with the following strict standards. Organize feedback by severity (Critical, Warning, Suggestion).
 
             ## 1. Syntax & Style Consistency
@@ -84,7 +84,7 @@ jobs:
             - **Rule violated**: Which of the 5 categories above
             - **What's wrong**: Brief description
             - **Fix**: Concrete corrected code
-	    
+
             ## How to Post Feedback
             - Use the GitHub API to post inline review comments on the specific files and lines where issues are found.
             - Do NOT post a single summary comment. Post individual inline comments on the relevant lines of the diff.
