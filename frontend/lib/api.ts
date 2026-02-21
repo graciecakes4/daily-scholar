@@ -1,6 +1,7 @@
 /**
  * API Client for Daily Scholar Backend
- * Full paper lifecycle with seen tracking, PDF upload, and archives.
+ * Full paper lifecycle with seen tracking, PDF upload, archives,
+ * and topic completion/rotation.
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -78,17 +79,23 @@ export interface TopicReview {
   practice_suggestions: string[];
 }
 
+export type TopicStatus = 'active' | 'completed' | 'review_later';
+
 export interface ArchivedTopic {
   id: number;
   topic_id: string;
   topic_name: string;
   course_id: string;
   course_name: string;
+  week_covered: number;
   review_count: number;
   confidence_level?: number;
   user_notes?: string;
+  status: TopicStatus;
+  completed_at?: string;
   linked_paper_ids?: number[];
   last_reviewed_at: string;
+  key_points?: string[];
 }
 
 export interface QuizQuestion {
@@ -151,6 +158,8 @@ export interface UserStats {
     papers_archived: number;
     papers_completed: number;
     topics_reviewed: number;
+    topics_completed: number;
+    topics_review_later: number;
     quizzes_taken: number;
     quiz_accuracy: number;
   };
@@ -169,6 +178,14 @@ export interface UserStats {
     source: string;
     shown_date: string;
   }>;
+}
+
+export interface TopicStatusSummary {
+  total_topics: number;
+  active: number;
+  review_later: number;
+  completed: number;
+  completion_percentage: number;
 }
 
 // =============================================================================
@@ -334,7 +351,13 @@ export async function uploadStandalonePdf(file: File, title?: string): Promise<{
 // Topic Archive
 // -----------------------------------------------------------------------------
 
-export async function archiveTopicReview(topic: Topic, review: TopicReview, userNotes?: string, confidenceLevel?: number): Promise<{ id: number }> {
+export async function archiveTopicReview(
+  topic: Topic,
+  review: TopicReview,
+  userNotes?: string,
+  confidenceLevel?: number,
+  status?: TopicStatus,
+): Promise<{ id: number }> {
   return fetchAPI('/archive/topics', {
     method: 'POST',
     body: JSON.stringify({
@@ -350,19 +373,25 @@ export async function archiveTopicReview(topic: Topic, review: TopicReview, user
       key_concepts: topic.key_concepts,
       user_notes: userNotes,
       confidence_level: confidenceLevel,
+      status: status || 'active',
     }),
   });
 }
 
-export async function getArchivedTopics(limit = 50, offset = 0, courseId?: string): Promise<{ topics: ArchivedTopic[]; total: number }> {
-  const courseParam = courseId ? `&course_id=${courseId}` : '';
-  return fetchAPI(`/archive/topics?limit=${limit}&offset=${offset}${courseParam}`);
+export async function getArchivedTopics(
+  limit = 50, offset = 0, courseId?: string, status?: TopicStatus,
+): Promise<{ topics: ArchivedTopic[]; total: number }> {
+  let params = `limit=${limit}&offset=${offset}`;
+  if (courseId) params += `&course_id=${courseId}`;
+  if (status) params += `&status=${status}`;
+  return fetchAPI(`/archive/topics?${params}`);
 }
 
 export async function updateArchivedTopic(topicDbId: number, updates: {
   user_notes?: string;
   confidence_level?: number;
   linked_paper_ids?: number[];
+  status?: TopicStatus;
 }): Promise<void> {
   await fetchAPI(`/archive/topics/${topicDbId}`, {
     method: 'PUT',
@@ -372,6 +401,28 @@ export async function updateArchivedTopic(topicDbId: number, updates: {
 
 export async function deleteArchivedTopic(topicDbId: number): Promise<void> {
   await fetchAPI(`/archive/topics/${topicDbId}`, { method: 'DELETE' });
+}
+
+// -----------------------------------------------------------------------------
+// Topic Status & Rotation (New)
+// -----------------------------------------------------------------------------
+
+export async function setTopicStatus(topicId: string, status: TopicStatus): Promise<{ message: string; id: number }> {
+  return fetchAPI(`/topics/${topicId}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function getRandomTopicReview(excludeTopicIds?: string[]): Promise<{
+  topic_reviews: Array<{ topic: Topic; review: TopicReview }>;
+}> {
+  const excludeParam = excludeTopicIds?.length ? `?exclude=${excludeTopicIds.join(',')}` : '';
+  return fetchAPI(`/topics/random-review${excludeParam}`);
+}
+
+export async function getTopicStatusSummary(): Promise<TopicStatusSummary> {
+  return fetchAPI('/topics/status-summary');
 }
 
 // -----------------------------------------------------------------------------
@@ -423,7 +474,7 @@ export async function deleteArchivedQuiz(quizId: number): Promise<void> {
 
 export async function getArchiveStats(): Promise<{
   papers: { total: number; completed: number };
-  topics: { unique_topics: number; total_reviews: number };
+  topics: { unique_topics: number; total_reviews: number; completed: number };
   quizzes: { total: number; average_score: number };
 }> {
   return fetchAPI('/archive/stats');

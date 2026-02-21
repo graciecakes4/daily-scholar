@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
+import {
   getArchivedTopics, updateArchivedTopic, deleteArchivedTopic,
-  type ArchivedTopic 
+  type ArchivedTopic, type TopicStatus
 } from '@/lib/api';
 
 export default function TopicsPage() {
@@ -12,15 +12,17 @@ export default function TopicsPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editingNotes, setEditingNotes] = useState<number | null>(null);
   const [noteText, setNoteText] = useState('');
+  const [statusFilter, setStatusFilter] = useState<TopicStatus | 'all'>('all');
 
   useEffect(() => {
     fetchTopics();
-  }, []);
+  }, [statusFilter]);
 
   const fetchTopics = async () => {
     setLoading(true);
     try {
-      const data = await getArchivedTopics(50, 0);
+      const filterStatus = statusFilter === 'all' ? undefined : statusFilter;
+      const data = await getArchivedTopics(50, 0, undefined, filterStatus);
       setTopics(data.topics);
     } catch (error) {
       console.error('Failed to fetch topics:', error);
@@ -35,6 +37,15 @@ export default function TopicsPage() {
       fetchTopics();
     } catch (error) {
       console.error('Failed to update confidence:', error);
+    }
+  };
+
+  const handleStatusChange = async (topicId: number, newStatus: TopicStatus) => {
+    try {
+      await updateArchivedTopic(topicId, { status: newStatus });
+      fetchTopics();
+    } catch (error) {
+      console.error('Failed to update status:', error);
     }
   };
 
@@ -58,6 +69,24 @@ export default function TopicsPage() {
     }
   };
 
+  const StatusBadge = ({ status }: { status: TopicStatus }) => {
+    const styles: Record<TopicStatus, string> = {
+      active: 'bg-blue-100 text-blue-700',
+      review_later: 'bg-amber-100 text-amber-700',
+      completed: 'bg-emerald-100 text-emerald-700',
+    };
+    const labels: Record<TopicStatus, string> = {
+      active: 'Active',
+      review_later: 'Review Later',
+      completed: 'Completed',
+    };
+    return (
+      <span className={`px-2 py-0.5 text-xs rounded font-medium ${styles[status]}`}>
+        {labels[status]}
+      </span>
+    );
+  };
+
   const ConfidenceLevel = ({ level, topicId }: { level: number; topicId: number }) => {
     const labels = ['Not set', 'Struggling', 'Needs Work', 'Getting There', 'Confident', 'Mastered'];
     const colors = [
@@ -76,11 +105,10 @@ export default function TopicsPage() {
             <button
               key={n}
               onClick={() => handleConfidenceChange(topicId, n)}
-              className={`w-8 h-8 rounded-full text-sm font-medium transition-all ${
-                n <= level 
-                  ? 'bg-emerald-500 text-white' 
+              className={`w-8 h-8 rounded-full text-sm font-medium transition-all ${n <= level
+                  ? 'bg-emerald-500 text-white'
                   : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
-              }`}
+                }`}
             >
               {n}
             </button>
@@ -102,6 +130,12 @@ export default function TopicsPage() {
     return acc;
   }, {} as Record<string, ArchivedTopic[]>);
 
+  // Counts for filter tabs
+  const allCount = topics.length;
+  const activeCount = topics.filter(t => t.status === 'active').length;
+  const reviewLaterCount = topics.filter(t => t.status === 'review_later').length;
+  const completedCount = topics.filter(t => t.status === 'completed').length;
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -115,7 +149,7 @@ export default function TopicsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">🧠 Topic Reviews</h1>
+          <h1 className="text-3xl font-bold text-slate-900">Topic Reviews</h1>
           <p className="text-slate-600 mt-1">
             {topics.length} topics reviewed • {topics.reduce((sum, t) => sum + t.review_count, 0)} total reviews
           </p>
@@ -126,22 +160,22 @@ export default function TopicsPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <div className="text-2xl font-bold text-slate-900">{topics.length}</div>
           <div className="text-sm text-slate-500">Unique Topics</div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-2xl font-bold text-emerald-600">
-            {topics.filter(t => (t.confidence_level || 0) >= 4).length}
-          </div>
-          <div className="text-sm text-slate-500">Confident</div>
+          <div className="text-2xl font-bold text-emerald-600">{completedCount}</div>
+          <div className="text-sm text-slate-500">Completed</div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-2xl font-bold text-amber-600">
-            {topics.filter(t => (t.confidence_level || 0) > 0 && (t.confidence_level || 0) < 4).length}
-          </div>
-          <div className="text-sm text-slate-500">Needs Practice</div>
+          <div className="text-2xl font-bold text-amber-600">{reviewLaterCount}</div>
+          <div className="text-sm text-slate-500">Review Later</div>
+        </div>
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="text-2xl font-bold text-blue-600">{activeCount}</div>
+          <div className="text-sm text-slate-500">Active</div>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <div className="text-2xl font-bold text-slate-400">
@@ -151,11 +185,38 @@ export default function TopicsPage() {
         </div>
       </div>
 
+      {/* Status Filter Tabs */}
+      <div className="flex gap-2">
+        {([
+          { key: 'all' as const, label: 'All', count: allCount },
+          { key: 'active' as const, label: 'Active', count: activeCount },
+          { key: 'review_later' as const, label: 'Review Later', count: reviewLaterCount },
+          { key: 'completed' as const, label: 'Completed', count: completedCount },
+        ]).map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setStatusFilter(tab.key)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              statusFilter === tab.key
+                ? 'bg-slate-900 text-white'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            {tab.label}
+            <span className="ml-1.5 opacity-60">({tab.count})</span>
+          </button>
+        ))}
+      </div>
+
       {/* Topics by Course */}
       {topics.length === 0 ? (
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-12 text-center">
-          <h2 className="text-xl font-semibold text-slate-700 mb-2">No Topics Reviewed Yet</h2>
-          <p className="text-slate-500">Complete topic reviews from your daily learning to track your progress.</p>
+          <h2 className="text-xl font-semibold text-slate-700 mb-2">No Topics Found</h2>
+          <p className="text-slate-500">
+            {statusFilter === 'all'
+              ? 'Complete topic reviews from your daily learning to track your progress.'
+              : `No topics with status "${statusFilter.replace('_', ' ')}".`}
+          </p>
         </div>
       ) : (
         Object.entries(topicsByCourse).map(([courseName, courseTopics]) => (
@@ -165,36 +226,46 @@ export default function TopicsPage() {
               {courseName}
               <span className="text-sm font-normal text-slate-500">({courseTopics.length} topics)</span>
             </h2>
-            
+
             <div className="space-y-3">
               {courseTopics.map((topic) => (
-                <div key={topic.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div key={topic.id} className={`bg-white rounded-xl border overflow-hidden ${
+                  topic.status === 'completed' ? 'border-emerald-200' : 'border-slate-200'
+                }`}>
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <h3 className="font-semibold text-slate-900">{topic.topic_name}</h3>
-                          <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded">
-                            Week {topic.week_covered}
-                          </span>
+                          <StatusBadge status={topic.status} />
+                          {topic.week_covered && (
+                            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded">
+                              Week {topic.week_covered}
+                            </span>
+                          )}
                           <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded">
                             {topic.review_count}x reviewed
                           </span>
                         </div>
-                        
+
                         <ConfidenceLevel level={topic.confidence_level || 0} topicId={topic.id} />
-                        
+
                         <p className="text-xs text-slate-400 mt-2">
                           Last reviewed: {new Date(topic.last_reviewed_at).toLocaleDateString()}
+                          {topic.completed_at && (
+                            <span className="ml-2 text-emerald-500">
+                              • Completed: {new Date(topic.completed_at).toLocaleDateString()}
+                            </span>
+                          )}
                         </p>
                       </div>
-                      
+
                       <button
                         onClick={() => setExpandedId(expandedId === topic.id ? null : topic.id)}
                         className="p-2 text-slate-400 hover:text-slate-600"
                       >
-                        <svg className={`w-5 h-5 transition-transform ${expandedId === topic.id ? 'rotate-180' : ''}`} 
-                             fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className={`w-5 h-5 transition-transform ${expandedId === topic.id ? 'rotate-180' : ''}`}
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                       </button>
@@ -217,6 +288,29 @@ export default function TopicsPage() {
                           </div>
                         )}
 
+                        {/* Status Change Buttons */}
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <h4 className="font-semibold text-slate-900 mb-2">Change Status</h4>
+                          <div className="flex gap-2">
+                            {(['active', 'review_later', 'completed'] as TopicStatus[]).map(s => (
+                              <button
+                                key={s}
+                                onClick={() => handleStatusChange(topic.id, s)}
+                                disabled={topic.status === s}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                                  topic.status === s
+                                    ? s === 'completed' ? 'bg-emerald-500 text-white' :
+                                      s === 'review_later' ? 'bg-amber-500 text-white' :
+                                      'bg-blue-500 text-white'
+                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                                } disabled:cursor-default`}
+                              >
+                                {s === 'active' ? 'Active' : s === 'review_later' ? 'Review Later' : 'Completed'}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
                         {/* Notes Section */}
                         <div className="bg-slate-50 rounded-lg p-4">
                           <div className="flex items-center justify-between mb-2">
@@ -233,7 +327,7 @@ export default function TopicsPage() {
                               </button>
                             )}
                           </div>
-                          
+
                           {editingNotes === topic.id ? (
                             <div className="space-y-2">
                               <textarea

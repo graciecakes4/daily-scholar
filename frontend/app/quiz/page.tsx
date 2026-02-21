@@ -1,5 +1,5 @@
 'use client';
-
+// TODO: fix short answer section //
 import { useState, useEffect } from 'react';
 import { getArchivedQuizzes, deleteArchivedQuiz, type ArchivedQuiz } from '@/lib/api';
 
@@ -50,8 +50,8 @@ export default function QuizHistoryPage() {
 
   // Calculate stats
   const totalQuizzes = quizzes.length;
-  const avgScore = quizzes.length > 0 
-    ? quizzes.reduce((sum, q) => sum + q.percentage, 0) / quizzes.length 
+  const avgScore = quizzes.length > 0
+    ? quizzes.reduce((sum, q) => sum + q.percentage, 0) / quizzes.length
     : 0;
   const totalQuestions = quizzes.reduce((sum, q) => sum + q.total_questions, 0);
   const perfectScores = quizzes.filter(q => q.percentage === 100).length;
@@ -110,10 +110,9 @@ export default function QuizHistoryPage() {
                 className="flex-1 flex flex-col items-center gap-1"
               >
                 <div
-                  className={`w-full rounded-t ${
-                    quiz.percentage >= 80 ? 'bg-emerald-500' :
+                  className={`w-full rounded-t ${quiz.percentage >= 80 ? 'bg-emerald-500' :
                     quiz.percentage >= 60 ? 'bg-amber-500' : 'bg-red-400'
-                  }`}
+                    }`}
                   style={{ height: `${Math.max(quiz.percentage, 10)}%` }}
                   title={`${quiz.percentage.toFixed(0)}%`}
                 />
@@ -144,7 +143,7 @@ export default function QuizHistoryPage() {
                       {quiz.percentage.toFixed(0)}%
                       <span className="ml-2">{getScoreEmoji(quiz.percentage)}</span>
                     </div>
-                    
+
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         {quiz.topics.map((topic, i) => (
@@ -166,7 +165,7 @@ export default function QuizHistoryPage() {
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-slate-400">
                       {new Date(quiz.taken_at).toLocaleDateString()}
@@ -205,7 +204,7 @@ export default function QuizHistoryPage() {
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6">
           <h3 className="font-bold text-emerald-900 mb-2">🎉 Great Job!</h3>
           <p className="text-sm text-emerald-800">
-            You're averaging {avgScore.toFixed(0)}% across {totalQuizzes} quizzes. 
+            You're averaging {avgScore.toFixed(0)}% across {totalQuizzes} quizzes.
             Consider challenging yourself with harder questions or exploring new topics!
           </p>
         </div>

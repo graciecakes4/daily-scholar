@@ -6,6 +6,7 @@ Full paper lifecycle with:
 - PDF upload/download
 - Archive management
 - User stats
+- Topic rotation with completion tracking
 """
 
 from contextlib import asynccontextmanager
@@ -27,6 +28,7 @@ from .config import get_settings, validate_configuration, load_interests_config,
 from .models import ConfigurationStatus
 from .database import (
     create_tables, get_session, get_seen_paper_ids, mark_paper_as_seen, update_user_streak,
+    get_completed_topic_ids, get_review_later_topic_ids, get_recently_reviewed_topic_ids,
     SeenPaper, ArchivedPaper, ArchivedTopicReview, ArchivedQuiz, PaperPDF, UserStats, DailyContentCache
 )
 
@@ -75,6 +77,7 @@ class ArchiveTopicRequest(BaseModel):
     user_notes: Optional[str] = None
     confidence_level: Optional[int] = None
     linked_paper_ids: Optional[List[int]] = None
+    status: Optional[str] = "active"
 
 
 class ArchiveQuizRequest(BaseModel):
@@ -99,6 +102,11 @@ class UpdateTopicRequest(BaseModel):
     user_notes: Optional[str] = None
     confidence_level: Optional[int] = None
     linked_paper_ids: Optional[List[int]] = None
+    status: Optional[str] = None
+
+
+class TopicStatusRequest(BaseModel):
+    status: str  # "active", "completed", "review_later"
 
 
 # =============================================================================
@@ -121,7 +129,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Daily Scholar API",
     description="A personalized daily learning system with full paper lifecycle management.",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -136,12 +144,57 @@ app.add_middleware(
 
 
 # =============================================================================
+# TOPIC SELECTION HELPER
+# =============================================================================
+
+def select_topic_for_course(course: dict, all_topics: list[dict],
+                            completed_ids: set[str],
+                            recently_reviewed_ids: set[str],
+                            review_later_ids: set[str],
+                            exclude_ids: set[str] = None) -> Optional[dict]:
+    """
+    Smart topic selection for a course:
+    1. Filter out completed topics
+    2. Filter out recently-reviewed topics (last 3 days) to avoid repeats
+    3. Prioritize topics marked as review_later
+    4. Fall back to random selection from remaining pool
+    5. If all are recently reviewed, pick from review_later or random (ignoring recency)
+    """
+    if exclude_ids is None:
+        exclude_ids = set()
+    
+    course_topics = [t for t in all_topics if t["course_id"] == course["id"]]
+    
+    # Filter out completed and explicitly excluded
+    available = [t for t in course_topics
+                 if t["id"] not in completed_ids and t["id"] not in exclude_ids]
+    
+    if not available:
+        return None
+    
+    # Separate into buckets
+    review_later = [t for t in available
+                    if t["id"] in review_later_ids and t["id"] not in recently_reviewed_ids]
+    fresh = [t for t in available
+             if t["id"] not in recently_reviewed_ids and t["id"] not in review_later_ids]
+    
+    # Priority: review_later first, then fresh, then anything not completed
+    if review_later:
+        return random.choice(review_later)
+    elif fresh:
+        return random.choice(fresh)
+    else:
+        # All available topics were recently reviewed; just pick one at random
+        return random.choice(available)
+
+
+# =============================================================================
 # CORE ENDPOINTS
 # =============================================================================
 
 @app.get("/", tags=["Core"])
 async def root():
-    return {"name": "Daily Scholar API", "version": "0.3.0", "status": "running"}
+    return {"name": "Daily Scholar API", "version": "0.4.0", "status": "running"}
 
 
 @app.get("/health", tags=["Core"])
@@ -206,6 +259,8 @@ async def get_user_stats():
             papers_by_status[status] = count
         
         topics_count = session.query(ArchivedTopicReview).count()
+        topics_completed = session.query(ArchivedTopicReview).filter(ArchivedTopicReview.status == "completed").count()
+        topics_review_later = session.query(ArchivedTopicReview).filter(ArchivedTopicReview.status == "review_later").count()
         quizzes_count = session.query(ArchivedQuiz).count()
         
         # Recent activity
@@ -217,6 +272,8 @@ async def get_user_stats():
                 "papers_archived": stats.total_papers_archived if stats else 0,
                 "papers_completed": stats.total_papers_completed if stats else 0,
                 "topics_reviewed": stats.total_topics_reviewed if stats else 0,
+                "topics_completed": topics_completed,
+                "topics_review_later": topics_review_later,
                 "quizzes_taken": stats.total_quizzes_taken if stats else 0,
                 "quiz_accuracy": round(
                     (stats.total_correct_answers / stats.total_quiz_questions * 100) 
@@ -712,6 +769,10 @@ async def archive_topic_review(request: ArchiveTopicRequest):
                 existing.confidence_level = request.confidence_level
             if request.linked_paper_ids:
                 existing.linked_paper_ids = request.linked_paper_ids
+            if request.status:
+                existing.status = request.status
+                if request.status == "completed" and not existing.completed_at:
+                    existing.completed_at = datetime.utcnow()
             session.commit()
             
             stats = session.query(UserStats).first()
@@ -734,7 +795,11 @@ async def archive_topic_review(request: ArchiveTopicRequest):
             user_notes=request.user_notes,
             confidence_level=request.confidence_level,
             linked_paper_ids=request.linked_paper_ids,
+            status=request.status or "active",
         )
+        if request.status == "completed":
+            topic.completed_at = datetime.utcnow()
+        
         session.add(topic)
         
         stats = session.query(UserStats).first()
@@ -753,12 +818,15 @@ async def archive_topic_review(request: ArchiveTopicRequest):
 
 
 @app.get("/archive/topics", tags=["Archive"])
-async def get_archived_topics(limit: int = 50, offset: int = 0, course_id: Optional[str] = None):
+async def get_archived_topics(limit: int = 50, offset: int = 0, course_id: Optional[str] = None,
+                              status: Optional[str] = None):
     session = get_session()
     try:
         query = session.query(ArchivedTopicReview).order_by(ArchivedTopicReview.last_reviewed_at.desc())
         if course_id:
             query = query.filter(ArchivedTopicReview.course_id == course_id)
+        if status:
+            query = query.filter(ArchivedTopicReview.status == status)
         topics = query.offset(offset).limit(limit).all()
         total = query.count()
         return {
@@ -773,6 +841,8 @@ async def get_archived_topics(limit: int = 50, offset: int = 0, course_id: Optio
                 "user_notes": t.user_notes,
                 "confidence_level": t.confidence_level,
                 "review_count": t.review_count,
+                "status": t.status,
+                "completed_at": t.completed_at.isoformat() if t.completed_at else None,
                 "linked_paper_ids": t.linked_paper_ids,
                 "last_reviewed_at": t.last_reviewed_at.isoformat() if t.last_reviewed_at else None,
             } for t in topics],
@@ -795,6 +865,12 @@ async def update_archived_topic(topic_db_id: int, request: UpdateTopicRequest):
             topic.confidence_level = request.confidence_level
         if request.linked_paper_ids is not None:
             topic.linked_paper_ids = request.linked_paper_ids
+        if request.status is not None:
+            topic.status = request.status
+            if request.status == "completed" and not topic.completed_at:
+                topic.completed_at = datetime.utcnow()
+            elif request.status != "completed":
+                topic.completed_at = None
         session.commit()
         return {"message": "Topic updated"}
     except Exception as e:
@@ -816,6 +892,146 @@ async def delete_archived_topic(topic_db_id: int):
         return {"message": "Topic deleted"}
     finally:
         session.close()
+
+
+# =============================================================================
+# TOPIC STATUS ENDPOINTS (New)
+# =============================================================================
+
+@app.put("/topics/{topic_id}/status", tags=["Topics"])
+async def update_topic_status(topic_id: str, request: TopicStatusRequest):
+    """
+    Set a topic's lifecycle status: active, completed, or review_later.
+    Creates an archived record if one doesn't exist yet.
+    """
+    if request.status not in ("active", "completed", "review_later"):
+        raise HTTPException(status_code=400, detail="Status must be 'active', 'completed', or 'review_later'")
+    
+    session = get_session()
+    try:
+        existing = session.query(ArchivedTopicReview).filter(
+            ArchivedTopicReview.topic_id == topic_id
+        ).first()
+        
+        if existing:
+            existing.status = request.status
+            if request.status == "completed" and not existing.completed_at:
+                existing.completed_at = datetime.utcnow()
+            elif request.status != "completed":
+                existing.completed_at = None
+            session.commit()
+            return {"message": f"Topic status updated to '{request.status}'", "id": existing.id}
+        
+        # No archived record yet — create a minimal one
+        from .config import get_all_topics
+        all_topics = get_all_topics()
+        topic = next((t for t in all_topics if t["id"] == topic_id), None)
+        if not topic:
+            raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found in courses config")
+        
+        new_record = ArchivedTopicReview(
+            topic_id=topic["id"],
+            topic_name=topic["name"],
+            course_id=topic["course_id"],
+            course_name=topic["course_name"],
+            week_covered=topic.get("week_covered"),
+            key_concepts=topic.get("key_concepts"),
+            review_content="",
+            key_points=[],
+            connections=[],
+            practice_suggestions=[],
+            status=request.status,
+            review_count=0,
+        )
+        if request.status == "completed":
+            new_record.completed_at = datetime.utcnow()
+        
+        session.add(new_record)
+        session.commit()
+        session.refresh(new_record)
+        return {"message": f"Topic status set to '{request.status}'", "id": new_record.id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
+
+
+@app.get("/topics/random-review", tags=["Topics"])
+async def get_random_topic_review(exclude: Optional[str] = None):
+    """
+    Get a review for a randomly-selected topic, respecting completion status.
+    
+    - Excludes completed topics
+    - Avoids recently-reviewed topics when possible
+    - Prioritizes review_later topics
+    - Optional `exclude` param: comma-separated topic_ids to skip (for "New Topic" cycling)
+    """
+    from .config import get_all_topics, load_courses_config
+    from .services import ContentGeneratorService
+    
+    all_topics = get_all_topics()
+    courses_config = load_courses_config()
+    courses = courses_config.get("courses", [])
+    
+    completed_ids = get_completed_topic_ids()
+    recently_reviewed_ids = get_recently_reviewed_topic_ids(days=3)
+    review_later_ids = get_review_later_topic_ids()
+    
+    exclude_ids = set()
+    if exclude:
+        exclude_ids = set(exclude.split(","))
+    
+    # Select one topic per course
+    selected = []
+    for course in courses:
+        topic = select_topic_for_course(
+            course, all_topics, completed_ids, recently_reviewed_ids,
+            review_later_ids, exclude_ids
+        )
+        if topic:
+            selected.append((topic, course))
+    
+    if not selected:
+        raise HTTPException(status_code=404, detail="No available topics to review (all may be completed)")
+    
+    generator = ContentGeneratorService()
+    try:
+        topic_reviews = []
+        for topic, course in selected:
+            review = await generator.generate_topic_review(topic, course)
+            topic_reviews.append({"topic": topic, "review": review})
+        
+        return {"topic_reviews": topic_reviews}
+    finally:
+        await generator.close()
+
+
+@app.get("/topics/status-summary", tags=["Topics"])
+async def get_topic_status_summary():
+    """
+    Get a summary of topic statuses across all courses.
+    """
+    from .config import get_all_topics
+    
+    all_topics = get_all_topics()
+    completed_ids = get_completed_topic_ids()
+    review_later_ids = get_review_later_topic_ids()
+    
+    total = len(all_topics)
+    completed = len(completed_ids)
+    review_later = len(review_later_ids)
+    active = total - completed - review_later
+    
+    return {
+        "total_topics": total,
+        "active": active,
+        "review_later": review_later,
+        "completed": completed,
+        "completion_percentage": round((completed / total * 100) if total > 0 else 0, 1),
+    }
 
 
 # =============================================================================
@@ -901,6 +1117,7 @@ async def get_archive_stats():
         papers_total = session.query(ArchivedPaper).count()
         papers_completed = session.query(ArchivedPaper).filter(ArchivedPaper.read_status == "completed").count()
         topics_count = session.query(ArchivedTopicReview).count()
+        topics_completed = session.query(ArchivedTopicReview).filter(ArchivedTopicReview.status == "completed").count()
         total_reviews = sum(r[0] for r in session.query(ArchivedTopicReview.review_count).all()) or 0
         quizzes_count = session.query(ArchivedQuiz).count()
         quiz_scores = [s[0] for s in session.query(ArchivedQuiz.percentage).all()]
@@ -908,7 +1125,7 @@ async def get_archive_stats():
         
         return {
             "papers": {"total": papers_total, "completed": papers_completed},
-            "topics": {"unique_topics": topics_count, "total_reviews": total_reviews},
+            "topics": {"unique_topics": topics_count, "total_reviews": total_reviews, "completed": topics_completed},
             "quizzes": {"total": quizzes_count, "average_score": round(avg_score, 1)},
         }
     finally:
@@ -1092,7 +1309,7 @@ async def check_answer(question_id: str, answer: str):
 
 
 # =============================================================================
-# DAILY CONTENT (with seen tracking)
+# DAILY CONTENT (with smart topic rotation)
 # =============================================================================
 
 @app.get("/daily", tags=["Daily"])
@@ -1117,17 +1334,23 @@ async def get_daily_content():
             mark_paper_as_seen(paper_dict)
             paper_summary = await generator.generate_paper_summary(paper)
         
-        # Topics and quiz
+        # Smart topic selection
         courses_config = load_courses_config()
         all_topics = get_all_topics()
+        
+        completed_ids = get_completed_topic_ids()
+        recently_reviewed_ids = get_recently_reviewed_topic_ids(days=3)
+        review_later_ids = get_review_later_topic_ids()
         
         topic_reviews = []
         quiz_questions = []
         
         for course in courses_config.get("courses", []):
-            course_topics = [t for t in all_topics if t["course_id"] == course["id"]]
-            if course_topics:
-                topic = course_topics[0]
+            topic = select_topic_for_course(
+                course, all_topics, completed_ids,
+                recently_reviewed_ids, review_later_ids
+            )
+            if topic:
                 review = await generator.generate_topic_review(topic, course)
                 topic_reviews.append({"topic": topic, "review": review})
                 questions = await generator.generate_quiz_questions(topic, course, count=2, difficulty="medium")

@@ -6,6 +6,7 @@ Full paper lifecycle with:
 - Archived papers (user's saved papers)
 - PDF file storage
 - Topic/Quiz archives
+- Topic completion tracking
 """
 
 from datetime import datetime, date, timedelta
@@ -163,6 +164,10 @@ class PaperPDF(Base):
 class ArchivedTopicReview(Base):
     """
     Topic reviews the user has completed.
+    Status tracks the topic lifecycle:
+      - 'active'       : default, topic is in the normal rotation pool
+      - 'review_later' : user saved for later review, weighted higher in selection
+      - 'completed'    : user marked as mastered, excluded from rotation
     """
     __tablename__ = "archived_topic_reviews"
     
@@ -184,10 +189,18 @@ class ArchivedTopicReview(Base):
     confidence_level = Column(Integer, nullable=True)
     review_count = Column(Integer, default=1)
     
+    # NEW: Topic lifecycle status
+    status = Column(String(20), default="active", nullable=False)
+    completed_at = Column(DateTime, nullable=True)
+    
     linked_paper_ids = Column(JSON)
     
     first_reviewed_at = Column(DateTime, default=datetime.utcnow)
     last_reviewed_at = Column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        Index('idx_topic_status', 'status'),
+    )
 
 
 # =============================================================================
@@ -320,11 +333,44 @@ def create_tables():
         if not stats:
             session.add(UserStats())
             session.commit()
+        
+        # Migrate: add status column to existing archived_topic_reviews if missing
+        _migrate_topic_status(session)
     finally:
         session.close()
     
     print("✅ Database tables created successfully!")
     return engine
+
+
+def _migrate_topic_status(session: Session):
+    """
+    Backfill the 'status' and 'completed_at' columns for existing rows.
+    SQLAlchemy's create_all won't add new columns to existing tables,
+    so we handle it manually with raw SQL.
+    """
+    from sqlalchemy import text, inspect
+    
+    engine = get_engine()
+    inspector = inspect(engine)
+    
+    existing_columns = [col["name"] for col in inspector.get_columns("archived_topic_reviews")]
+    
+    if "status" not in existing_columns:
+        with engine.connect() as conn:
+            conn.execute(text(
+                "ALTER TABLE archived_topic_reviews ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"
+            ))
+            conn.commit()
+        print("  ↳ Migrated: added 'status' column to archived_topic_reviews")
+    
+    if "completed_at" not in existing_columns:
+        with engine.connect() as conn:
+            conn.execute(text(
+                "ALTER TABLE archived_topic_reviews ADD COLUMN completed_at DATETIME"
+            ))
+            conn.commit()
+        print("  ↳ Migrated: added 'completed_at' column to archived_topic_reviews")
 
 
 # =============================================================================
@@ -402,6 +448,43 @@ def update_user_streak():
         stats.updated_at = datetime.utcnow()
         
         session.commit()
+    finally:
+        session.close()
+
+
+def get_completed_topic_ids() -> set[str]:
+    """Get topic_ids that the user has marked as completed."""
+    session = get_session()
+    try:
+        results = session.query(ArchivedTopicReview.topic_id).filter(
+            ArchivedTopicReview.status == "completed"
+        ).all()
+        return {r[0] for r in results}
+    finally:
+        session.close()
+
+
+def get_review_later_topic_ids() -> set[str]:
+    """Get topic_ids that the user has saved for later review."""
+    session = get_session()
+    try:
+        results = session.query(ArchivedTopicReview.topic_id).filter(
+            ArchivedTopicReview.status == "review_later"
+        ).all()
+        return {r[0] for r in results}
+    finally:
+        session.close()
+
+
+def get_recently_reviewed_topic_ids(days: int = 3) -> set[str]:
+    """Get topic_ids reviewed within the last N days (to avoid immediate repeats)."""
+    session = get_session()
+    try:
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        results = session.query(ArchivedTopicReview.topic_id).filter(
+            ArchivedTopicReview.last_reviewed_at >= cutoff
+        ).all()
+        return {r[0] for r in results}
     finally:
         session.close()
 
