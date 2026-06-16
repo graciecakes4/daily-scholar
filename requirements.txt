@@ -36,8 +36,11 @@ python-multipart>=0.0.9,<0.1
 pypdf>=4.0,<6
 python-docx>=1.1,<2
 
-# Anthropic SDK (for Claude API)
+# Anthropic SDK (Claude — default provider for most LLM tasks)
 anthropic>=0.40,<1
+
+# OpenAI SDK (optional — only loaded if any LLM_TASK_* routes to openai)
+openai>=1.50,<2
 
 # Web Push (VAPID + push fanout)
 pywebpush>=2.0,<3

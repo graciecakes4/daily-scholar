@@ -604,6 +604,35 @@ send_push_to_user(user_id, {"title": "...", "body": "...", "url": "/topics/foo"}
 
 Examples of where you might wire it next: a daily "topics due for review" digest from APScheduler, a notification when an LLM-generated quiz is ready, or a streak-reminder.
 
+### Multi-provider LLM routing
+
+Daily Scholar splits each LLM call site into a named *task* and routes each task independently to a provider+model:
+
+| Task | What it powers | Default routing | Why |
+|---|---|---|---|
+| `summary` | Paper summaries on the dashboard | `anthropic:claude-haiku-4-5` | Cheap distillation; doesn't need premium reasoning |
+| `review` | Topic-review study notes | `anthropic:claude-sonnet-4-5` | Needs structured pedagogical reasoning |
+| `quiz` | Multi-question quiz generation | `anthropic:claude-sonnet-4-5` | Question construction must be careful and unambiguous |
+| `evaluate` | Open-answer scoring | `anthropic:claude-haiku-4-5` | Simple correctness check |
+| `default` | Fallback for anything new | `anthropic:claude-sonnet-4-5` | Sensible middle ground |
+
+Defaults live in `backend/services/llm/factory.py` (`DEFAULT_TASK_ROUTING`). Override any one via env var without touching code:
+
+```bash
+# in .env — format is "provider:model"
+LLM_TASK_SUMMARY=openai:gpt-4o-mini      # send summaries to OpenAI
+LLM_TASK_QUIZ=anthropic:claude-opus-4-8  # use a more capable model for quizzes
+```
+
+To enable OpenAI as a target, set:
+
+```bash
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini   # fallback model when an openai: route has no explicit model
+```
+
+The OpenAI SDK is only imported when a task is actually routed to OpenAI, so you can run with only `ANTHROPIC_API_KEY` set if you don't use any `openai:` routes.
+
 ### Swapping the app icon
 
 Icons live in `frontend/public/icons/`. The placeholder set (book-on-slate) was generated; replace any of `icon-{192,256,384,512}.png` and the matching `*-maskable.png` to rebrand. Required sizes are referenced in `public/manifest.json` and `app/layout.tsx`.
@@ -634,7 +663,8 @@ for s in (192, 256, 384, 512):
 | | TypeScript | Type safety |
 | | Tailwind CSS | Styling |
 | | @serwist/next | PWA service worker (Workbox-based) |
-| **APIs** | Anthropic Claude | Content generation |
+| **APIs** | Anthropic Claude | Content generation (default for all tasks) |
+| | OpenAI | Content generation (optional, per-task routing) |
 | | arXiv | Paper discovery |
 | | Semantic Scholar | Paper metadata |
 

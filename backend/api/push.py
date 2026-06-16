@@ -18,9 +18,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from ..auth import get_current_user_id
 from ..config import get_settings
 from ..database import DEFAULT_USER_ID, PushSubscription, get_session
 
@@ -77,7 +78,7 @@ def _ensure_vapid_configured() -> None:
 
 
 def _current_user_id() -> str:
-    # mirror of api.topics.current_user_id — local sentinel until Cloudflare Access lands
+    """Kept as a function for callers that don't go through FastAPI's DI."""
     return DEFAULT_USER_ID
 
 
@@ -99,14 +100,13 @@ def get_vapid_public_key():
 
 
 @push_router.post("/subscribe", status_code=201)
-def subscribe(body: SubscribeRequest):
+def subscribe(body: SubscribeRequest, user_id: str = Depends(get_current_user_id)):
     """
     Upsert a push subscription. The same endpoint URL across re-subscribes
     counts as the same physical device, so we update last_used_at instead of
     creating duplicate rows.
     """
     _ensure_vapid_configured()
-    user_id = _current_user_id()
 
     session = get_session()
     try:
@@ -155,12 +155,11 @@ def unsubscribe(body: UnsubscribeRequest):
 
 
 @push_router.post("/test")
-def send_test(body: TestPushRequest):
+def send_test(body: TestPushRequest, user_id: str = Depends(get_current_user_id)):
     """Send a sanity-check push to every subscription of the current user."""
     _ensure_vapid_configured()
     from ..services.push_sender import send_push_to_user
 
-    user_id = _current_user_id()
     payload = {
         "title": body.title or "Daily Scholar",
         "body": body.body or "Test push.",
@@ -171,9 +170,8 @@ def send_test(body: TestPushRequest):
 
 
 @push_router.get("/subscriptions")
-def list_subscriptions():
+def list_subscriptions(user_id: str = Depends(get_current_user_id)):
     """List the current user's subscriptions (useful for debugging from the UI)."""
-    user_id = _current_user_id()
     session = get_session()
     try:
         rows = (

@@ -50,9 +50,21 @@ class Settings(BaseSettings):
     port: int = Field(default=8000)
     frontend_url: str = Field(default="http://localhost:3000")
     
-    # Content Generation
-    claude_model: str = Field(default="claude-sonnet-4-20250514")
+    # Content Generation — Anthropic
+    claude_model: str = Field(default="claude-sonnet-4-5")
     max_tokens: int = Field(default=4096)
+
+    # Content Generation — OpenAI (optional; required only if any LLM_TASK_* routes to openai)
+    openai_api_key: Optional[str] = Field(default=None)
+    openai_model: str = Field(default="gpt-4o-mini")
+
+    # Per-task LLM routing overrides — format "provider:model" (e.g. "openai:gpt-4o-mini").
+    # Empty / None = use DEFAULT_TASK_ROUTING in backend/services/llm/factory.py.
+    llm_task_summary: Optional[str] = Field(default=None)
+    llm_task_review: Optional[str] = Field(default=None)
+    llm_task_quiz: Optional[str] = Field(default=None)
+    llm_task_evaluate: Optional[str] = Field(default=None)
+    llm_task_default: Optional[str] = Field(default=None)
     
     # Scheduling
     daily_generation_time: str = Field(default="06:00")

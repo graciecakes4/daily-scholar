@@ -12,8 +12,8 @@ Full paper lifecycle with:
 from datetime import datetime, date, timedelta
 from typing import Optional
 from sqlalchemy import (
-    Column, Integer, String, Text, Float, Boolean, 
-    DateTime, Date, ForeignKey, JSON, create_engine, Index
+    Column, Integer, String, Text, Float, Boolean,
+    DateTime, Date, ForeignKey, JSON, create_engine, Index, UniqueConstraint,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, Session
@@ -31,9 +31,11 @@ class SeenPaper(Base):
     This prevents showing the same paper twice.
     """
     __tablename__ = "seen_papers"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+    # Owner — '__local__' sentinel today; real ids when Cloudflare Access lands
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
     # Unique identifier (arxiv:xxx, doi:xxx, s2:xxx, or hash:xxx)
     unique_id = Column(String(200), unique=True, nullable=False, index=True)
     
@@ -69,9 +71,10 @@ class ArchivedPaper(Base):
     Papers the user has explicitly saved to their archive.
     """
     __tablename__ = "archived_papers"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
     # Link to seen paper (if it came from daily discovery)
     seen_paper_id = Column(Integer, ForeignKey("seen_papers.id"), nullable=True)
     
@@ -133,9 +136,10 @@ class PaperPDF(Base):
     Tracks PDF files stored locally.
     """
     __tablename__ = "paper_pdfs"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
     # Link to archived paper
     archived_paper_id = Column(Integer, ForeignKey("archived_papers.id"), nullable=True)
     
@@ -170,9 +174,10 @@ class ArchivedTopicReview(Base):
       - 'completed'    : user marked as mastered, excluded from rotation
     """
     __tablename__ = "archived_topic_reviews"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
     topic_id = Column(String(100), nullable=False, index=True)
     topic_name = Column(String(200), nullable=False)
     course_id = Column(String(100), nullable=False)
@@ -212,9 +217,10 @@ class ArchivedQuiz(Base):
     Completed quizzes.
     """
     __tablename__ = "archived_quizzes"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
     topics = Column(JSON)
     topic_ids = Column(JSON)
     total_questions = Column(Integer)
@@ -237,22 +243,29 @@ class DailyContentCache(Base):
     Cache daily generated content to avoid regenerating.
     """
     __tablename__ = "daily_content_cache"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
-    content_date = Column(Date, unique=True, nullable=False, index=True)
-    
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
+    # content_date is no longer unique on its own — (user_id, content_date) is.
+    # Migration 0003 swaps the unique constraint.
+    content_date = Column(Date, nullable=False, index=True)
+
     paper_unique_id = Column(String(200), nullable=True)
     paper_data = Column(JSON)
     paper_summary = Column(JSON)
-    
+
     topic_reviews = Column(JSON)
     quiz_questions = Column(JSON)
     resources = Column(JSON)
-    
+
     generated_at = Column(DateTime, default=datetime.utcnow)
     is_completed = Column(Boolean, default=False)
     completed_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "content_date", name="uq_daily_content_cache_user_date"),
+    )
 
 
 # =============================================================================
@@ -264,9 +277,12 @@ class UserStats(Base):
     Track user learning statistics.
     """
     __tablename__ = "user_stats"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+    user_id = Column(
+        String(100), nullable=False, default="__local__", index=True, unique=True
+    )
+
     total_papers_seen = Column(Integer, default=0)
     total_papers_archived = Column(Integer, default=0)
     total_papers_completed = Column(Integer, default=0)
