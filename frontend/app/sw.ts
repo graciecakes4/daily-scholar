@@ -22,13 +22,11 @@ import {
   type PrecacheEntry,
   type SerwistGlobalConfig,
   Serwist,
-} from "serwist";
-import {
   NetworkFirst,
   CacheFirst,
   ExpirationPlugin,
-  BackgroundSyncPlugin,
 } from "serwist";
+import { Queue } from "@serwist/background-sync";
 
 // Type the SW global so TypeScript knows about __SW_MANIFEST.
 declare global {
@@ -127,48 +125,40 @@ const serwist = new Serwist({
         ],
       }),
     },
-    // mutating backend requests — background sync queue when offline
-    {
-      matcher: ({ url, request }) => isMutatingBackendRequest(url, request),
-      handler: async (params) => {
-        // try the network first; if it fails the BG sync plugin captures and replays
-        try {
-          return await fetch(params.request.clone());
-        } catch (e) {
-          // background-sync replay handled by the plugin attached to a separate strategy
-          throw e;
-        }
-      },
-      method: "POST",
-    },
     // fall back to serwist's default app-shell + asset caching
     ...defaultCache,
   ],
 });
 
-// Register a background-sync queue for failed mutations.
-// Anything that fails the runtimeCaching handler above lands here for replay.
-const bgSyncPlugin = new BackgroundSyncPlugin("ds-mutations", {
-  maxRetentionTime: 24 * 60, // minutes — keep 24h of failed POSTs
+// Background-sync queue for failed mutations. Anything we push here is
+// retried automatically by the browser when the network comes back, up to
+// maxRetentionTime minutes later.
+const mutationQueue = new Queue("ds-mutations", {
+  maxRetentionTime: 24 * 60, // 24h
 });
 
+// Custom fetch listener for mutating backend requests: try network first,
+// queue for replay on failure. Lives outside serwist.runtimeCaching because
+// that subsystem is GET-focused.
 self.addEventListener("fetch", (event) => {
-  const url = new URL(event.request.url);
-  if (
-    isMutatingBackendRequest(url, event.request) &&
-    !event.request.bodyUsed
-  ) {
-    event.respondWith(
-      fetch(event.request.clone()).catch(async (err) => {
-        await bgSyncPlugin.pushRequest({ request: event.request.clone() });
-        // hint the caller that we queued the request
+  const req = event.request;
+  if (req.method === "GET" || req.method === "HEAD") return;
+  const url = new URL(req.url);
+  if (!isMutatingBackendRequest(url, req)) return;
+
+  event.respondWith(
+    (async () => {
+      try {
+        return await fetch(req.clone());
+      } catch {
+        await mutationQueue.pushRequest({ request: req.clone() });
         return new Response(
           JSON.stringify({ queued: true, message: "Saved for replay when online" }),
           { status: 202, headers: { "Content-Type": "application/json" } }
         );
-      })
-    );
-  }
+      }
+    })()
+  );
 });
 
 serwist.addEventListeners();

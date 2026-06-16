@@ -170,6 +170,7 @@ export interface ArchivedQuiz {
   score_earned: number;
   percentage: number;
   taken_at: string;
+  duration_seconds?: number;
 }
 
 export interface Resource {
