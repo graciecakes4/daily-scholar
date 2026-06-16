@@ -569,8 +569,13 @@ export async function submitAnswer(questionId: string, answer: string): Promise<
 // Daily Content
 // -----------------------------------------------------------------------------
 
-export async function getDailyContent(): Promise<DailyContent> {
-  return fetchAPI('/daily');
+/** Partial-refresh selectors for getDailyContent(). */
+export type DailyRefresh = '' | 'paper' | 'review' | 'all';
+
+export async function getDailyContent(refresh: DailyRefresh | boolean = ''): Promise<DailyContent & { cached?: boolean }> {
+  // legacy callers may pass `true` meaning "refresh all"
+  const value: DailyRefresh = refresh === true ? 'all' : refresh === false ? '' : refresh;
+  return fetchAPI(`/daily${value ? `?refresh=${value}` : ''}`);
 }
 
 // -----------------------------------------------------------------------------

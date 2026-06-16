@@ -1,5 +1,49 @@
-annotated-types==0.7.0
-pydantic==2.13.4
-pydantic_core==2.46.4
-typing-inspection==0.4.2
-typing_extensions==4.15.0
+# Daily Scholar — Python Dependencies
+#
+# Pins are floor versions (>=) chosen to work on Python 3.10–3.13.
+# Pre-3.13 pins from early 2024 don't have wheels for 3.13 and will fail
+# to install. Bump these only if you have a specific reason.
+#
+# Install with: pip install -r requirements.txt
+
+# Web Framework
+fastapi>=0.115,<0.120
+uvicorn[standard]>=0.30,<0.35
+
+# Data Validation
+pydantic>=2.9,<3
+pydantic-settings>=2.5,<3
+
+# Database
+sqlalchemy>=2.0.36,<3
+aiosqlite>=0.20,<0.22
+alembic>=1.13.1,<2
+
+# HTTP Client (for API calls)
+httpx>=0.27,<0.30
+
+# Configuration
+pyyaml>=6.0.1,<7
+python-dotenv>=1.0,<2
+
+# File Processing
+python-multipart>=0.0.9,<0.1
+pypdf>=4.0,<6
+python-docx>=1.1,<2
+
+# Anthropic SDK (for Claude API)
+anthropic>=0.40,<1
+
+# Date/Time utilities
+python-dateutil>=2.8.2,<3
+
+# Async scheduling (for daily jobs)
+apscheduler>=3.10.4,<4
+
+# Testing (optional but recommended)
+pytest>=7.4,<9
+pytest-asyncio>=0.23,<1
+
+# Development tools (optional)
+black>=24.1,<26
+ruff>=0.5,<1

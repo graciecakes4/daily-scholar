@@ -250,16 +250,34 @@ async def root():
 
 @app.get("/health", tags=["Core"])
 async def health_check():
+    """
+    Lightweight health check.
+
+    "topics" is healthy if at least one active topic exists in the DB
+    (the unified Topic table replaced the old interests.yaml + courses.yaml
+    so those validators are no longer consulted).
+    """
+    from .database import Topic as TopicModel
+
     config_status = validate_configuration()
-    all_valid = all([config_status["environment"]["valid"], config_status["interests"]["valid"], config_status["courses"]["valid"]])
+    env_ok = config_status["environment"]["valid"]
+
+    session = get_session()
+    try:
+        active_topic_count = session.query(TopicModel).filter(
+            TopicModel.active.is_(True)
+        ).count()
+    finally:
+        session.close()
+    topics_ok = active_topic_count > 0
+
     return {
-        "status": "healthy" if all_valid else "degraded",
+        "status": "healthy" if (env_ok and topics_ok) else "degraded",
         "timestamp": date.today().isoformat(),
         "configuration": {
-            "environment": "✓" if config_status["environment"]["valid"] else "✗",
-            "interests": "✓" if config_status["interests"]["valid"] else "✗",
-            "courses": "✓" if config_status["courses"]["valid"] else "✗",
-        }
+            "environment": "✓" if env_ok else "✗",
+            "topics": f"✓ ({active_topic_count} active)" if topics_ok else "✗ (no active topics)",
+        },
     }
 
 
@@ -1293,10 +1311,14 @@ async def generate_quiz(topic_id: str, count: int = 5, difficulty: str = "medium
 
 
 @app.post("/quiz/regenerate", tags=["Quiz"])
-async def regenerate_quiz(count: int = 5, difficulty: str = "medium"):
+async def regenerate_quiz(count: int = 5, difficulty: str = "medium", max_topics: int = 3):
     """
-    Generate a multi-topic quiz drawing from the active scope. One question
-    set per topic in scope, capped at `count` total after shuffling.
+    Generate a multi-topic quiz drawing from the active scope.
+
+    To keep latency reasonable, we cap at `max_topics` (default 3) randomly
+    chosen from the scope rather than hitting the LLM once per topic. With
+    7+ active topics, the per-topic loop otherwise compounds to several
+    minutes of sequential LLM calls.
     """
     from .database import get_topics_for_scope
     from .services import ContentGeneratorService
@@ -1304,6 +1326,10 @@ async def regenerate_quiz(count: int = 5, difficulty: str = "medium"):
     scope_topics = get_topics_for_scope()
     if not scope_topics:
         raise HTTPException(status_code=404, detail="No topics in active scope")
+
+    # cap the topic pool — random pick keeps quiz variety across reloads
+    if len(scope_topics) > max_topics:
+        scope_topics = random.sample(scope_topics, max_topics)
 
     generator = ContentGeneratorService()
     try:
@@ -1363,74 +1389,188 @@ async def check_answer(question_id: str, answer: str):
 # =============================================================================
 
 @app.get("/daily", tags=["Daily"])
-async def get_daily_content():
-    """Daily content: one paper + one topic review + a quiz, all scoped to the user's active topics."""
+async def get_daily_content(refresh: str = ""):
+    """
+    Daily content: one paper + one topic review + a quiz, all scoped to
+    the user's active topics. Cached per-day in `daily_content_cache`.
+
+    `refresh` controls partial regeneration:
+      - ""        : use cache; only fill in sections that are missing
+      - "paper"   : force re-fetch of paper + summary, keep review/quiz
+      - "review"  : force re-generation of topic review + its quiz, keep paper
+      - "all"     : regenerate everything
+      - "true"    : alias for "all" (legacy)
+    """
     from .database import get_topics_for_scope
     from .services import PaperDiscoveryService, ContentGeneratorService
 
-    seen_ids = list(get_seen_paper_ids())
+    if refresh == "true":
+        refresh = "all"
+    valid = {"", "all", "paper", "review"}
+    if refresh not in valid:
+        raise HTTPException(status_code=400, detail=f"refresh must be one of {sorted(valid - {''})}")
 
+    today = date.today()
+
+    # snapshot whatever's currently in cache (may be None)
+    session = get_session()
+    try:
+        cached = session.query(DailyContentCache).filter(
+            DailyContentCache.content_date == today
+        ).first()
+        cached_paper = cached.paper_data if cached else None
+        cached_paper_summary = cached.paper_summary if cached else None
+        cached_topic_reviews = cached.topic_reviews if cached else None
+        cached_quiz_blob = (cached.quiz_questions if cached else None) or {}
+        cached_quiz_full = cached_quiz_blob.get("_full", []) if isinstance(cached_quiz_blob, dict) else []
+        cached_resources = cached.resources if cached else None
+    finally:
+        session.close()
+
+    # decide what to regenerate
+    need_paper = (refresh in ("all", "paper")) or (cached_paper is None)
+    need_review = (refresh in ("all", "review")) or (cached_topic_reviews is None or len(cached_topic_reviews) == 0)
+
+    # cache fast path — if nothing needs regen, return cache immediately
+    if not need_paper and not need_review:
+        app.state.current_questions = {q["id"]: q for q in cached_quiz_full}
+        return {
+            "date": today.isoformat(),
+            "paper": cached_paper,
+            "paper_summary": cached_paper_summary,
+            "topic_reviews": cached_topic_reviews,
+            "quiz": {
+                "questions": cached_quiz_blob.get("display", []),
+                "total_points": cached_quiz_blob.get("total_points", 0),
+            },
+            "resources": cached_resources,
+            "estimated_time_minutes": 45,
+            "cached": True,
+        }
+
+    # we need to regenerate at least one section
     discovery = PaperDiscoveryService()
     generator = ContentGeneratorService()
 
     try:
-        paper = await discovery.select_daily_paper(seen_ids=seen_ids)
-        paper_summary = None
+        # ---- paper ----
+        if need_paper:
+            seen_ids = list(get_seen_paper_ids())
+            paper = await discovery.select_daily_paper(seen_ids=seen_ids)
+            paper_payload = None
+            paper_summary = None
+            if paper:
+                paper_payload = paper.to_dict()
+                paper_payload["unique_id"] = paper.unique_id
+                mark_paper_as_seen(paper_payload)
+                paper_summary = await generator.generate_paper_summary(paper)
+        else:
+            paper = None
+            paper_payload = cached_paper
+            paper_summary = cached_paper_summary
 
-        if paper:
-            paper_dict = paper.to_dict()
-            paper_dict["unique_id"] = paper.unique_id
-            mark_paper_as_seen(paper_dict)
-            paper_summary = await generator.generate_paper_summary(paper)
+        # ---- topic review + quiz ----
+        if need_review:
+            scope_topics = get_topics_for_scope()
+            completed_ids = get_completed_topic_ids()
+            recently_reviewed_ids = get_recently_reviewed_topic_ids(days=3)
+            review_later_ids = get_review_later_topic_ids()
 
-        # pick one topic from the active scope, applying the same priority rules
-        scope_topics = get_topics_for_scope()
-        completed_ids = get_completed_topic_ids()
-        recently_reviewed_ids = get_recently_reviewed_topic_ids(days=3)
-        review_later_ids = get_review_later_topic_ids()
-
-        topic_reviews = []
-        quiz_questions = []
-
-        selected = _select_topic_from_scope(
-            scope_topics, completed_ids, recently_reviewed_ids, review_later_ids
-        )
-        if selected:
-            topic_dict = _topic_to_dict(selected)
-            course_dict = _topic_pseudo_course(selected)
-            review = await generator.generate_topic_review(topic_dict, course_dict)
-            topic_reviews.append({"topic": topic_dict, "review": review})
-            questions = await generator.generate_quiz_questions(
-                topic_dict, course_dict, count=2, difficulty="medium"
+            topic_reviews = []
+            quiz_questions = []
+            selected = _select_topic_from_scope(
+                scope_topics, completed_ids, recently_reviewed_ids, review_later_ids
             )
-            quiz_questions.extend(questions)
+            if selected:
+                topic_dict = _topic_to_dict(selected)
+                course_dict = _topic_pseudo_course(selected)
+                review = await generator.generate_topic_review(topic_dict, course_dict)
+                topic_reviews.append({"topic": topic_dict, "review": review})
+                questions = await generator.generate_quiz_questions(
+                    topic_dict, course_dict, count=2, difficulty="medium"
+                )
+                quiz_questions.extend(questions)
 
-        topics_for_resources = [tr["topic"] for tr in topic_reviews]
-        resources = await generator.suggest_resources(topics_for_resources, paper)
-        
+            questions_display = [{
+                "id": q["id"], "topic_id": q["topic_id"], "question_type": q["question_type"],
+                "question_text": q["question_text"], "options": q.get("options"),
+                "difficulty": q["difficulty"], "points": q["points"],
+            } for q in quiz_questions]
+            total_points = sum(q["points"] for q in quiz_questions)
+        else:
+            topic_reviews = cached_topic_reviews or []
+            quiz_questions = cached_quiz_full
+            questions_display = cached_quiz_blob.get("display", [])
+            total_points = cached_quiz_blob.get("total_points", 0)
+
+        # ---- resources: regenerate only if either input changed ----
+        if need_paper or need_review:
+            topics_for_resources = [tr["topic"] for tr in topic_reviews]
+            # paper here may be None on a review-only refresh; pass paper_payload-shaped object
+            paper_for_resources = paper if need_paper else _PaperLite.from_dict(paper_payload) if paper_payload else None
+            resources = await generator.suggest_resources(topics_for_resources, paper_for_resources)
+        else:
+            resources = cached_resources or []
+
         app.state.current_questions = {q["id"]: q for q in quiz_questions}
-        
-        questions_display = [{
-            "id": q["id"], "topic_id": q["topic_id"], "question_type": q["question_type"],
-            "question_text": q["question_text"], "options": q.get("options"),
-            "difficulty": q["difficulty"], "points": q["points"],
-        } for q in quiz_questions]
-        
-        # Update streak
+
+        # persist updated cache (overwrite today's row)
+        session = get_session()
+        try:
+            existing = session.query(DailyContentCache).filter(
+                DailyContentCache.content_date == today
+            ).first()
+            if existing:
+                session.delete(existing)
+                session.flush()
+            session.add(DailyContentCache(
+                content_date=today,
+                paper_unique_id=(paper_payload.get("unique_id") if paper_payload else None),
+                paper_data=paper_payload,
+                paper_summary=paper_summary,
+                topic_reviews=topic_reviews,
+                quiz_questions={
+                    "display": questions_display,
+                    "total_points": total_points,
+                    "_full": quiz_questions,
+                },
+                resources=resources,
+                generated_at=datetime.utcnow(),
+            ))
+            session.commit()
+        finally:
+            session.close()
+
         update_user_streak()
-        
+
         return {
-            "date": date.today().isoformat(),
-            "paper": paper.to_dict() if paper else None,
+            "date": today.isoformat(),
+            "paper": paper_payload,
             "paper_summary": paper_summary,
             "topic_reviews": topic_reviews,
-            "quiz": {"questions": questions_display, "total_points": sum(q["points"] for q in quiz_questions)},
+            "quiz": {"questions": questions_display, "total_points": total_points},
             "resources": resources,
             "estimated_time_minutes": 45,
+            "cached": False,
         }
     finally:
         await discovery.close()
         await generator.close()
+
+
+class _PaperLite:
+    """
+    Adapter that lets a cached paper dict satisfy the .title/.abstract/etc.
+    attribute access pattern that ContentGeneratorService.suggest_resources
+    expects. Used when we regenerate review-only and need to feed the
+    already-cached paper to the resources generator.
+    """
+    @classmethod
+    def from_dict(cls, d: dict):
+        inst = cls()
+        for k, v in d.items():
+            setattr(inst, k, v)
+        return inst
 
 
 # =============================================================================

@@ -163,7 +163,7 @@ class PaperDiscoveryService:
         days_back: int = 30,
     ) -> list[Paper]:
         """Search arXiv for papers."""
-        base_url = "http://export.arxiv.org/api/query"
+        base_url = "https://export.arxiv.org/api/query"
         
         clean_query = query.replace(":", " ").replace("/", " ").strip()
         encoded_query = urllib.parse.quote(clean_query)
@@ -189,7 +189,7 @@ class PaperDiscoveryService:
         days_back: int = 30,
     ) -> list[Paper]:
         """Search arXiv by category (e.g., cs.LG, stat.ML)."""
-        base_url = "http://export.arxiv.org/api/query"
+        base_url = "https://export.arxiv.org/api/query"
         url = f"{base_url}?search_query=cat:{category}&start=0&max_results={max_results}&sortBy=submittedDate&sortOrder=descending"
         
         try:
@@ -489,15 +489,20 @@ class PaperDiscoveryService:
     
     def calculate_relevance_score(self, paper: Paper, topics: list[Topic] | None = None) -> float:
         """
-        Score a paper against the user's active topic scope.
+        Score a paper against the user's active topic scope using max-aggregation.
 
         For each topic in scope:
           keyword_match_ratio = (# topic keywords found in title+abstract) / len(keywords)
           category_match_ratio = (# topic arxiv categories matching paper) / len(categories)
-          topic_score = topic.weight * (0.6 * keyword_match_ratio + 0.4 * category_match_ratio)
+          topic_score = 0.6 * keyword_match_ratio + 0.4 * category_match_ratio   # 0..1
 
-        Composite relevance = sum(topic_scores) / sum(topic.weight) — i.e., the
-        weighted average match across topics. Recency boost is applied on top.
+        Composite relevance = max(topic_scores) — i.e., the best-fit topic wins.
+        This avoids penalizing single-strong-match papers, which the prior
+        weighted-average approach did. Recency boost is applied on top.
+
+        Topic weight isn't used in the score directly (since we're taking a max),
+        but it IS used as a tiebreaker for primary_category attribution: when two
+        topics match equally, the higher-weight one is named.
 
         Passing `topics` explicitly avoids a DB round-trip per paper when scoring
         a batch; otherwise it falls back to the user's current scope.
@@ -508,15 +513,11 @@ class PaperDiscoveryService:
             return 0.0
 
         searchable_text = f"{paper.title} {paper.abstract}".lower()
-        score = 0.0
-        max_score = 0.0
-        best_topic_score = -1.0
+        best_match = 0.0
         best_topic_name = ""
+        best_topic_weight = -1.0
 
         for topic in topics:
-            topic_weight = float(topic.weight or 1.0)
-            max_score += topic_weight
-
             keywords = topic.keywords or []
             cats = topic.arxiv_categories or []
 
@@ -530,17 +531,19 @@ class PaperDiscoveryService:
                 hits = sum(1 for c in cats if c in (paper.categories or []))
                 category_score = min(hits / len(cats), 1.0)
 
-            topic_score = topic_weight * (0.6 * keyword_score + 0.4 * category_score)
-            score += topic_score
+            topic_match = 0.6 * keyword_score + 0.4 * category_score
+            if topic_match == 0:
+                continue
 
-            # track the topic that contributed most so we can label primary_category
-            if topic_score > best_topic_score and (keyword_score > 0 or category_score > 0):
-                best_topic_score = topic_score
+            tw = float(topic.weight or 1.0)
+            # primary topic = strongest match, breaking ties by higher weight
+            if (topic_match > best_match
+                    or (topic_match == best_match and tw > best_topic_weight)):
+                best_match = topic_match
                 best_topic_name = topic.name
+                best_topic_weight = tw
 
-        if max_score > 0:
-            score = score / max_score
-
+        score = best_match
         if paper.published_date:
             days_old = (date.today() - paper.published_date).days
             if days_old <= 7:

@@ -438,17 +438,21 @@ def create_tables():
     """
     Bring the database up to the latest schema via Alembic.
 
-    Handles three scenarios:
+    Handles four scenarios:
       1. Fresh install (no tables): runs all migrations from scratch.
-      2. Pre-alembic legacy install (has app tables but no alembic_version):
-         backfills any columns missing from the old runtime migration,
-         stamps the DB at the baseline revision, then upgrades to head.
-      3. Already-managed install (has alembic_version): just upgrades to head.
+      2. Pre-alembic legacy install (app tables exist, no alembic_version
+         table): backfills any columns missing from the old runtime
+         migration, stamps the DB at baseline, then upgrades.
+      3. Failed prior upgrade (alembic_version table exists but is empty
+         because the first attempt errored before stamping): treated as
+         legacy — backfill, stamp, upgrade.
+      4. Already-managed install (alembic_version has a revision): just
+         upgrades to head.
 
     Also creates the data directory and seeds an initial UserStats row.
     """
     from pathlib import Path
-    from sqlalchemy import inspect
+    from sqlalchemy import inspect, text
 
     db_path = Path("./data")
     db_path.mkdir(parents=True, exist_ok=True)
@@ -458,12 +462,22 @@ def create_tables():
     engine = get_engine()
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())
+    has_legacy_tables = "user_stats" in existing_tables
 
+    # read the actual revision out of alembic_version (table can exist but
+    # be empty if a previous upgrade failed before stamping)
+    current_revision: Optional[str] = None
     if "alembic_version" in existing_tables:
-        # already managed — just bring it up to date
+        with engine.connect() as conn:
+            row = conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).first()
+            if row is not None:
+                current_revision = row[0]
+
+    if current_revision is not None:
+        # fully managed — just upgrade
         _run_alembic("upgrade", "head")
-    elif "user_stats" in existing_tables:
-        # legacy DB from the pre-alembic era; reconcile then stamp
+    elif has_legacy_tables:
+        # legacy DB (with or without an empty alembic_version table)
         _backfill_legacy_columns(engine)
         _run_alembic("stamp", "0001_baseline")
         _run_alembic("upgrade", "head")

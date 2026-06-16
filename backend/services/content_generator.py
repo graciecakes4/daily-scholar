@@ -322,7 +322,7 @@ Be generous with partial credit. Format as JSON:
             clean_query = query.replace(":", " ").replace('"', "")
             encoded_query = urllib.parse.quote(clean_query)
             
-            url = f"http://export.arxiv.org/api/query?search_query=all:{encoded_query}&start=0&max_results={limit}&sortBy=relevance"
+            url = f"https://export.arxiv.org/api/query?search_query=all:{encoded_query}&start=0&max_results={limit}&sortBy=relevance"
             
             response = await self.http_client.get(url)
             
