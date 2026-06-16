@@ -604,6 +604,55 @@ send_push_to_user(user_id, {"title": "...", "body": "...", "url": "/topics/foo"}
 
 Examples of where you might wire it next: a daily "topics due for review" digest from APScheduler, a notification when an LLM-generated quiz is ready, or a streak-reminder.
 
+### Scheduled jobs + deep health check
+
+A background scheduler runs nightly to regenerate the daily content (paper + topic review + quiz) and fire the "today's paper is ready" push notification. The scheduler starts automatically with the backend, runs in-process via APScheduler's AsyncIO loop, and reuses the exact same code path as the `New paper` button — no HTTP round-trips, no duplicated logic.
+
+Configure via env:
+
+```bash
+DAILY_GENERATION_TIME=06:00        # 24h HH:MM in the timezone below
+TIMEZONE=America/New_York          # IANA tz name; defaults to UTC if empty
+SCHEDULER_DISABLED=                # set to "1" to skip starting the scheduler (tests, CI)
+```
+
+Inspect at runtime:
+
+```bash
+curl http://localhost:8000/admin/scheduler/jobs
+# [{"id": "nightly-daily-content", "next_run_time": "2026-06-17T06:00:00-04:00", ...}]
+
+# fire a job manually instead of waiting for the cron tick
+curl -X POST http://localhost:8000/admin/scheduler/run/nightly-daily-content
+```
+
+#### `/health/deep`
+
+Two health endpoints with different scopes:
+
+| Endpoint | Purpose | Use it for |
+|---|---|---|
+| `GET /health` | Lightweight: env config + active topic count | Railway / Cloudflare / load-balancer health probes |
+| `GET /health/deep` | Per-subsystem ping (DB, LLM keys, storage, push, arXiv, scheduler) with latency | On-call debugging, dashboards, "what's down" |
+
+`/health/deep` returns 200 only when **db** and **llm.anthropic** both pass (the critical set). Storage / push / Gemini / arXiv failures show as ✗ in the response but don't push the overall status to 503 — informational. Example response:
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-06-16",
+  "subsystems": {
+    "db":             { "ok": true,  "latency_ms": 0.4, "url_scheme": "sqlite" },
+    "llm.anthropic":  { "ok": true,  "latency_ms": 0.0, "model": "claude-sonnet-4-5" },
+    "llm.gemini":     { "ok": true,  "latency_ms": 0.0, "configured": true },
+    "storage":        { "ok": true,  "latency_ms": 1.2, "backend": "local" },
+    "push.vapid":     { "ok": true,  "latency_ms": 0.0, "configured": true },
+    "arxiv":          { "ok": true,  "latency_ms": 142.0, "status_code": 200 },
+    "scheduler":      { "ok": true,  "latency_ms": 0.0, "running": true, "job_count": 1 }
+  }
+}
+```
+
 ### Storage backend (PDFs + uploads)
 
 File writes (paper PDFs, uploaded course materials) go through a single `Storage` abstraction with two adapters:

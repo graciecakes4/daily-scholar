@@ -126,9 +126,15 @@ async def lifespan(app: FastAPI):
         f"{summary['preserved']} preserved, "
         f"{summary['marked_orphaned']} marked orphaned"
     )
+    # APScheduler nightly daily-content job
+    from .services.scheduler import start_scheduler, stop_scheduler
+    sched = start_scheduler()
+    if sched is not None:
+        print(f"  ↳ Scheduler started with {len(sched.get_jobs())} job(s)")
     print("✅ Daily Scholar API started!")
     yield
     print("👋 Shutting down Daily Scholar API...")
+    stop_scheduler()
 
 
 # =============================================================================
@@ -157,71 +163,18 @@ app.add_middleware(
 
 
 # =============================================================================
-# TOPIC SELECTION + ADAPTER HELPERS (unified Topic model)
+# TOPIC SELECTION + ADAPTER HELPERS (moved to services/daily_content.py;
+# re-exported here so other endpoints in main.py can keep importing them
+# from the old location)
 # =============================================================================
 
-def _stream_display_name(stream: str) -> str:
-    """Convert a stream slug ('photometric_classification') to a display label."""
-    return (stream or "uncategorized").replace("_", " ").replace("-", " ").title()
-
-
-def _topic_to_dict(topic) -> dict:
-    """
-    Serialize a Topic row into the dict shape ContentGeneratorService expects.
-    Keeps course_id/course_name keys for legacy frontend compatibility — they
-    now carry the topic's stream rather than a real course identifier.
-    """
-    return {
-        "id": topic.id,
-        "name": topic.name,
-        "stream": topic.stream,
-        "weight": topic.weight,
-        "key_concepts": topic.key_concepts or [],
-        "learning_objectives": topic.learning_objectives or [],
-        "resources": topic.resources or [],
-        "quiz_difficulty": topic.quiz_difficulty,
-        "prerequisites": topic.prerequisites or [],
-        # legacy-compatible fields, retained for ArchivedTopicReview writes
-        # and existing UI consumers; course_id holds the stream slug now.
-        "course_id": topic.stream,
-        "course_name": _stream_display_name(topic.stream),
-    }
-
-
-def _topic_pseudo_course(topic) -> dict:
-    """Shape a Topic row as a 'course' dict for ContentGeneratorService."""
-    return {"id": topic.stream, "name": _stream_display_name(topic.stream)}
-
-
-def _select_topic_from_scope(scope_topics: list,
-                             completed_ids: set[str],
-                             recently_reviewed_ids: set[str],
-                             review_later_ids: set[str],
-                             exclude_ids: Optional[set[str]] = None):
-    """
-    Pick one Topic row out of the active scope.
-
-    Priority:
-      1. review_later that is NOT recently reviewed
-      2. fresh (neither review_later nor recently reviewed)
-      3. anything remaining (recently reviewed but not completed)
-    """
-    exclude_ids = exclude_ids or set()
-    available = [t for t in scope_topics
-                 if t.id not in completed_ids and t.id not in exclude_ids]
-    if not available:
-        return None
-
-    review_later = [t for t in available
-                    if t.id in review_later_ids and t.id not in recently_reviewed_ids]
-    fresh = [t for t in available
-             if t.id not in recently_reviewed_ids and t.id not in review_later_ids]
-
-    if review_later:
-        return random.choice(review_later)
-    if fresh:
-        return random.choice(fresh)
-    return random.choice(available)
+from .services.daily_content import (
+    _PaperLite,
+    _select_topic_from_scope,
+    _stream_display_name,
+    _topic_pseudo_course,
+    _topic_to_dict,
+)
 
 
 def _get_topic_or_404(topic_id: str):
@@ -1397,201 +1350,21 @@ async def get_daily_content(refresh: str = ""):
     Daily content: one paper + one topic review + a quiz, all scoped to
     the user's active topics. Cached per-day in `daily_content_cache`.
 
-    `refresh` controls partial regeneration:
-      - ""        : use cache; only fill in sections that are missing
-      - "paper"   : force re-fetch of paper + summary, keep review/quiz
-      - "review"  : force re-generation of topic review + its quiz, keep paper
-      - "all"     : regenerate everything
-      - "true"    : alias for "all" (legacy)
+    Body lives in `services/daily_content.generate_daily_content` so the
+    APScheduler nightly job can call the same code path.
     """
-    from .database import get_topics_for_scope
-    from .services import PaperDiscoveryService, ContentGeneratorService
-
-    if refresh == "true":
-        refresh = "all"
-    valid = {"", "all", "paper", "review"}
-    if refresh not in valid:
-        raise HTTPException(status_code=400, detail=f"refresh must be one of {sorted(valid - {''})}")
-
-    today = date.today()
-
-    # snapshot whatever's currently in cache (may be None)
-    session = get_session()
-    try:
-        cached = session.query(DailyContentCache).filter(
-            DailyContentCache.content_date == today
-        ).first()
-        cached_paper = cached.paper_data if cached else None
-        cached_paper_summary = cached.paper_summary if cached else None
-        cached_topic_reviews = cached.topic_reviews if cached else None
-        cached_quiz_blob = (cached.quiz_questions if cached else None) or {}
-        cached_quiz_full = cached_quiz_blob.get("_full", []) if isinstance(cached_quiz_blob, dict) else []
-        cached_resources = cached.resources if cached else None
-    finally:
-        session.close()
-
-    # decide what to regenerate
-    need_paper = (refresh in ("all", "paper")) or (cached_paper is None)
-    need_review = (refresh in ("all", "review")) or (cached_topic_reviews is None or len(cached_topic_reviews) == 0)
-
-    # cache fast path — if nothing needs regen, return cache immediately
-    if not need_paper and not need_review:
-        app.state.current_questions = {q["id"]: q for q in cached_quiz_full}
-        return {
-            "date": today.isoformat(),
-            "paper": cached_paper,
-            "paper_summary": cached_paper_summary,
-            "topic_reviews": cached_topic_reviews,
-            "quiz": {
-                "questions": cached_quiz_blob.get("display", []),
-                "total_points": cached_quiz_blob.get("total_points", 0),
-            },
-            "resources": cached_resources,
-            "estimated_time_minutes": 45,
-            "cached": True,
-        }
-
-    # we need to regenerate at least one section
-    discovery = PaperDiscoveryService()
-    generator = ContentGeneratorService()
+    from .services.daily_content import generate_daily_content, VALID_REFRESH
 
     try:
-        # ---- paper ----
-        if need_paper:
-            seen_ids = list(get_seen_paper_ids())
-            paper = await discovery.select_daily_paper(seen_ids=seen_ids)
-            paper_payload = None
-            paper_summary = None
-            if paper:
-                paper_payload = paper.to_dict()
-                paper_payload["unique_id"] = paper.unique_id
-                mark_paper_as_seen(paper_payload)
-                paper_summary = await generator.generate_paper_summary(paper)
-        else:
-            paper = None
-            paper_payload = cached_paper
-            paper_summary = cached_paper_summary
+        result = await generate_daily_content(refresh=refresh)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-        # ---- topic review + quiz ----
-        if need_review:
-            scope_topics = get_topics_for_scope()
-            completed_ids = get_completed_topic_ids()
-            recently_reviewed_ids = get_recently_reviewed_topic_ids(days=3)
-            review_later_ids = get_review_later_topic_ids()
+    # rehydrate app.state.current_questions so /quiz/answer can look up by id
+    quiz_full = result.pop("_quiz_full", [])
+    app.state.current_questions = {q["id"]: q for q in quiz_full}
+    return result
 
-            topic_reviews = []
-            quiz_questions = []
-            selected = _select_topic_from_scope(
-                scope_topics, completed_ids, recently_reviewed_ids, review_later_ids
-            )
-            if selected:
-                topic_dict = _topic_to_dict(selected)
-                course_dict = _topic_pseudo_course(selected)
-                review = await generator.generate_topic_review(topic_dict, course_dict)
-                topic_reviews.append({"topic": topic_dict, "review": review})
-                questions = await generator.generate_quiz_questions(
-                    topic_dict, course_dict, count=2, difficulty="medium"
-                )
-                quiz_questions.extend(questions)
-
-            questions_display = [{
-                "id": q["id"], "topic_id": q["topic_id"], "question_type": q["question_type"],
-                "question_text": q["question_text"], "options": q.get("options"),
-                "difficulty": q["difficulty"], "points": q["points"],
-            } for q in quiz_questions]
-            total_points = sum(q["points"] for q in quiz_questions)
-        else:
-            topic_reviews = cached_topic_reviews or []
-            quiz_questions = cached_quiz_full
-            questions_display = cached_quiz_blob.get("display", [])
-            total_points = cached_quiz_blob.get("total_points", 0)
-
-        # ---- resources: regenerate only if either input changed ----
-        if need_paper or need_review:
-            topics_for_resources = [tr["topic"] for tr in topic_reviews]
-            # paper here may be None on a review-only refresh; pass paper_payload-shaped object
-            paper_for_resources = paper if need_paper else _PaperLite.from_dict(paper_payload) if paper_payload else None
-            resources = await generator.suggest_resources(topics_for_resources, paper_for_resources)
-        else:
-            resources = cached_resources or []
-
-        app.state.current_questions = {q["id"]: q for q in quiz_questions}
-
-        # persist updated cache (overwrite today's row)
-        session = get_session()
-        try:
-            existing = session.query(DailyContentCache).filter(
-                DailyContentCache.content_date == today
-            ).first()
-            if existing:
-                session.delete(existing)
-                session.flush()
-            session.add(DailyContentCache(
-                content_date=today,
-                paper_unique_id=(paper_payload.get("unique_id") if paper_payload else None),
-                paper_data=paper_payload,
-                paper_summary=paper_summary,
-                topic_reviews=topic_reviews,
-                quiz_questions={
-                    "display": questions_display,
-                    "total_points": total_points,
-                    "_full": quiz_questions,
-                },
-                resources=resources,
-                generated_at=datetime.utcnow(),
-            ))
-            session.commit()
-        finally:
-            session.close()
-
-        update_user_streak()
-
-        # fire a Web Push to the current user's subscriptions when a NEW paper
-        # was just generated (skip on review-only refreshes — paper is unchanged)
-        if need_paper and paper_payload:
-            try:
-                from .database import DEFAULT_USER_ID
-                from .services.push_sender import send_push_to_user
-                send_push_to_user(
-                    DEFAULT_USER_ID,
-                    {
-                        "title": "Today's paper is ready",
-                        "body": paper_payload.get("title", "")[:140],
-                        "url": "/",
-                        "tag": "daily-paper",
-                    },
-                )
-            except Exception as e:  # noqa: BLE001 — push must never break the response
-                print(f"push fanout failed (non-fatal): {e}")
-
-        return {
-            "date": today.isoformat(),
-            "paper": paper_payload,
-            "paper_summary": paper_summary,
-            "topic_reviews": topic_reviews,
-            "quiz": {"questions": questions_display, "total_points": total_points},
-            "resources": resources,
-            "estimated_time_minutes": 45,
-            "cached": False,
-        }
-    finally:
-        await discovery.close()
-        await generator.close()
-
-
-class _PaperLite:
-    """
-    Adapter that lets a cached paper dict satisfy the .title/.abstract/etc.
-    attribute access pattern that ContentGeneratorService.suggest_resources
-    expects. Used when we regenerate review-only and need to feed the
-    already-cached paper to the resources generator.
-    """
-    @classmethod
-    def from_dict(cls, d: dict):
-        inst = cls()
-        for k, v in d.items():
-            setattr(inst, k, v)
-        return inst
 
 
 # =============================================================================
@@ -1606,3 +1379,145 @@ from .api.push import push_router
 app.include_router(topics_router)
 app.include_router(scope_router)
 app.include_router(push_router)
+
+
+# =============================================================================
+# ADMIN / SCHEDULER INSPECTION
+# =============================================================================
+
+@app.get("/admin/scheduler/jobs", tags=["Admin"])
+def admin_list_scheduler_jobs():
+    """List active APScheduler jobs (for debugging)."""
+    from .services.scheduler import list_jobs
+    return {"jobs": list_jobs()}
+
+
+@app.post("/admin/scheduler/run/{job_id}", tags=["Admin"])
+async def admin_run_scheduler_job(job_id: str):
+    """Manually fire a scheduled job by id. Useful for testing nightly logic without waiting."""
+    from .services.scheduler import trigger_now
+    return await trigger_now(job_id)
+
+
+# =============================================================================
+# DEEP HEALTH CHECK
+# =============================================================================
+
+@app.get("/health/deep", tags=["Core"])
+async def health_check_deep():
+    """
+    Per-subsystem health with latency. Returns 200 only when all CRITICAL
+    subsystems pass (DB + default LLM provider). Storage and push are
+    informational — degraded but not fatal.
+
+    Use the lightweight /health for platform health checks (Railway, CF);
+    use this when you want to see exactly which dep is unhealthy.
+    """
+    import time as _time
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import text as _sql_text
+
+    settings = get_settings()
+    out: dict[str, dict] = {}
+
+    def _ping(name: str, fn) -> dict:
+        t0 = _time.perf_counter()
+        try:
+            detail = fn() or {}
+            ok = True
+            error: Optional[str] = None
+        except Exception as e:  # noqa: BLE001
+            ok = False
+            detail = {}
+            error = f"{type(e).__name__}: {e}"[:200]
+        return {
+            "ok": ok,
+            "latency_ms": round((_time.perf_counter() - t0) * 1000, 1),
+            **({"error": error} if error else {}),
+            **detail,
+        }
+
+    # DB
+    def _check_db():
+        engine = get_session().get_bind()
+        with engine.connect() as conn:
+            conn.execute(_sql_text("SELECT 1"))
+        return {"url_scheme": str(engine.url.drivername)}
+    out["db"] = _ping("db", _check_db)
+
+    # default LLM provider — just verify the API key is present (don't burn tokens)
+    def _check_anthropic():
+        if not settings.anthropic_api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY not set")
+        return {"model": settings.claude_model}
+    out["llm.anthropic"] = _ping("llm.anthropic", _check_anthropic)
+
+    # optional LLM providers
+    def _check_gemini():
+        if not settings.gemini_api_key:
+            return {"configured": False}
+        return {"configured": True, "model": settings.gemini_model}
+    out["llm.gemini"] = _ping("llm.gemini", _check_gemini)
+
+    # storage backend (head_bucket for B2, dir-exists for local)
+    def _check_storage():
+        from .services.storage import get_storage
+        s = get_storage()
+        if s.backend == "b2":
+            # exists() does a head_object which would 404 — use the bucket-level head
+            # by listing a single key via the private boto3 client.
+            s._client.head_bucket(Bucket=s.bucket)  # type: ignore[attr-defined]
+            return {"backend": "b2", "bucket": s.bucket}
+        # local: just confirm root dir exists and is writable
+        root = s.local_path("__healthcheck__")
+        if root is None:
+            return {"backend": s.backend}
+        root.parent.mkdir(parents=True, exist_ok=True)
+        return {"backend": "local", "root": str(root.parent)}
+    out["storage"] = _ping("storage", _check_storage)
+
+    # web push setup (just key presence)
+    def _check_vapid():
+        if not (settings.vapid_public_key and settings.vapid_private_key and settings.vapid_subject):
+            return {"configured": False}
+        return {"configured": True, "subject": settings.vapid_subject}
+    out["push.vapid"] = _ping("push.vapid", _check_vapid)
+
+    # arXiv reachability (lightweight HEAD-equivalent)
+    async def _check_arxiv_async():
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as c:
+            r = await c.get("https://export.arxiv.org/api/query?search_query=all:test&max_results=1")
+            r.raise_for_status()
+            return {"status_code": r.status_code}
+    arxiv_t0 = (lambda: 0)()
+    import time as _time2
+    arxiv_t0 = _time2.perf_counter()
+    try:
+        detail = await _check_arxiv_async()
+        out["arxiv"] = {
+            "ok": True,
+            "latency_ms": round((_time2.perf_counter() - arxiv_t0) * 1000, 1),
+            **detail,
+        }
+    except Exception as e:  # noqa: BLE001
+        out["arxiv"] = {
+            "ok": False,
+            "latency_ms": round((_time2.perf_counter() - arxiv_t0) * 1000, 1),
+            "error": f"{type(e).__name__}: {e}"[:200],
+        }
+
+    # scheduler
+    def _check_scheduler():
+        from .services.scheduler import list_jobs
+        jobs = list_jobs()
+        return {"running": len(jobs) > 0, "job_count": len(jobs)}
+    out["scheduler"] = _ping("scheduler", _check_scheduler)
+
+    critical = ("db", "llm.anthropic")
+    status = "healthy" if all(out[k]["ok"] for k in critical) else "degraded"
+    payload = {"status": status, "timestamp": date.today().isoformat(), "subsystems": out}
+    return JSONResponse(
+        content=payload,
+        status_code=200 if status == "healthy" else 503,
+    )
