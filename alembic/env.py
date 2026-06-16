@@ -37,17 +37,35 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def _normalize_postgres_url(url: str) -> str:
+    """
+    Mirror of backend.database.get_database_url's normalization.
+
+    Hosts like Railway / Heroku inject `postgres://...` URLs; SQLAlchemy
+    interprets that as the legacy psycopg2 dialect, but we install psycopg
+    v3. This shim rewrites the prefix so alembic and the app talk to the
+    same driver.
+    """
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url[len("postgres://"):]
+    if url.startswith("postgresql://") and "+" not in url.split("://", 1)[0]:
+        return "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
+
 def _resolve_database_url() -> str:
-    # priority 1: explicit override set by a caller (used in tests)
+    # priority 1: explicit override set by a caller via attributes (tests)
     url = config.attributes.get("sqlalchemy.url") if config.attributes else None
-    if url:
-        return url
-    # priority 2: environment
-    url = os.environ.get("DATABASE_URL")
-    if url:
-        return url
-    # priority 3: same default as backend.config.Settings.database_url
-    return "sqlite:///./data/daily_scholar.db"
+    # priority 2: programmatic caller via set_main_option (what backend/database.py uses)
+    if not url:
+        url = config.get_main_option("sqlalchemy.url")
+    # priority 3: environment variable
+    if not url:
+        url = os.environ.get("DATABASE_URL")
+    # priority 4: default matches backend.config.Settings.database_url
+    if not url:
+        url = "sqlite:///./data/daily_scholar.db"
+    return _normalize_postgres_url(url)
 
 
 def run_migrations_offline() -> None:
