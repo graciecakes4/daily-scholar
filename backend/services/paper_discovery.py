@@ -16,7 +16,13 @@ import urllib.parse
 
 import httpx
 
-from ..config import get_settings, load_interests_config, get_interest_keywords, get_arxiv_categories
+from ..config import get_settings
+from ..database import DEFAULT_USER_ID, Topic, get_topics_for_scope
+
+# default paper sources if the caller doesn't specify. lives here (not in a
+# YAML) because the source list is operational, not per-topic; can be moved
+# to UserSettings if we want per-user overrides later.
+DEFAULT_SOURCES: tuple[str, ...] = ("arxiv", "semantic_scholar", "core")
 
 
 class Paper:
@@ -83,14 +89,68 @@ class Paper:
 
 class PaperDiscoveryService:
     """Service for discovering relevant research papers."""
-    
-    def __init__(self):
+
+    def __init__(self, user_id: str = DEFAULT_USER_ID):
+        # user_id drives topic-scope resolution. defaults to the local sentinel
+        # so beta runs and tests work without auth wiring.
+        self.user_id = user_id
         self.settings = get_settings()
-        self.interests_config = load_interests_config()
         self.client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
-    
+
     async def close(self):
         await self.client.aclose()
+
+    # ------------------------------------------------------------------
+    # Topic-scope helpers
+    # ------------------------------------------------------------------
+
+    def _topics_in_scope(self) -> list[Topic]:
+        """Active topics filtered by the user's silo/multi/all scope."""
+        return get_topics_for_scope(self.user_id)
+
+    @staticmethod
+    def _aggregate_keywords(topics: list[Topic], *, limit: int | None = None) -> list[str]:
+        """Dedup-keeping-order across topics, optionally truncated."""
+        seen: set[str] = set()
+        out: list[str] = []
+        # iterate by weight descending so higher-priority topics' keywords sort first
+        for topic in sorted(topics, key=lambda t: t.weight, reverse=True):
+            for kw in topic.keywords or []:
+                key = kw.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(kw)
+                if limit and len(out) >= limit:
+                    return out
+        return out
+
+    @staticmethod
+    def _aggregate_categories(topics: list[Topic], *, limit: int | None = None) -> list[str]:
+        """Dedup arxiv categories across topics, optionally truncated."""
+        seen: set[str] = set()
+        out: list[str] = []
+        for topic in sorted(topics, key=lambda t: t.weight, reverse=True):
+            for cat in topic.arxiv_categories or []:
+                if cat in seen:
+                    continue
+                seen.add(cat)
+                out.append(cat)
+                if limit and len(out) >= limit:
+                    return out
+        return out
+
+    @staticmethod
+    def _scope_min_relevance(topics: list[Topic], fallback: float = 0.18) -> float:
+        """Lowest threshold across active topics — most permissive choice."""
+        values = [t.min_relevance for t in topics if t.min_relevance is not None]
+        return min(values) if values else fallback
+
+    @staticmethod
+    def _scope_max_recency(topics: list[Topic], fallback: int = 30) -> int:
+        """Widest recency window across active topics."""
+        values = [t.recency_days for t in topics if t.recency_days]
+        return max(values) if values else fallback
     
     # =========================================================================
     # ARXIV API
@@ -427,46 +487,71 @@ class PaperDiscoveryService:
     # RELEVANCE SCORING
     # =========================================================================
     
-    def calculate_relevance_score(self, paper: Paper) -> float:
-        """Calculate how relevant a paper is to user's interests."""
+    def calculate_relevance_score(self, paper: Paper, topics: list[Topic] | None = None) -> float:
+        """
+        Score a paper against the user's active topic scope.
+
+        For each topic in scope:
+          keyword_match_ratio = (# topic keywords found in title+abstract) / len(keywords)
+          category_match_ratio = (# topic arxiv categories matching paper) / len(categories)
+          topic_score = topic.weight * (0.6 * keyword_match_ratio + 0.4 * category_match_ratio)
+
+        Composite relevance = sum(topic_scores) / sum(topic.weight) — i.e., the
+        weighted average match across topics. Recency boost is applied on top.
+
+        Passing `topics` explicitly avoids a DB round-trip per paper when scoring
+        a batch; otherwise it falls back to the user's current scope.
+        """
+        topics = topics if topics is not None else self._topics_in_scope()
+        if not topics:
+            paper.relevance_score = 0.0
+            return 0.0
+
+        searchable_text = f"{paper.title} {paper.abstract}".lower()
         score = 0.0
         max_score = 0.0
-        
-        interests = self.interests_config.get("interests", {})
-        searchable_text = f"{paper.title} {paper.abstract}".lower()
-        
-        for category, weight_multiplier in [("primary", 2.0), ("secondary", 1.0), ("exploratory", 0.5)]:
-            for interest in interests.get(category, []):
-                interest_weight = interest.get("weight", 1.0) * weight_multiplier
-                max_score += interest_weight
-                
-                keywords = interest.get("keywords", [])
-                matches = sum(1 for kw in keywords if kw.lower() in searchable_text)
-                if matches > 0:
-                    keyword_score = min(matches / len(keywords), 1.0) if keywords else 0
-                    score += keyword_score * interest_weight * 0.6
-                
-                arxiv_cats = interest.get("arxiv_categories", [])
-                cat_matches = sum(1 for cat in arxiv_cats if cat in paper.categories)
-                if cat_matches > 0:
-                    cat_score = min(cat_matches / len(arxiv_cats), 1.0) if arxiv_cats else 0
-                    score += cat_score * interest_weight * 0.4
-                    
-                    if cat_matches > 0 and not paper.primary_category:
-                        paper.primary_category = interest.get("name", "General")
-        
+        best_topic_score = -1.0
+        best_topic_name = ""
+
+        for topic in topics:
+            topic_weight = float(topic.weight or 1.0)
+            max_score += topic_weight
+
+            keywords = topic.keywords or []
+            cats = topic.arxiv_categories or []
+
+            keyword_score = 0.0
+            if keywords:
+                hits = sum(1 for kw in keywords if kw.lower() in searchable_text)
+                keyword_score = min(hits / len(keywords), 1.0)
+
+            category_score = 0.0
+            if cats:
+                hits = sum(1 for c in cats if c in (paper.categories or []))
+                category_score = min(hits / len(cats), 1.0)
+
+            topic_score = topic_weight * (0.6 * keyword_score + 0.4 * category_score)
+            score += topic_score
+
+            # track the topic that contributed most so we can label primary_category
+            if topic_score > best_topic_score and (keyword_score > 0 or category_score > 0):
+                best_topic_score = topic_score
+                best_topic_name = topic.name
+
         if max_score > 0:
             score = score / max_score
-        
+
         if paper.published_date:
             days_old = (date.today() - paper.published_date).days
             if days_old <= 7:
                 score *= 1.1
             elif days_old <= 14:
                 score *= 1.05
-        
+
         score = min(score, 1.0)
         paper.relevance_score = score
+        if best_topic_name and not paper.primary_category:
+            paper.primary_category = best_topic_name
         return score
     
     # =========================================================================
@@ -476,78 +561,89 @@ class PaperDiscoveryService:
     async def discover_papers(
         self,
         max_results: int = 20,
-        days_back: int = 30,
-        sources: list[str] = None,
+        days_back: int | None = None,
+        sources: list[str] | None = None,
     ) -> list[Paper]:
-        """Discover relevant papers from all configured sources."""
+        """
+        Discover relevant papers from configured sources, scored against the
+        user's active topic scope.
+
+        `days_back` defaults to the widest recency_days across topics in scope.
+        `sources` defaults to DEFAULT_SOURCES.
+        """
+        topics = self._topics_in_scope()
+        if not topics:
+            print("paper_discovery: no topics in scope; nothing to search for")
+            return []
+
         if sources is None:
-            search_config = self.interests_config.get("search_config", {})
-            sources = search_config.get("sources", ["arxiv", "semantic_scholar"])
-        
-        keywords = get_interest_keywords()
+            sources = list(DEFAULT_SOURCES)
+        if days_back is None:
+            days_back = self._scope_max_recency(topics)
+
+        # aggregate search terms + arxiv categories across all topics in scope
+        keywords = self._aggregate_keywords(topics, limit=5)
+        categories = self._aggregate_categories(topics, limit=3)
+
         all_papers: list[Paper] = []
         tasks = []
-        
-        # Search with top keywords
-        search_terms = keywords[:5]
-        
+
         for source in sources:
-            for term in search_terms:
+            for term in keywords:
                 if source == "arxiv":
                     tasks.append(self.search_arxiv(term, max_results=10, days_back=days_back))
                 elif source == "semantic_scholar":
                     tasks.append(self.search_semantic_scholar(term, max_results=10, days_back=days_back))
                 elif source == "core":
                     tasks.append(self.search_core(term, max_results=10, days_back=days_back))
-        
-        # Search by arXiv categories
+
         if "arxiv" in sources:
-            categories = get_arxiv_categories()
-            for cat in categories[:3]:
+            for cat in categories:
                 tasks.append(self.search_arxiv_by_category(cat, max_results=10, days_back=days_back))
-        
-        # Run all searches in parallel
+
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
         for result in results:
             if isinstance(result, list):
                 all_papers.extend(result)
             elif isinstance(result, Exception):
                 print(f"Search error: {result}")
-        
-        # Deduplicate
-        seen_ids = set()
-        unique_papers = []
+
+        # dedupe
+        seen_ids: set[str] = set()
+        unique_papers: list[Paper] = []
         for paper in all_papers:
-            if paper.unique_id not in seen_ids:
-                seen_ids.add(paper.unique_id)
-                unique_papers.append(paper)
-        
-        # Calculate relevance scores
+            if paper.unique_id in seen_ids:
+                continue
+            seen_ids.add(paper.unique_id)
+            unique_papers.append(paper)
+
+        # score against the (already-loaded) topics — saves N DB hits
         for paper in unique_papers:
-            self.calculate_relevance_score(paper)
-        
-        # Sort by relevance
+            self.calculate_relevance_score(paper, topics=topics)
+
         unique_papers.sort(key=lambda p: p.relevance_score, reverse=True)
-        
         return unique_papers[:max_results]
-    
+
     async def select_daily_paper(
         self,
-        seen_ids: list[str] = None,
-        days_back: int = 30,
+        seen_ids: list[str] | None = None,
+        days_back: int | None = None,
     ) -> Optional[Paper]:
         """Select the best paper for today's learning."""
         seen_ids = seen_ids or []
-        
+
+        topics = self._topics_in_scope()
+        min_relevance = self._scope_min_relevance(topics)
+
         papers = await self.discover_papers(max_results=50, days_back=days_back)
         papers = [p for p in papers if p.unique_id not in seen_ids]
-        
-        min_relevance = self.interests_config.get("search_config", {}).get("min_relevance", 0.2)
         papers = [p for p in papers if p.relevance_score >= min_relevance]
-        
+
         if not papers:
-            print("No suitable papers found. Try broadening your interests or search criteria.")
+            print(
+                "No suitable papers found. "
+                "Broaden the active topic scope, add keywords, or lower min_relevance."
+            )
             return None
-        
+
         return papers[0]

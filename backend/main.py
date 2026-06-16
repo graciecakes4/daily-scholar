@@ -117,6 +117,15 @@ class TopicStatusRequest(BaseModel):
 async def lifespan(app: FastAPI):
     print("🚀 Starting Daily Scholar API...")
     create_tables()
+    # bootstrap topics from config/topics/*.yaml (DB-wins; insert-only)
+    from .services.topic_loader import bootstrap_topics_from_yaml
+    summary = bootstrap_topics_from_yaml()
+    print(
+        f"  ↳ Topics bootstrapped: "
+        f"{summary['inserted']} inserted, "
+        f"{summary['preserved']} preserved, "
+        f"{summary['marked_orphaned']} marked orphaned"
+    )
     print("✅ Daily Scholar API started!")
     yield
     print("👋 Shutting down Daily Scholar API...")
@@ -141,6 +150,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# unified Topic CRUD + per-user scope (replaces the old /topics that read
+# from courses.yaml). Mounted under /topics and /user.
+from .api.topics import topics_router, scope_router
+app.include_router(topics_router)
+app.include_router(scope_router)
 
 
 # =============================================================================
@@ -1191,11 +1206,10 @@ async def get_daily_paper():
 # TOPICS & QUIZ (existing endpoints)
 # =============================================================================
 
-@app.get("/topics", tags=["Topics"])
-async def get_all_topics():
-    from .config import get_all_topics
-    return {"topics": get_all_topics()}
-
+# NOTE: GET /topics is now served by backend.api.topics.topics_router
+# (returns Topic-table rows, not courses.yaml topics). The endpoints below
+# still read from courses.yaml and will be refactored to the new Topic
+# table in a follow-up task.
 
 @app.get("/topics/{topic_id}/review", tags=["Topics"])
 async def get_topic_review(topic_id: str):
