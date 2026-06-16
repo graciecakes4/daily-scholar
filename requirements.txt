@@ -4,6 +4,11 @@
 # Pre-3.13 pins from early 2024 don't have wheels for 3.13 and will fail
 # to install. Bump these only if you have a specific reason.
 #
+# ⚠ Don't replace this file with `pip freeze` output — that pins to exact
+# patch versions and loses the floor ranges that keep 3.13 installs working.
+# If you want to lock for reproducibility, use `pip-tools` (pip-compile) or
+# `uv pip compile` against this file as input.
+#
 # Install with: pip install -r requirements.txt
 
 # Web Framework
