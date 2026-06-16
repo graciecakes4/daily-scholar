@@ -207,7 +207,7 @@ Highest-leverage piece, ships independently of everything else, immediately usef
 
 ### Phase 2 — Backend cloudification + multi-provider LLM (4–5 sessions)
 
-- **Containerize.** Backend Dockerfile (Python 3.12-slim, multi-stage). `docker-compose.yml` for local parity (Postgres + backend + frontend).
+- **Containerize.** Backend Dockerfile (Python 3.13-slim, multi-stage). `docker-compose.yml` for local parity (Postgres + backend + frontend).
 - **SQLite → Postgres compat pass.** Verify JSON columns use SQLAlchemy `JSON` (Postgres `jsonb`). Run migrations against both backends in CI.
 - **Background worker.** APScheduler in-process via a FastAPI lifespan hook. Jobs: nightly paper discovery (per topic scope), nightly LLM generation, push fanout, daily content cache cleanup. Defer Dramatiq/Redis until horizontal scaling is needed.
 - **Storage abstraction.** `backend/services/storage.py` with two adapters:

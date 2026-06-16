@@ -168,7 +168,7 @@ daily-scholar/
 
 ### Prerequisites
 
-- **Python 3.9+** (`python3 --version`)
+- **Python 3.10+** (`python3 --version`) — 3.13 recommended; 3.10 is the minimum because the codebase uses PEP 604 union syntax (`int | None`)
 - **Node.js 18+** (`node --version`)
 - **npm** (`npm --version`)
 - **Git** (`git --version`)
@@ -236,17 +236,39 @@ cp /path/to/your/textbook.pdf uploads/course_materials/data-engineering/textbook
 
 ### Step 6: Initialize the Database
 
-The backend now applies Alembic migrations automatically on first startup (a fresh install brings up all tables; an upgrade from a pre-Alembic beta DB is detected, stamped at the baseline, and brought current). You don't need to run anything manually, but if you want explicit control:
+The backend applies Alembic migrations automatically on first startup. **For most people, you don't need to run anything manually — just start the backend in Step 8 below and the DB comes up.**
+
+Two scenarios the backend handles automatically:
+
+| State | What happens |
+|---|---|
+| **Fresh install** (no `data/daily_scholar.db` yet) | Both migrations run, every table is created. |
+| **Pre-Alembic DB** (the app tables already exist but no `alembic_version` row) | The backend detects this, backfills any columns that the old runtime migration added, stamps the DB at `0001_baseline`, then applies `0002`. |
+| **Already-managed DB** | `alembic upgrade head` is a no-op. |
+
+If you want explicit control:
 
 ```bash
-# bring DB to the latest schema
+alembic current               # inspect current revision
+alembic upgrade head          # bring DB to the latest schema
+```
+
+#### ⚠ "table seen_papers already exists" when running `alembic upgrade head`
+
+You hit this if you have a pre-Alembic DB and you ran `alembic upgrade head` directly. The baseline migration is trying to recreate tables you already have. Recover with **either**:
+
+```bash
+# Option A — let the backend's smart detection do it for you (recommended):
+uvicorn backend.main:app --reload
+
+# Option B — manual recovery:
+sqlite3 data/daily_scholar.db ".schema archived_topic_reviews" | grep -E "status|completed_at"
+# If both columns appear: safe to skip ahead. Otherwise add them first:
+sqlite3 data/daily_scholar.db "ALTER TABLE archived_topic_reviews ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"
+sqlite3 data/daily_scholar.db "ALTER TABLE archived_topic_reviews ADD COLUMN completed_at DATETIME"
+# Then stamp + upgrade:
+alembic stamp 0001_baseline
 alembic upgrade head
-
-# inspect current state
-alembic current
-
-# only needed if you have a beta DB from before alembic was introduced
-alembic stamp 0001_baseline && alembic upgrade head
 ```
 
 The legacy `scripts/setup_db.py` still works but now routes through the same Alembic path.
@@ -501,7 +523,7 @@ The pre-unified `config/interests.yaml` and `config/courses.yaml` are preserved 
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| **Backend** | Python 3.9+ | Core language |
+| **Backend** | Python 3.10+ (3.13 recommended) | Core language |
 | | FastAPI | Web framework |
 | | SQLite | Database |
 | | Pydantic | Data validation |
