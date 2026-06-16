@@ -204,33 +204,16 @@ async def root():
 @app.get("/health", tags=["Core"])
 async def health_check():
     """
-    Lightweight health check.
+    TRULY lightweight health check — for load balancer / Railway probes.
 
-    "topics" is healthy if at least one active topic exists in the DB
-    (the unified Topic table replaced the old interests.yaml + courses.yaml
-    so those validators are no longer consulted).
+    Returns 200 the moment uvicorn can serve, with zero DB / external deps.
+    This is what Railway, Cloudflare, and uptime monitors should hit.
+
+    For per-subsystem health (DB, LLM providers, storage, push), use /health/deep.
     """
-    from .database import Topic as TopicModel
-
-    config_status = validate_configuration()
-    env_ok = config_status["environment"]["valid"]
-
-    session = get_session()
-    try:
-        active_topic_count = session.query(TopicModel).filter(
-            TopicModel.active.is_(True)
-        ).count()
-    finally:
-        session.close()
-    topics_ok = active_topic_count > 0
-
     return {
-        "status": "healthy" if (env_ok and topics_ok) else "degraded",
+        "status": "ok",
         "timestamp": date.today().isoformat(),
-        "configuration": {
-            "environment": "✓" if env_ok else "✗",
-            "topics": f"✓ ({active_topic_count} active)" if topics_ok else "✗ (no active topics)",
-        },
     }
 
 
