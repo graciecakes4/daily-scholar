@@ -24,7 +24,10 @@ startCommand = "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT}"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+# First boot against a fresh Postgres runs all three migrations + bootstraps
+# the topic YAMLs + starts the scheduler before /health responds. 30s is too
+# tight; 300s leaves headroom for cold starts without masking real hangs.
+healthcheckTimeout = 300
 
 # Railway's Postgres plugin sets DATABASE_URL with the `postgres://` prefix;
 # backend/database.py:get_database_url() rewrites that to
