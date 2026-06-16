@@ -1,13 +1,43 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
+import InstallPrompt from "@/components/InstallPrompt";
 
 const inter = Inter({ subsets: ["latin"] });
 
+// PWA-aware metadata. The viewport export drives the <meta name="theme-color">
+// so the browser chrome (iOS Safari status bar, Android task switcher card)
+// matches the app's deep-slate background.
 export const metadata: Metadata = {
   title: "Daily Scholar",
   description: "Your personalized daily learning companion",
+  applicationName: "Daily Scholar",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "Daily Scholar",
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    icon: [
+      { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    shortcut: "/icons/favicon.ico",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0f172a",
 };
 
 export default function RootLayout({
@@ -97,6 +127,9 @@ export default function RootLayout({
             Daily Scholar — Learn something new every day 🎓
           </div>
         </footer>
+
+        {/* PWA install prompt (shows on capable browsers / iOS Safari) */}
+        <InstallPrompt />
       </body>
     </html>
   );

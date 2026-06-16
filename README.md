@@ -281,6 +281,8 @@ npm install
 cd ..
 ```
 
+This pulls Next.js 16, React, Tailwind, and the PWA stack (`@serwist/next` + `serwist` for the service worker).
+
 ### Step 8: Verify Installation
 
 ```bash
@@ -519,6 +521,57 @@ The pre-unified `config/interests.yaml` and `config/courses.yaml` are preserved 
 
 ---
 
+## Install as a PWA
+
+Daily Scholar ships as a Progressive Web App: install it on your phone, tablet, or desktop and it behaves like a native app — its own window, a home-screen icon, offline access to recently visited pages.
+
+### Install paths by platform
+
+| Platform | How to install | Notes |
+|---|---|---|
+| **iOS Safari** | Share button → **Add to Home Screen** | Required step for iOS; the in-app banner explains it the first time. iOS won't fire a native install prompt. |
+| **macOS Safari** | File → **Add to Dock** | Safari 17+. |
+| **macOS / Windows / Linux Chrome / Edge** | Address-bar install icon, or in-app **Install** button | The Install banner appears automatically on capable browsers. |
+| **Android Chrome** | In-app **Install** button (or browser menu → Install app) | Native install prompt fires after the first visit. |
+
+### What works offline
+
+Once installed, the service worker caches:
+
+- The **app shell** (HTML/CSS/JS) — opens instantly even offline.
+- **Recently fetched API responses** (papers, topics, archive, daily content) — 24h NetworkFirst cache, so you see the last fresh data when offline.
+- **PDFs** you've already viewed — CacheFirst, kept for 90 days.
+
+Actions you take while offline (saving a paper, marking a topic completed, scope updates) are queued in a **background sync queue** and replay automatically when you're back online.
+
+The dev server (`npm run dev`) skips service-worker registration to keep hot-reload sane. To test the PWA end-to-end, build and serve production:
+
+```bash
+cd frontend
+npm run build         # builds with webpack (see below)
+npm start
+# open http://localhost:3000 in Chrome with DevTools → Application → Service Workers
+```
+
+> **Why the build uses webpack instead of Turbopack:** Next.js 16 defaults to Turbopack, but `@serwist/next` v9 injects its service-worker build via a webpack plugin and isn't Turbopack-compatible yet (see [serwist/serwist#54](https://github.com/serwist/serwist/issues/54)). The `build` script already passes `--webpack`, so this is invisible to you in normal use — but if you ever want to migrate to Turbopack for the production build, you'll need to swap `@serwist/next` for `@serwist/turbopack` or move to configurator mode. Dev (`npm run dev`) stays on Turbopack with the service worker disabled, so HMR remains fast.
+
+### Swapping the app icon
+
+Icons live in `frontend/public/icons/`. The placeholder set (book-on-slate) was generated; replace any of `icon-{192,256,384,512}.png` and the matching `*-maskable.png` to rebrand. Required sizes are referenced in `public/manifest.json` and `app/layout.tsx`.
+
+For a one-shot regenerate from a single 512×512 source image:
+
+```bash
+python3 -c "
+from PIL import Image
+src = Image.open('frontend/public/icons/source.png')
+for s in (192, 256, 384, 512):
+    src.resize((s, s), Image.LANCZOS).save(f'frontend/public/icons/icon-{s}.png', 'PNG', optimize=True)
+"
+```
+
+---
+
 ## Tech Stack
 
 | Layer | Technology | Purpose |
@@ -528,9 +581,10 @@ The pre-unified `config/interests.yaml` and `config/courses.yaml` are preserved 
 | | SQLite | Database |
 | | Pydantic | Data validation |
 | | httpx | HTTP client |
-| **Frontend** | Next.js 14+ | React framework |
+| **Frontend** | Next.js 16+ | React framework |
 | | TypeScript | Type safety |
 | | Tailwind CSS | Styling |
+| | @serwist/next | PWA service worker (Workbox-based) |
 | **APIs** | Anthropic Claude | Content generation |
 | | arXiv | Paper discovery |
 | | Semantic Scholar | Paper metadata |
