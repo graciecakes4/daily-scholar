@@ -161,4 +161,55 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+// ---------------------------------------------------------------------------
+// Web Push handlers
+// ---------------------------------------------------------------------------
+
+/**
+ * Push payload shape (matches push_sender.py):
+ *   { title: string, body: string, url?: string, tag?: string }
+ * If parsing fails we still show a generic notification rather than dropping
+ * the push entirely — drops are nearly invisible during debugging.
+ */
+self.addEventListener("push", (event) => {
+  let payload: { title?: string; body?: string; url?: string; tag?: string } = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { title: "Daily Scholar", body: event.data?.text() ?? "" };
+  }
+  const title = payload.title || "Daily Scholar";
+  const options: NotificationOptions = {
+    body: payload.body || "",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/favicon-32.png",
+    tag: payload.tag || "ds-notification",
+    data: { url: payload.url || "/" },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+/**
+ * Notification click → focus an existing tab on the deep-link URL if one
+ * exists, otherwise open a new one. This is the standard "navigate or focus"
+ * pattern from the Web Push spec.
+ */
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data?.url as string) || "/";
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then(async (windowClients) => {
+        for (const client of windowClients) {
+          const clientUrl = new URL(client.url);
+          if (clientUrl.pathname === url || client.url.endsWith(url)) {
+            return client.focus();
+          }
+        }
+        return self.clients.openWindow(url);
+      })
+  );
+});
+
 serwist.addEventListeners();

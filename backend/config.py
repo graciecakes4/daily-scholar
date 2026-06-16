@@ -61,7 +61,13 @@ class Settings(BaseSettings):
     # File Storage
     upload_dir: str = Field(default="./uploads")
     max_upload_size: int = Field(default=52428800)  # 50MB
-    
+
+    # Web Push (VAPID) — populate via `python scripts/generate_vapid_keys.py`.
+    # All three left empty by default; push endpoints return 503 until set.
+    vapid_public_key: Optional[str] = Field(default=None)
+    vapid_private_key: Optional[str] = Field(default=None)
+    vapid_subject: Optional[str] = Field(default=None)
+
     # Pydantic v2 configuration
     model_config = SettingsConfigDict(
         env_file=".env",

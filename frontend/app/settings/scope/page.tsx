@@ -13,6 +13,7 @@ import {
   getScope, updateScope, listTopics,
   type Scope, type ScopeMode, type Topic,
 } from '@/lib/api';
+import { useWebPush } from '@/hooks/useWebPush';
 
 function streamDisplayName(stream: string): string {
   return stream.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -209,7 +210,97 @@ export default function ScopeSettingsPage() {
           Last updated {new Date(scope.updated_at).toLocaleString()} for <code>{scope.user_id}</code>.
         </p>
       )}
+
+      <NotificationsSection />
     </div>
+  );
+}
+
+function NotificationsSection() {
+  const { supported, permission, subscribed, busy, error, subscribe, unsubscribe, sendTest } = useWebPush();
+
+  // detect iOS Safari NOT yet running standalone — push only works on iOS after A2HS
+  const iosNeedsInstall =
+    typeof window !== 'undefined' &&
+    /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+    !((navigator as any).standalone === true) &&
+    !window.matchMedia?.('(display-mode: standalone)').matches;
+
+  return (
+    <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+        Notifications
+      </h2>
+
+      {!supported && (
+        <p className="text-sm text-slate-600">
+          Push notifications aren't supported in this browser. Try Chrome, Edge, Firefox, or Safari (16.4+).
+        </p>
+      )}
+
+      {supported && iosNeedsInstall && !subscribed && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded p-3 text-sm">
+          iOS requires installing the app to your home screen before push notifications can be enabled.
+          Open in Safari → Share → <strong>Add to Home Screen</strong>, then come back here.
+        </div>
+      )}
+
+      {supported && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-sm font-medium text-slate-900">
+                Daily-paper push notifications
+              </div>
+              <div className="text-xs text-slate-500">
+                Status:{' '}
+                <span className="font-mono">
+                  permission={permission}, subscribed={String(subscribed)}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {!subscribed ? (
+                <button
+                  onClick={subscribe}
+                  disabled={busy || permission === 'denied'}
+                  className="px-4 py-2 bg-slate-900 text-white rounded text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+                >
+                  {busy ? 'Enabling…' : 'Enable notifications'}
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={sendTest}
+                    disabled={busy}
+                    className="px-3 py-1.5 bg-sky-100 text-sky-800 rounded text-sm hover:bg-sky-200 disabled:opacity-50"
+                  >
+                    Send test
+                  </button>
+                  <button
+                    onClick={unsubscribe}
+                    disabled={busy}
+                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Unsubscribe
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {permission === 'denied' && (
+            <p className="text-xs text-rose-700">
+              Notification permission was denied. Re-enable it in your browser's site settings, then refresh.
+            </p>
+          )}
+
+          {error && (
+            <p className="text-xs text-rose-700">{error}</p>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -34,6 +34,10 @@ python-docx>=1.1,<2
 # Anthropic SDK (for Claude API)
 anthropic>=0.40,<1
 
+# Web Push (VAPID + push fanout)
+pywebpush>=2.0,<3
+cryptography>=42,<46
+
 # Date/Time utilities
 python-dateutil>=2.8.2,<3
 

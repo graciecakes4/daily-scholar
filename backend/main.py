@@ -1543,6 +1543,24 @@ async def get_daily_content(refresh: str = ""):
 
         update_user_streak()
 
+        # fire a Web Push to the current user's subscriptions when a NEW paper
+        # was just generated (skip on review-only refreshes — paper is unchanged)
+        if need_paper and paper_payload:
+            try:
+                from .database import DEFAULT_USER_ID
+                from .services.push_sender import send_push_to_user
+                send_push_to_user(
+                    DEFAULT_USER_ID,
+                    {
+                        "title": "Today's paper is ready",
+                        "body": paper_payload.get("title", "")[:140],
+                        "url": "/",
+                        "tag": "daily-paper",
+                    },
+                )
+            except Exception as e:  # noqa: BLE001 — push must never break the response
+                print(f"push fanout failed (non-fatal): {e}")
+
         return {
             "date": today.isoformat(),
             "paper": paper_payload,
@@ -1581,5 +1599,7 @@ class _PaperLite:
 # =============================================================================
 
 from .api.topics import topics_router, scope_router
+from .api.push import push_router
 app.include_router(topics_router)
 app.include_router(scope_router)
+app.include_router(push_router)
