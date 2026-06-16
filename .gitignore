@@ -74,3 +74,6 @@ config/_archive/
 *.bak
 *.tmp
 .cache/
+
+# pr scripts
+pr-scripts/
