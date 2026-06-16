@@ -616,22 +616,26 @@ Daily Scholar splits each LLM call site into a named *task* and routes each task
 | `evaluate` | Open-answer scoring | `anthropic:claude-haiku-4-5` | Simple correctness check |
 | `default` | Fallback for anything new | `anthropic:claude-sonnet-4-5` | Sensible middle ground |
 
-Defaults live in `backend/services/llm/factory.py` (`DEFAULT_TASK_ROUTING`). Override any one via env var without touching code:
+Supported providers: **anthropic**, **gemini**, **antigravity**. Defaults live in `backend/services/llm/factory.py` (`DEFAULT_TASK_ROUTING`). Override any one via env var without touching code:
 
 ```bash
 # in .env — format is "provider:model"
-LLM_TASK_SUMMARY=openai:gpt-4o-mini      # send summaries to OpenAI
-LLM_TASK_QUIZ=anthropic:claude-opus-4-8  # use a more capable model for quizzes
+LLM_TASK_SUMMARY=gemini:gemini-2.5-flash     # send summaries to Gemini
+LLM_TASK_QUIZ=antigravity:gemini-2.5-pro     # route quiz generation through the Antigravity agent
+LLM_TASK_REVIEW=anthropic:claude-opus-4-8    # use a more capable Claude model for reviews
 ```
 
-To enable OpenAI as a target, set:
+To enable a Google provider, set:
 
 ```bash
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini   # fallback model when an openai: route has no explicit model
+GEMINI_API_KEY=...               # get one at https://aistudio.google.com/apikey
+GEMINI_MODEL=gemini-2.5-flash    # fallback for gemini: routes with no explicit model
+ANTIGRAVITY_MODEL=               # leave blank to use the Antigravity SDK default
 ```
 
-The OpenAI SDK is only imported when a task is actually routed to OpenAI, so you can run with only `ANTHROPIC_API_KEY` set if you don't use any `openai:` routes.
+The `google-genai` and `google-antigravity` SDKs are only imported when a task is actually routed to one of them, so you can run with only `ANTHROPIC_API_KEY` set if you stick to Anthropic.
+
+**A note on Antigravity:** it's Google's agent-native platform — stateful sessions, managed execution, tool use. Under the hood every call is still a Gemini call, plus agent-setup overhead. Reach for `antigravity:` when you want the agent harness (e.g., to add tool calls or persistent sessions later); for raw single-turn throughput, `gemini:` is faster.
 
 ### Swapping the app icon
 
@@ -664,7 +668,8 @@ for s in (192, 256, 384, 512):
 | | Tailwind CSS | Styling |
 | | @serwist/next | PWA service worker (Workbox-based) |
 | **APIs** | Anthropic Claude | Content generation (default for all tasks) |
-| | OpenAI | Content generation (optional, per-task routing) |
+| | Google Gemini | Content generation (optional, per-task routing) |
+| | Google Antigravity | Content generation via agent harness (optional, per-task routing) |
 | | arXiv | Paper discovery |
 | | Semantic Scholar | Paper metadata |
 

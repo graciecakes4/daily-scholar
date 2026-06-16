@@ -50,15 +50,23 @@ class Settings(BaseSettings):
     port: int = Field(default=8000)
     frontend_url: str = Field(default="http://localhost:3000")
     
-    # Content Generation — Anthropic
+    # Content Generation — Anthropic (default provider)
     claude_model: str = Field(default="claude-sonnet-4-5")
     max_tokens: int = Field(default=4096)
 
-    # Content Generation — OpenAI (optional; required only if any LLM_TASK_* routes to openai)
-    openai_api_key: Optional[str] = Field(default=None)
-    openai_model: str = Field(default="gpt-4o-mini")
+    # Content Generation — Google Gemini (optional; required if any task routes to gemini or antigravity)
+    gemini_api_key: Optional[str] = Field(default=None)
+    gemini_model: str = Field(default="gemini-2.5-flash")
 
-    # Per-task LLM routing overrides — format "provider:model" (e.g. "openai:gpt-4o-mini").
+    # Content Generation — Google Antigravity (uses GEMINI_API_KEY under the hood)
+    # Leave model empty to use the Antigravity SDK's default.
+    antigravity_model: Optional[str] = Field(default=None)
+
+    # Per-task LLM routing overrides — format "provider:model".
+    # Supported providers: anthropic, gemini, antigravity.
+    # Examples:
+    #   LLM_TASK_SUMMARY=gemini:gemini-2.5-flash
+    #   LLM_TASK_QUIZ=antigravity:gemini-2.5-pro
     # Empty / None = use DEFAULT_TASK_ROUTING in backend/services/llm/factory.py.
     llm_task_summary: Optional[str] = Field(default=None)
     llm_task_review: Optional[str] = Field(default=None)

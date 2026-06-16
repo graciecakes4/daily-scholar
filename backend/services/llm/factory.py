@@ -6,10 +6,17 @@ provider+model independently. Defaults are tuned for cost: cheap models for
 distillation / scoring, premium models for the things that need reasoning
 (reviews, quizzes).
 
+Supported providers:
+  - anthropic    → Claude via the Anthropic SDK
+  - gemini       → Google Gemini via the google-genai SDK
+  - antigravity  → Google Antigravity agent harness via google-antigravity SDK
+                   (uses Gemini under the hood; reach for it when you want
+                   Antigravity's agent/tool features, not for raw throughput)
+
 Override priority:
-  1. LLM_TASK_<NAME> env var ("openai:gpt-4o-mini" or "anthropic:claude-haiku-4-5")
+  1. LLM_TASK_<NAME> env var ("provider:model")
   2. The DEFAULT_TASK_ROUTING entry below
-  3. The provider's default model (CLAUDE_MODEL / OPENAI_MODEL settings)
+  3. The provider's default model (CLAUDE_MODEL / GEMINI_MODEL / ANTIGRAVITY_MODEL)
 """
 
 from __future__ import annotations
@@ -36,8 +43,11 @@ def _resolve_routing(task: Task) -> tuple[str, Optional[str]]:
     """Return (provider, model_or_none) for a task, applying env overrides."""
     settings = get_settings()
     env_attr = f"llm_task_{task}"
-    raw = getattr(settings, env_attr, None) or DEFAULT_TASK_ROUTING.get(task) \
+    raw = (
+        getattr(settings, env_attr, None)
+        or DEFAULT_TASK_ROUTING.get(task)
         or DEFAULT_TASK_ROUTING["default"]
+    )
     if ":" in raw:
         provider, model = raw.split(":", 1)
     else:
@@ -52,13 +62,16 @@ def get_llm_client(task: Task = "default") -> LLMClient:
     provider, model = _resolve_routing(task)
 
     if provider == "anthropic":
-        # lazy import so installing only one SDK still works
         from .anthropic_client import AnthropicClient
         return AnthropicClient(model=model)
-    if provider == "openai":
-        from .openai_client import OpenAIClient
-        return OpenAIClient(model=model)
+    if provider == "gemini":
+        from .gemini_client import GeminiClient
+        return GeminiClient(model=model)
+    if provider == "antigravity":
+        from .antigravity_client import AntigravityClient
+        return AntigravityClient(model=model)
     raise ValueError(
         f"Unknown LLM provider {provider!r} for task {task!r}. "
-        f"Set LLM_TASK_{task.upper()} to 'anthropic:<model>' or 'openai:<model>'."
+        f"Supported: anthropic, gemini, antigravity. "
+        f"Set LLM_TASK_{task.upper()} to '<provider>:<model>'."
     )
