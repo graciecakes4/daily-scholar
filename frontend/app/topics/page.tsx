@@ -1,380 +1,295 @@
 'use client';
 
+/**
+ * Topic catalog — the unified Topic model browser.
+ *
+ * Lists every topic in the system, grouped by stream. Each row has quick
+ * actions for soft-delete (toggle active), hard-delete, and edit. The
+ * "import yaml" and "export yaml" controls are exposed here for the
+ * YAML <-> DB round-trip path.
+ *
+ * Past topic reviews (the old /topics view) now live at /topics/archive.
+ */
+
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
-  getArchivedTopics, updateArchivedTopic, deleteArchivedTopic,
-  type ArchivedTopic, type TopicStatus
+  listTopics, listStreams, deleteTopic, updateTopic,
+  importTopicsFromYaml, exportTopicsToYaml,
+  type Topic,
 } from '@/lib/api';
 
-export default function TopicsPage() {
-  const [topics, setTopics] = useState<ArchivedTopic[]>([]);
+function streamDisplayName(stream: string): string {
+  return stream
+    .replace(/[_-]/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+export default function TopicCatalogPage() {
+  const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [editingNotes, setEditingNotes] = useState<number | null>(null);
-  const [noteText, setNoteText] = useState('');
-  const [statusFilter, setStatusFilter] = useState<TopicStatus | 'all'>('all');
+  const [error, setError] = useState<string | null>(null);
+  const [showOrphaned, setShowOrphaned] = useState(true);
+  const [streamFilter, setStreamFilter] = useState<string>('');
+  const [busy, setBusy] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchTopics();
-  }, [statusFilter]);
+    void fetchTopics();
+  }, [streamFilter, showOrphaned]);
 
-  const fetchTopics = async () => {
+  async function fetchTopics() {
     setLoading(true);
+    setError(null);
     try {
-      const filterStatus = statusFilter === 'all' ? undefined : statusFilter;
-      const data = await getArchivedTopics(50, 0, undefined, filterStatus);
-      setTopics(data.topics);
-    } catch (error) {
-      console.error('Failed to fetch topics:', error);
+      const data = await listTopics({
+        stream: streamFilter || undefined,
+        includeOrphaned: showOrphaned,
+      });
+      setTopics(data);
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleConfidenceChange = async (topicId: number, level: number) => {
-    try {
-      await updateArchivedTopic(topicId, { confidence_level: level });
-      fetchTopics();
-    } catch (error) {
-      console.error('Failed to update confidence:', error);
-    }
-  };
-
-  const handleStatusChange = async (topicId: number, newStatus: TopicStatus) => {
-    try {
-      await updateArchivedTopic(topicId, { status: newStatus });
-      fetchTopics();
-    } catch (error) {
-      console.error('Failed to update status:', error);
-    }
-  };
-
-  const handleSaveNotes = async (topicId: number) => {
-    try {
-      await updateArchivedTopic(topicId, { user_notes: noteText });
-      setEditingNotes(null);
-      fetchTopics();
-    } catch (error) {
-      console.error('Failed to save notes:', error);
-    }
-  };
-
-  const handleDelete = async (topicId: number) => {
-    if (!confirm('Remove this topic from your archive?')) return;
-    try {
-      await deleteArchivedTopic(topicId);
-      fetchTopics();
-    } catch (error) {
-      console.error('Failed to delete topic:', error);
-    }
-  };
-
-  const StatusBadge = ({ status }: { status: TopicStatus }) => {
-    const styles: Record<TopicStatus, string> = {
-      active: 'bg-blue-100 text-blue-700',
-      review_later: 'bg-amber-100 text-amber-700',
-      completed: 'bg-emerald-100 text-emerald-700',
-    };
-    const labels: Record<TopicStatus, string> = {
-      active: 'Active',
-      review_later: 'Review Later',
-      completed: 'Completed',
-    };
-    return (
-      <span className={`px-2 py-0.5 text-xs rounded font-medium ${styles[status]}`}>
-        {labels[status]}
-      </span>
-    );
-  };
-
-  const ConfidenceLevel = ({ level, topicId }: { level: number; topicId: number }) => {
-    const labels = ['Not set', 'Struggling', 'Needs Work', 'Getting There', 'Confident', 'Mastered'];
-    const colors = [
-      'bg-slate-100 text-slate-600',
-      'bg-red-100 text-red-700',
-      'bg-orange-100 text-orange-700',
-      'bg-yellow-100 text-yellow-700',
-      'bg-emerald-100 text-emerald-700',
-      'bg-blue-100 text-blue-700',
-    ];
-
-    return (
-      <div className="flex items-center gap-2">
-        <div className="flex gap-1">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button
-              key={n}
-              onClick={() => handleConfidenceChange(topicId, n)}
-              className={`w-8 h-8 rounded-full text-sm font-medium transition-all ${n <= level
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-slate-200 text-slate-500 hover:bg-slate-300'
-                }`}
-            >
-              {n}
-            </button>
-          ))}
-        </div>
-        <span className={`px-2 py-1 text-xs rounded ${colors[level] || colors[0]}`}>
-          {labels[level] || labels[0]}
-        </span>
-      </div>
-    );
-  };
-
-  // Group topics by course
-  const topicsByCourse = topics.reduce((acc, topic) => {
-    if (!acc[topic.course_name]) {
-      acc[topic.course_name] = [];
-    }
-    acc[topic.course_name].push(topic);
-    return acc;
-  }, {} as Record<string, ArchivedTopic[]>);
-
-  // Counts for filter tabs
-  const allCount = topics.length;
-  const activeCount = topics.filter(t => t.status === 'active').length;
-  const reviewLaterCount = topics.filter(t => t.status === 'review_later').length;
-  const completedCount = topics.filter(t => t.status === 'completed').length;
-
-  if (loading) {
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-pulse text-slate-500">Loading topics...</div>
-      </div>
-    );
   }
 
+  async function toggleActive(topic: Topic) {
+    setBusy(true);
+    try {
+      await updateTopic(topic.id, { active: !topic.active });
+      await fetchTopics();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleHardDelete(topic: Topic) {
+    if (!confirm(`Permanently delete topic "${topic.name}"? This cannot be undone.`)) return;
+    setBusy(true);
+    try {
+      await deleteTopic(topic.id, { hard: true });
+      await fetchTopics();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleImport() {
+    if (!confirm('Overwrite topics with the contents of config/topics/*.yaml? UI-only topics are untouched.')) return;
+    setBusy(true);
+    setStatusMsg(null);
+    try {
+      const result = await importTopicsFromYaml();
+      setStatusMsg(`Imported: ${result.inserted} new, ${result.updated} updated, ${result.marked_orphaned} marked orphaned.`);
+      await fetchTopics();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleExport() {
+    setBusy(true);
+    setStatusMsg(null);
+    try {
+      const result = await exportTopicsToYaml();
+      setStatusMsg(`Exported ${result.exported} topic(s) to ${result.directory}.`);
+      await fetchTopics();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // group topics by stream for display
+  const grouped: Record<string, Topic[]> = {};
+  for (const t of topics) {
+    if (!grouped[t.stream]) grouped[t.stream] = [];
+    grouped[t.stream].push(t);
+  }
+  const orderedStreams = Object.keys(grouped).sort();
+
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Topic Reviews</h1>
+          <h1 className="text-3xl font-bold text-slate-900">Topics</h1>
           <p className="text-slate-600 mt-1">
-            {topics.length} topics reviewed • {topics.reduce((sum, t) => sum + t.review_count, 0)} total reviews
+            Each topic drives both paper discovery (keywords + arXiv categories) and review/quiz generation.
           </p>
         </div>
-        <a href="/" className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
-          ← Dashboard
-        </a>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-2xl font-bold text-slate-900">{topics.length}</div>
-          <div className="text-sm text-slate-500">Unique Topics</div>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-2xl font-bold text-emerald-600">{completedCount}</div>
-          <div className="text-sm text-slate-500">Completed</div>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-2xl font-bold text-amber-600">{reviewLaterCount}</div>
-          <div className="text-sm text-slate-500">Review Later</div>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-2xl font-bold text-blue-600">{activeCount}</div>
-          <div className="text-sm text-slate-500">Active</div>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-2xl font-bold text-slate-400">
-            {topics.filter(t => !t.confidence_level).length}
-          </div>
-          <div className="text-sm text-slate-500">Not Rated</div>
-        </div>
-      </div>
-
-      {/* Status Filter Tabs */}
-      <div className="flex gap-2">
-        {([
-          { key: 'all' as const, label: 'All', count: allCount },
-          { key: 'active' as const, label: 'Active', count: activeCount },
-          { key: 'review_later' as const, label: 'Review Later', count: reviewLaterCount },
-          { key: 'completed' as const, label: 'Completed', count: completedCount },
-        ]).map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setStatusFilter(tab.key)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              statusFilter === tab.key
-                ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
+        <div className="flex items-center gap-2">
+          <Link
+            href="/topics/new"
+            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 transition-all"
           >
-            {tab.label}
-            <span className="ml-1.5 opacity-60">({tab.count})</span>
-          </button>
-        ))}
+            + New topic
+          </Link>
+          <Link
+            href="/topics/archive"
+            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-all"
+          >
+            Review history
+          </Link>
+        </div>
+      </header>
+
+      {/* controls */}
+      <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-slate-600">Stream:</label>
+          <select
+            value={streamFilter}
+            onChange={e => setStreamFilter(e.target.value)}
+            className="text-sm border border-slate-300 rounded px-2 py-1"
+          >
+            <option value="">All</option>
+            {Object.keys(grouped).concat(streamFilter ? [streamFilter] : [])
+              .filter((v, i, a) => a.indexOf(v) === i)
+              .sort()
+              .map(s => (
+                <option key={s} value={s}>{streamDisplayName(s)}</option>
+              ))}
+          </select>
+        </div>
+        <label className="text-sm font-medium text-slate-600 flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showOrphaned}
+            onChange={e => setShowOrphaned(e.target.checked)}
+          />
+          Include orphaned (YAML missing)
+        </label>
+        <div className="flex-grow" />
+        <button
+          onClick={handleImport}
+          disabled={busy}
+          className="px-3 py-1.5 text-sm bg-amber-100 text-amber-800 rounded hover:bg-amber-200 disabled:opacity-50"
+          title="Re-sync topics table from config/topics/*.yaml"
+        >
+          Import YAML → DB
+        </button>
+        <button
+          onClick={handleExport}
+          disabled={busy}
+          className="px-3 py-1.5 text-sm bg-sky-100 text-sky-800 rounded hover:bg-sky-200 disabled:opacity-50"
+          title="Write current DB state out to config/topics/*.yaml"
+        >
+          Export DB → YAML
+        </button>
       </div>
 
-      {/* Topics by Course */}
-      {topics.length === 0 ? (
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-12 text-center">
-          <h2 className="text-xl font-semibold text-slate-700 mb-2">No Topics Found</h2>
-          <p className="text-slate-500">
-            {statusFilter === 'all'
-              ? 'Complete topic reviews from your daily learning to track your progress.'
-              : `No topics with status "${statusFilter.replace('_', ' ')}".`}
-          </p>
+      {statusMsg && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-2 text-sm">
+          {statusMsg}
+        </div>
+      )}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-slate-500">Loading…</div>
+      ) : topics.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-lg p-8 text-center text-slate-500">
+          No topics yet. <Link href="/topics/new" className="text-slate-900 font-medium underline">Create one</Link>.
         </div>
       ) : (
-        Object.entries(topicsByCourse).map(([courseName, courseTopics]) => (
-          <div key={courseName} className="space-y-4">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
-              {courseName}
-              <span className="text-sm font-normal text-slate-500">({courseTopics.length} topics)</span>
-            </h2>
-
-            <div className="space-y-3">
-              {courseTopics.map((topic) => (
-                <div key={topic.id} className={`bg-white rounded-xl border overflow-hidden ${
-                  topic.status === 'completed' ? 'border-emerald-200' : 'border-slate-200'
-                }`}>
-                  <div className="p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <h3 className="font-semibold text-slate-900">{topic.topic_name}</h3>
-                          <StatusBadge status={topic.status} />
-                          {topic.week_covered && (
-                            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded">
-                              Week {topic.week_covered}
-                            </span>
-                          )}
-                          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded">
-                            {topic.review_count}x reviewed
-                          </span>
-                        </div>
-
-                        <ConfidenceLevel level={topic.confidence_level || 0} topicId={topic.id} />
-
-                        <p className="text-xs text-slate-400 mt-2">
-                          Last reviewed: {new Date(topic.last_reviewed_at).toLocaleDateString()}
-                          {topic.completed_at && (
-                            <span className="ml-2 text-emerald-500">
-                              • Completed: {new Date(topic.completed_at).toLocaleDateString()}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={() => setExpandedId(expandedId === topic.id ? null : topic.id)}
-                        className="p-2 text-slate-400 hover:text-slate-600"
-                      >
-                        <svg className={`w-5 h-5 transition-transform ${expandedId === topic.id ? 'rotate-180' : ''}`}
-                          fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
-                    </div>
-
-                    {/* Expanded Content */}
-                    {expandedId === topic.id && (
-                      <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
-                        {topic.key_points && topic.key_points.length > 0 && (
-                          <div className="bg-emerald-50 rounded-lg p-4">
-                            <h4 className="font-semibold text-emerald-900 mb-2">Key Points</h4>
-                            <ul className="space-y-1">
-                              {topic.key_points.map((point: string, i: number) => (
-                                <li key={i} className="text-sm text-emerald-800 flex items-start gap-2">
-                                  <span className="text-emerald-500">✓</span>
-                                  {point}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {/* Status Change Buttons */}
-                        <div className="bg-slate-50 rounded-lg p-4">
-                          <h4 className="font-semibold text-slate-900 mb-2">Change Status</h4>
-                          <div className="flex gap-2">
-                            {(['active', 'review_later', 'completed'] as TopicStatus[]).map(s => (
-                              <button
-                                key={s}
-                                onClick={() => handleStatusChange(topic.id, s)}
-                                disabled={topic.status === s}
-                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                                  topic.status === s
-                                    ? s === 'completed' ? 'bg-emerald-500 text-white' :
-                                      s === 'review_later' ? 'bg-amber-500 text-white' :
-                                      'bg-blue-500 text-white'
-                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                                } disabled:cursor-default`}
-                              >
-                                {s === 'active' ? 'Active' : s === 'review_later' ? 'Review Later' : 'Completed'}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Notes Section */}
-                        <div className="bg-slate-50 rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-semibold text-slate-900">Your Notes</h4>
-                            {editingNotes !== topic.id && (
-                              <button
-                                onClick={() => {
-                                  setEditingNotes(topic.id);
-                                  setNoteText(topic.user_notes || '');
-                                }}
-                                className="text-sm text-blue-600 hover:text-blue-700"
-                              >
-                                {topic.user_notes ? 'Edit' : 'Add notes'}
-                              </button>
-                            )}
-                          </div>
-
-                          {editingNotes === topic.id ? (
-                            <div className="space-y-2">
-                              <textarea
-                                value={noteText}
-                                onChange={(e) => setNoteText(e.target.value)}
-                                placeholder="Add your notes about this topic..."
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm resize-none h-24 focus:ring-2 focus:ring-blue-500"
-                              />
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => handleSaveNotes(topic.id)}
-                                  className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  onClick={() => setEditingNotes(null)}
-                                  className="px-3 py-1.5 bg-slate-200 text-slate-700 text-sm rounded hover:bg-slate-300"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="text-sm text-slate-600">
-                              {topic.user_notes || 'No notes yet.'}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex justify-end">
-                          <button
-                            onClick={() => handleDelete(topic.id)}
-                            className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
-                          >
-                            Remove from Archive
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))
+        <div className="space-y-6">
+          {orderedStreams.map(stream => (
+            <section key={stream}>
+              <h2 className="text-lg font-semibold text-slate-800 mb-2">
+                {streamDisplayName(stream)}
+                <span className="ml-2 text-sm font-normal text-slate-500">({grouped[stream].length})</span>
+              </h2>
+              <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
+                {grouped[stream].map(topic => (
+                  <TopicRow
+                    key={topic.id}
+                    topic={topic}
+                    busy={busy}
+                    onToggleActive={() => toggleActive(topic)}
+                    onHardDelete={() => handleHardDelete(topic)}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
       )}
+    </div>
+  );
+}
+
+function TopicRow({
+  topic, busy, onToggleActive, onHardDelete,
+}: {
+  topic: Topic;
+  busy: boolean;
+  onToggleActive: () => void;
+  onHardDelete: () => void;
+}) {
+  return (
+    <div className="p-4 flex items-start gap-4">
+      <div className="flex-grow min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href={`/topics/${encodeURIComponent(topic.id)}/edit`}
+            className="font-semibold text-slate-900 hover:underline"
+          >
+            {topic.name}
+          </Link>
+          {!topic.active && (
+            <span className="text-xs px-2 py-0.5 bg-slate-200 text-slate-600 rounded">inactive</span>
+          )}
+          {topic.created_via === 'ui' && (
+            <span className="text-xs px-2 py-0.5 bg-violet-100 text-violet-700 rounded" title="Created via web UI">ui</span>
+          )}
+          {!topic.source_yaml_present && topic.created_via === 'yaml' && (
+            <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded" title="No matching YAML file on disk">orphaned</span>
+          )}
+          <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">weight {topic.weight}</span>
+          <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">{topic.quiz_difficulty}</span>
+        </div>
+        <div className="mt-1 text-sm text-slate-500 truncate">
+          {topic.id} · {topic.keywords.length} keywords · {topic.arxiv_categories.length} arXiv categories · {topic.key_concepts.length} concepts
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          onClick={onToggleActive}
+          disabled={busy}
+          className={`text-xs px-3 py-1.5 rounded border disabled:opacity-50 ${
+            topic.active
+              ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+              : 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+          }`}
+        >
+          {topic.active ? 'Deactivate' : 'Activate'}
+        </button>
+        <Link
+          href={`/topics/${encodeURIComponent(topic.id)}/edit`}
+          className="text-xs px-3 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
+        >
+          Edit
+        </Link>
+        <button
+          onClick={onHardDelete}
+          disabled={busy}
+          className="text-xs px-3 py-1.5 rounded bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+        >
+          Delete
+        </button>
+      </div>
     </div>
   );
 }

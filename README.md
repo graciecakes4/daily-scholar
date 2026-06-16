@@ -86,13 +86,25 @@ daily-scholar/
 ├── backend/
 │   ├── __init__.py
 │   ├── main.py              # FastAPI application entry point
-│   ├── config.py            # Configuration management
-│   ├── database.py          # SQLite database setup
+│   ├── config.py            # Environment + YAML loaders
+│   ├── database.py          # SQLAlchemy models + alembic glue
 │   ├── models.py            # Pydantic models (data validation)
+│   ├── api/
+│   │   ├── __init__.py
+│   │   └── topics.py        # Topic CRUD + scope endpoints (FastAPI router)
 │   └── services/
 │       ├── __init__.py
-│       ├── paper_discovery.py    # arXiv, Semantic Scholar APIs
-│       └── content_generator.py  # Claude API integration
+│       ├── paper_discovery.py    # arXiv, Semantic Scholar, CORE; topic-scoped
+│       ├── content_generator.py  # LLM-driven reviews + quizzes
+│       └── topic_loader.py       # YAML <-> topics-table sync (bootstrap/import/export)
+│
+├── alembic/                 # database migrations
+│   ├── env.py
+│   ├── script.py.mako
+│   └── versions/
+│       ├── 0001_baseline.py
+│       └── 0002_topics_user_settings_push.py
+├── alembic.ini
 │
 ├── frontend/
 │   ├── package.json         # Node.js dependencies
@@ -101,15 +113,37 @@ daily-scholar/
 │   ├── postcss.config.js    # PostCSS configuration
 │   ├── next.config.js       # Next.js configuration
 │   ├── app/
-│   │   ├── layout.tsx       # Root layout component
-│   │   ├── page.tsx         # Main dashboard page
-│   │   └── globals.css      # Global styles
+│   │   ├── layout.tsx       # Root layout (with nav)
+│   │   ├── page.tsx         # Dashboard
+│   │   ├── globals.css      # Global styles
+│   │   ├── papers/          # Paper discovery + archive pages
+│   │   ├── quiz/            # Quiz session pages
+│   │   ├── topics/
+│   │   │   ├── page.tsx          # Topic catalog (list, grouped by stream)
+│   │   │   ├── new/page.tsx      # Create new topic
+│   │   │   ├── archive/page.tsx  # Past topic-review history
+│   │   │   └── [id]/edit/page.tsx
+│   │   └── settings/
+│   │       └── scope/page.tsx    # Silo / multi / all scope selector
+│   ├── components/
+│   │   └── TopicForm.tsx    # Shared topic editor (new + edit)
 │   └── lib/
-│       └── api.ts           # API client functions
+│       └── api.ts           # Typed API client
 │
 ├── config/
-│   ├── interests.yaml       # Your research interests
-│   └── courses.yaml         # Your course materials
+│   ├── topics/              # ONE FILE PER TOPIC. bootstrapped on app start.
+│   │   ├── astronomy-foundations.yaml
+│   │   ├── ml-foundations.yaml
+│   │   ├── transient-photometric-classification.yaml
+│   │   ├── multimodal-foundation-models-astronomy.yaml
+│   │   ├── missing-modality-learning.yaml
+│   │   ├── generative-cross-modal-imputation.yaml
+│   │   ├── sim-to-real-transfer-astronomy.yaml
+│   │   └── _archive/        # files here are NOT auto-loaded
+│   │       └── generic-ml.yaml   # restore point for old broad-ML behavior
+│   └── _archive/
+│       ├── interests.yaml.bak   # original pre-unified interests (reference only)
+│       └── courses.yaml.bak     # original pre-unified courses (reference only)
 │
 ├── scripts/
 │   └── setup_db.py          # Database initialization
@@ -202,9 +236,20 @@ cp /path/to/your/textbook.pdf uploads/course_materials/data-engineering/textbook
 
 ### Step 6: Initialize the Database
 
+The backend now applies Alembic migrations automatically on first startup (a fresh install brings up all tables; an upgrade from a pre-Alembic beta DB is detected, stamped at the baseline, and brought current). You don't need to run anything manually, but if you want explicit control:
+
 ```bash
-python scripts/setup_db.py
+# bring DB to the latest schema
+alembic upgrade head
+
+# inspect current state
+alembic current
+
+# only needed if you have a beta DB from before alembic was introduced
+alembic stamp 0001_baseline && alembic upgrade head
 ```
+
+The legacy `scripts/setup_db.py` still works but now routes through the same Alembic path.
 
 ### Step 7: Install Frontend Dependencies
 
@@ -317,14 +362,27 @@ npm run dev
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/health` | Health check |
-| `GET` | `/config/status` | Configuration status |
-| `GET` | `/daily` | Get today's paper, reviews, and quiz |
-| `GET` | `/papers/discover` | Discover new papers based on interests |
-| `GET` | `/papers/daily` | Get today's selected paper |
-| `GET` | `/topics` | List all course topics |
-| `GET` | `/topics/{topic_id}/review` | Get review for a specific topic |
-| `GET` | `/quiz/generate/{topic_id}` | Generate quiz for a topic |
+| `GET` | `/config/status` | Configuration status (topic-table-backed) |
+| `GET` | `/daily` | Today's paper + review + quiz, scoped to active topics |
+| `GET` | `/papers/discover` | Discover new papers from the active topic scope |
+| `GET` | `/papers/daily` | Today's selected paper |
+| `GET` | `/topics` | List all topics (`?stream=`, `?active=`, `?include_orphaned=` filters) |
+| `GET` | `/topics/streams` | Distinct stream tags in use |
+| `GET` | `/topics/{id}` | Topic detail |
+| `POST` | `/topics` | Create a new topic (UI path) |
+| `PUT` | `/topics/{id}` | Partial update of a topic |
+| `DELETE` | `/topics/{id}` | Soft-delete (`?hard=true` for permanent delete) |
+| `POST` | `/topics/import-yaml` | Overwrite DB topics with YAML contents |
+| `POST` | `/topics/export-yaml` | Write current DB state out to `config/topics/*.yaml` |
+| `GET` | `/topics/{id}/review` | Generate a topic review |
+| `GET` | `/topics/random-review` | Generate a review for one topic chosen from active scope |
+| `GET` | `/topics/status-summary` | Counts of active / completed / review_later topics |
+| `PUT` | `/topics/{id}/status` | Set lifecycle status (`active` / `completed` / `review_later`) |
+| `GET` | `/quiz/generate/{id}` | Generate a quiz for a topic |
+| `POST` | `/quiz/regenerate` | Multi-topic quiz drawing from active scope |
 | `POST` | `/quiz/answer` | Submit quiz answer for evaluation |
+| `GET` | `/user/scope` | Current user's topic scope (silo / multi / all) |
+| `PUT` | `/user/scope` | Update the topic scope |
 
 ### Example API Calls
 
@@ -344,44 +402,98 @@ curl http://localhost:8000/papers/discover
 # Get all topics
 curl http://localhost:8000/topics
 
-# Generate quiz for a specific topic
-curl http://localhost:8000/quiz/generate/dlnlp-intro-ann
+# Generate a quiz for the ml-foundations topic
+curl http://localhost:8000/quiz/generate/ml-foundations
+
+# Silo on a single topic
+curl -X PUT http://localhost:8000/user/scope \
+  -H "Content-Type: application/json" \
+  -d '{"scope_mode": "silo", "scope_topic_ids": ["transient-photometric-classification"]}'
 ```
 
 ---
 
 ## Configuration
 
-### interests.yaml
+### The unified Topic model
 
-Defines your research interests for paper discovery:
+Daily Scholar replaced the old split between `interests` (paper discovery) and `courses` (review/quiz) with a single first-class **Topic** entity. Each topic drives BOTH:
 
-```yaml
-interests:
-  primary:
-    - name: "Machine Learning"
-      keywords:
-        - "deep learning"
-        - "neural networks"
-      weight: 2.0
-      arxiv_categories: ["cs.LG", "stat.ML"]
-```
+- **paper discovery** — its `keywords` + `arxiv_categories` + `weight` + `min_relevance` + `recency_days` shape what papers get surfaced and how strongly they match;
+- **review + quiz generation** — its `key_concepts` + `learning_objectives` + `resources` + `quiz_difficulty` feed the LLM prompts;
 
-### courses.yaml
-
-Defines your courses and topics for reviews/quizzes:
+…all in one YAML file per topic.
 
 ```yaml
-courses:
-  - id: "dl-nlp"
-    name: "Deep Learning and NLP"
-    topics:
-      - id: "dlnlp-intro-ann"
-        name: "Introduction to ANNs"
-        key_concepts:
-          - "artificial neural networks"
-          - "neurons and layers"
+# config/topics/ml-foundations.yaml
+id: ml-foundations
+name: ML Foundations — Neural Networks, Training, Classification, Fine-tuning, Diffusion
+stream: foundations              # grouping label for the UI
+active: true                     # quick on/off without deletion
+weight: 1.5                      # boosts relevance scoring
+
+# paper-discovery side
+keywords:
+  - neural network
+  - deep learning
+  - transformer
+  # ...
+arxiv_categories: [cs.LG, cs.AI, cs.CV, cs.CL, stat.ML]
+recency_days: 180
+min_relevance: 0.18
+
+# learning-content side
+key_concepts:
+  - the structure of a feedforward neural network
+  - "the basics of training: loss, gradient descent, backprop, optimizer choice"
+  # ...
+learning_objectives:
+  - Diagram a forward pass through a small MLP and explain what backprop computes
+  # ...
+resources: []
+quiz_difficulty: easy
+prerequisites: []
 ```
+
+### How topics get into the database
+
+`config/topics/*.yaml` is the bootstrap source. On every backend startup the loader scans this directory and inserts any topics that aren't yet in the DB. After the first bootstrap, **the DB is canonical** — YAML edits do NOT auto-overwrite UI-edited rows. Two explicit operations bridge YAML and DB:
+
+| Operation | When to use | Endpoint | Effect |
+|---|---|---|---|
+| **Bootstrap** | every cold start | (automatic, in lifespan) | INSERT new YAML topics; mark missing YAML files as orphaned |
+| **Import YAML → DB** | you edited a YAML file and want it to win | `POST /topics/import-yaml` | OVERWRITE every DB field with YAML values for topics present in YAML |
+| **Export DB → YAML** | you edited a topic in the UI and want the YAML to reflect it | `POST /topics/export-yaml` | Write the current DB state out as one file per topic |
+
+Both operations are also surfaced as buttons on `/topics` in the UI.
+
+### Editing topics from the UI
+
+Visit `http://localhost:3000/topics` to manage topics in the browser. From there you can:
+
+- create new topics (`+ New topic`) — written to DB only; use **Export DB → YAML** to commit them to the working tree;
+- edit any existing topic — UI edits persist across re-bootstraps until you explicitly import YAML over them;
+- soft-delete a topic by toggling **Deactivate** (`active=false` — the row stays);
+- hard-delete a topic via the **Delete** button (with confirm);
+- filter by stream, include or exclude orphaned topics (YAML missing on disk).
+
+### Switching focus (silo / multi / all)
+
+Topic **scope** controls which topics drive paper discovery, reviews, and quizzes. Set it from `http://localhost:3000/settings/scope`:
+
+- **All active topics** — every `active=true` topic contributes. The default.
+- **Multi-select** — explicit set. Useful for "this week I want to work in streams A and B."
+- **Silo** — focus deeply on a single topic.
+
+Scope persists per-user on the server. Changes take effect immediately on the next discover / review / quiz call.
+
+### Archiving + restoring the old behavior
+
+The pre-unified `config/interests.yaml` and `config/courses.yaml` are preserved at `config/_archive/*.bak` for reference. A flattened Topic version of the old broad-ML focus lives at `config/topics/_archive/generic-ml.yaml`. To restore it:
+
+1. Move the file out of `_archive/` into `config/topics/`
+2. Restart the backend (or call `POST /topics/import-yaml`)
+3. Optionally set `active: true` in the YAML to turn it on right away
 
 ---
 
@@ -472,12 +584,13 @@ brew install node  # macOS with Homebrew
 
 ### API returns null for papers
 
-**Cause:** Network issues or no matching papers
+**Cause:** Network issues, restrictive topic scope, or no matching papers
 
-**Solution:** 
+**Solution:**
 1. Check your internet connection
 2. Try `GET /papers/discover` directly in Swagger UI
-3. Broaden your interests in `config/interests.yaml`
+3. Broaden the active topic scope at `/settings/scope` (e.g., switch from `silo` to `all`)
+4. Add keywords to the relevant topic at `/topics/{id}/edit`, or lower its `min_relevance`
 
 ---
 

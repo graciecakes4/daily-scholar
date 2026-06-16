@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, List
 
-from .config import get_settings, validate_configuration, load_interests_config, load_courses_config
+from .config import get_settings, validate_configuration
 from .models import ConfigurationStatus
 from .database import (
     create_tables, get_session, get_seen_paper_ids, mark_paper_as_seen, update_user_streak,
@@ -151,56 +151,92 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# unified Topic CRUD + per-user scope (replaces the old /topics that read
-# from courses.yaml). Mounted under /topics and /user.
-from .api.topics import topics_router, scope_router
-app.include_router(topics_router)
-app.include_router(scope_router)
+# topics_router and scope_router are mounted at the END of main.py so the
+# specific @app.get paths (/topics/status-summary, /topics/random-review,
+# /topics/{id}/review) take precedence over the router's catch-all /topics/{id}.
 
 
 # =============================================================================
-# TOPIC SELECTION HELPER
+# TOPIC SELECTION + ADAPTER HELPERS (unified Topic model)
 # =============================================================================
 
-def select_topic_for_course(course: dict, all_topics: list[dict],
-                            completed_ids: set[str],
-                            recently_reviewed_ids: set[str],
-                            review_later_ids: set[str],
-                            exclude_ids: set[str] = None) -> Optional[dict]:
+def _stream_display_name(stream: str) -> str:
+    """Convert a stream slug ('photometric_classification') to a display label."""
+    return (stream or "uncategorized").replace("_", " ").replace("-", " ").title()
+
+
+def _topic_to_dict(topic) -> dict:
     """
-    Smart topic selection for a course:
-    1. Filter out completed topics
-    2. Filter out recently-reviewed topics (last 3 days) to avoid repeats
-    3. Prioritize topics marked as review_later
-    4. Fall back to random selection from remaining pool
-    5. If all are recently reviewed, pick from review_later or random (ignoring recency)
+    Serialize a Topic row into the dict shape ContentGeneratorService expects.
+    Keeps course_id/course_name keys for legacy frontend compatibility — they
+    now carry the topic's stream rather than a real course identifier.
     """
-    if exclude_ids is None:
-        exclude_ids = set()
-    
-    course_topics = [t for t in all_topics if t["course_id"] == course["id"]]
-    
-    # Filter out completed and explicitly excluded
-    available = [t for t in course_topics
-                 if t["id"] not in completed_ids and t["id"] not in exclude_ids]
-    
+    return {
+        "id": topic.id,
+        "name": topic.name,
+        "stream": topic.stream,
+        "weight": topic.weight,
+        "key_concepts": topic.key_concepts or [],
+        "learning_objectives": topic.learning_objectives or [],
+        "resources": topic.resources or [],
+        "quiz_difficulty": topic.quiz_difficulty,
+        "prerequisites": topic.prerequisites or [],
+        # legacy-compatible fields, retained for ArchivedTopicReview writes
+        # and existing UI consumers; course_id holds the stream slug now.
+        "course_id": topic.stream,
+        "course_name": _stream_display_name(topic.stream),
+    }
+
+
+def _topic_pseudo_course(topic) -> dict:
+    """Shape a Topic row as a 'course' dict for ContentGeneratorService."""
+    return {"id": topic.stream, "name": _stream_display_name(topic.stream)}
+
+
+def _select_topic_from_scope(scope_topics: list,
+                             completed_ids: set[str],
+                             recently_reviewed_ids: set[str],
+                             review_later_ids: set[str],
+                             exclude_ids: Optional[set[str]] = None):
+    """
+    Pick one Topic row out of the active scope.
+
+    Priority:
+      1. review_later that is NOT recently reviewed
+      2. fresh (neither review_later nor recently reviewed)
+      3. anything remaining (recently reviewed but not completed)
+    """
+    exclude_ids = exclude_ids or set()
+    available = [t for t in scope_topics
+                 if t.id not in completed_ids and t.id not in exclude_ids]
     if not available:
         return None
-    
-    # Separate into buckets
+
     review_later = [t for t in available
-                    if t["id"] in review_later_ids and t["id"] not in recently_reviewed_ids]
+                    if t.id in review_later_ids and t.id not in recently_reviewed_ids]
     fresh = [t for t in available
-             if t["id"] not in recently_reviewed_ids and t["id"] not in review_later_ids]
-    
-    # Priority: review_later first, then fresh, then anything not completed
+             if t.id not in recently_reviewed_ids and t.id not in review_later_ids]
+
     if review_later:
         return random.choice(review_later)
-    elif fresh:
+    if fresh:
         return random.choice(fresh)
-    else:
-        # All available topics were recently reviewed; just pick one at random
-        return random.choice(available)
+    return random.choice(available)
+
+
+def _get_topic_or_404(topic_id: str):
+    """Load a Topic row from the DB or raise 404."""
+    from .database import Topic as TopicModel
+    session = get_session()
+    try:
+        topic = session.get(TopicModel, topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
+        # detach so callers can use it after the session closes
+        session.expunge(topic)
+        return topic
+    finally:
+        session.close()
 
 
 # =============================================================================
@@ -229,29 +265,32 @@ async def health_check():
 
 @app.get("/config/status", response_model=ConfigurationStatus, tags=["Configuration"])
 async def get_configuration_status():
+    """
+    Report on the topic-table state plus environment validity. The legacy
+    interests/courses YAMLs are no longer consulted; counts come from the DB.
+    """
+    from .database import Topic as TopicModel
+
     status = validate_configuration()
-    interests_count = courses_count = topics_count = 0
+    session = get_session()
     try:
-        interests_config = load_interests_config()
-        for category in ["primary", "secondary", "exploratory"]:
-            interests_count += len(interests_config.get("interests", {}).get(category, []))
-    except: pass
-    try:
-        courses_config = load_courses_config()
-        for course in courses_config.get("courses", []):
-            courses_count += 1
-            topics_count += len(course.get("topics", []))
-    except: pass
-    errors = []
-    for section in ["environment", "interests", "courses"]:
-        errors.extend(status[section]["errors"])
+        topics_count = session.query(TopicModel).count()
+        active_count = session.query(TopicModel).filter(TopicModel.active.is_(True)).count()
+        streams_count = session.query(TopicModel.stream).distinct().count()
+    finally:
+        session.close()
+
+    errors = list(status["environment"]["errors"])
+
     return ConfigurationStatus(
         environment_valid=status["environment"]["valid"],
-        interests_valid=status["interests"]["valid"],
-        courses_valid=status["courses"]["valid"],
+        # 'interests_valid' / 'courses_valid' now reflect the unified topic
+        # store: valid if at least one active topic exists.
+        interests_valid=active_count > 0,
+        courses_valid=streams_count > 0,
         errors=errors,
-        interests_count=interests_count,
-        courses_count=courses_count,
+        interests_count=active_count,
+        courses_count=streams_count,
         topics_count=topics_count,
     )
 
@@ -937,20 +976,15 @@ async def update_topic_status(topic_id: str, request: TopicStatusRequest):
             session.commit()
             return {"message": f"Topic status updated to '{request.status}'", "id": existing.id}
         
-        # No archived record yet — create a minimal one
-        from .config import get_all_topics
-        all_topics = get_all_topics()
-        topic = next((t for t in all_topics if t["id"] == topic_id), None)
-        if not topic:
-            raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found in courses config")
-        
+        # no archived record yet — create a minimal one from the Topic row
+        topic = _get_topic_or_404(topic_id)
         new_record = ArchivedTopicReview(
-            topic_id=topic["id"],
-            topic_name=topic["name"],
-            course_id=topic["course_id"],
-            course_name=topic["course_name"],
-            week_covered=topic.get("week_covered"),
-            key_concepts=topic.get("key_concepts"),
+            topic_id=topic.id,
+            topic_name=topic.name,
+            course_id=topic.stream,                              # stream lives in course_id slot
+            course_name=_stream_display_name(topic.stream),
+            week_covered=None,
+            key_concepts=topic.key_concepts or [],
             review_content="",
             key_points=[],
             connections=[],
@@ -977,49 +1011,44 @@ async def update_topic_status(topic_id: str, request: TopicStatusRequest):
 @app.get("/topics/random-review", tags=["Topics"])
 async def get_random_topic_review(exclude: Optional[str] = None):
     """
-    Get a review for a randomly-selected topic, respecting completion status.
-    
-    - Excludes completed topics
-    - Avoids recently-reviewed topics when possible
-    - Prioritizes review_later topics
-    - Optional `exclude` param: comma-separated topic_ids to skip (for "New Topic" cycling)
+    Generate a review for a topic randomly chosen from the user's active scope.
+
+    Selection rules (in order):
+      - exclude topics marked completed
+      - avoid topics reviewed in the last 3 days
+      - prioritize topics marked review_later
+      - fall back to anything not completed
+    Optional `exclude` param: comma-separated topic ids to skip ("new topic" cycling).
     """
-    from .config import get_all_topics, load_courses_config
+    from .database import get_topics_for_scope
     from .services import ContentGeneratorService
-    
-    all_topics = get_all_topics()
-    courses_config = load_courses_config()
-    courses = courses_config.get("courses", [])
-    
+
+    scope_topics = get_topics_for_scope()
+    if not scope_topics:
+        raise HTTPException(status_code=404, detail="No topics in active scope")
+
     completed_ids = get_completed_topic_ids()
     recently_reviewed_ids = get_recently_reviewed_topic_ids(days=3)
     review_later_ids = get_review_later_topic_ids()
-    
-    exclude_ids = set()
-    if exclude:
-        exclude_ids = set(exclude.split(","))
-    
-    # Select one topic per course
-    selected = []
-    for course in courses:
-        topic = select_topic_for_course(
-            course, all_topics, completed_ids, recently_reviewed_ids,
-            review_later_ids, exclude_ids
+    exclude_ids = set(exclude.split(",")) if exclude else set()
+
+    topic = _select_topic_from_scope(
+        scope_topics, completed_ids, recently_reviewed_ids, review_later_ids, exclude_ids
+    )
+    if not topic:
+        raise HTTPException(
+            status_code=404,
+            detail="No available topics to review (all may be completed or recently reviewed)",
         )
-        if topic:
-            selected.append((topic, course))
-    
-    if not selected:
-        raise HTTPException(status_code=404, detail="No available topics to review (all may be completed)")
-    
+
+    topic_dict = _topic_to_dict(topic)
+    course_dict = _topic_pseudo_course(topic)
+
     generator = ContentGeneratorService()
     try:
-        topic_reviews = []
-        for topic, course in selected:
-            review = await generator.generate_topic_review(topic, course)
-            topic_reviews.append({"topic": topic, "review": review})
-        
-        return {"topic_reviews": topic_reviews}
+        review = await generator.generate_topic_review(topic_dict, course_dict)
+        # preserve list shape for API compat
+        return {"topic_reviews": [{"topic": topic_dict, "review": review}]}
     finally:
         await generator.close()
 
@@ -1027,19 +1056,23 @@ async def get_random_topic_review(exclude: Optional[str] = None):
 @app.get("/topics/status-summary", tags=["Topics"])
 async def get_topic_status_summary():
     """
-    Get a summary of topic statuses across all courses.
+    Summary of topic statuses across all topics in the Topic table.
+    Counts use the universe of active topics, not the scope-filtered view.
     """
-    from .config import get_all_topics
-    
-    all_topics = get_all_topics()
+    from .database import Topic as TopicModel
+
+    session = get_session()
+    try:
+        total = session.query(TopicModel).filter(TopicModel.active.is_(True)).count()
+    finally:
+        session.close()
+
     completed_ids = get_completed_topic_ids()
     review_later_ids = get_review_later_topic_ids()
-    
-    total = len(all_topics)
     completed = len(completed_ids)
     review_later = len(review_later_ids)
-    active = total - completed - review_later
-    
+    active = max(0, total - completed - review_later)
+
     return {
         "total_topics": total,
         "active": active,
@@ -1213,94 +1246,97 @@ async def get_daily_paper():
 
 @app.get("/topics/{topic_id}/review", tags=["Topics"])
 async def get_topic_review(topic_id: str):
-    from .config import get_all_topics, load_courses_config
+    """Generate a review for a topic from the Topic table."""
     from .services import ContentGeneratorService
-    
-    all_topics = get_all_topics()
-    topic = next((t for t in all_topics if t["id"] == topic_id), None)
-    if not topic:
-        raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
-    
-    courses_config = load_courses_config()
-    course = next((c for c in courses_config.get("courses", []) if c["id"] == topic["course_id"]), None)
-    
+
+    topic = _get_topic_or_404(topic_id)
+    topic_dict = _topic_to_dict(topic)
+    course_dict = _topic_pseudo_course(topic)
+
     generator = ContentGeneratorService()
     try:
-        review = await generator.generate_topic_review(topic, course)
-        return {"topic": topic, "review": review}
+        review = await generator.generate_topic_review(topic_dict, course_dict)
+        return {"topic": topic_dict, "review": review}
     finally:
         await generator.close()
 
 
 @app.get("/quiz/generate/{topic_id}", tags=["Quiz"])
 async def generate_quiz(topic_id: str, count: int = 5, difficulty: str = "medium"):
-    from .config import get_all_topics, load_courses_config
+    """Generate a quiz for one topic from the Topic table."""
     from .services import ContentGeneratorService
-    
-    all_topics = get_all_topics()
-    topic = next((t for t in all_topics if t["id"] == topic_id), None)
-    if not topic:
-        raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
-    
-    courses_config = load_courses_config()
-    course = next((c for c in courses_config.get("courses", []) if c["id"] == topic["course_id"]), None)
-    
+
+    topic = _get_topic_or_404(topic_id)
+    topic_dict = _topic_to_dict(topic)
+    course_dict = _topic_pseudo_course(topic)
+
     generator = ContentGeneratorService()
     try:
-        questions = await generator.generate_quiz_questions(topic, course, count=count, difficulty=difficulty)
+        questions = await generator.generate_quiz_questions(
+            topic_dict, course_dict, count=count, difficulty=difficulty
+        )
         questions_display = [{
-            "id": q["id"], "topic_id": q["topic_id"], "topic_name": topic["name"],
-            "course_name": course["name"], "question_type": q["question_type"],
+            "id": q["id"], "topic_id": q["topic_id"], "topic_name": topic.name,
+            "course_name": course_dict["name"], "question_type": q["question_type"],
             "question_text": q["question_text"], "options": q.get("options"),
             "difficulty": q["difficulty"], "points": q["points"],
         } for q in questions]
         app.state.current_questions = {q["id"]: q for q in questions}
-        return {"topic": topic["name"], "course": course["name"], "questions": questions_display, "total_points": sum(q["points"] for q in questions)}
+        return {
+            "topic": topic.name,
+            "course": course_dict["name"],
+            "questions": questions_display,
+            "total_points": sum(q["points"] for q in questions),
+        }
     finally:
         await generator.close()
 
 
 @app.post("/quiz/regenerate", tags=["Quiz"])
 async def regenerate_quiz(count: int = 5, difficulty: str = "medium"):
-    from .config import get_all_topics, load_courses_config
+    """
+    Generate a multi-topic quiz drawing from the active scope. One question
+    set per topic in scope, capped at `count` total after shuffling.
+    """
+    from .database import get_topics_for_scope
     from .services import ContentGeneratorService
-    
-    all_topics = get_all_topics()
-    courses_config = load_courses_config()
-    if not all_topics:
-        raise HTTPException(status_code=404, detail="No topics configured")
-    
-    courses = courses_config.get("courses", [])
-    selected_topics = []
-    for course in courses:
-        course_topics = [t for t in all_topics if t["course_id"] == course["id"]]
-        if course_topics:
-            selected_topics.append(random.choice(course_topics))
-    
+
+    scope_topics = get_topics_for_scope()
+    if not scope_topics:
+        raise HTTPException(status_code=404, detail="No topics in active scope")
+
     generator = ContentGeneratorService()
     try:
         all_questions = []
-        questions_per_topic = max(1, count // len(selected_topics))
-        for topic in selected_topics:
-            course = next((c for c in courses if c["id"] == topic["course_id"]), {"id": "unknown", "name": "Unknown"})
-            questions = await generator.generate_quiz_questions(topic, course, count=questions_per_topic, difficulty=difficulty)
+        questions_per_topic = max(1, count // len(scope_topics))
+        for topic in scope_topics:
+            topic_dict = _topic_to_dict(topic)
+            course_dict = _topic_pseudo_course(topic)
+            questions = await generator.generate_quiz_questions(
+                topic_dict, course_dict,
+                count=questions_per_topic, difficulty=difficulty,
+            )
             for q in questions:
-                q["topic_name"] = topic["name"]
-                q["course_name"] = course["name"]
+                q["topic_name"] = topic.name
+                q["course_name"] = course_dict["name"]
             all_questions.extend(questions)
-        
+
         random.shuffle(all_questions)
         all_questions = all_questions[:count]
         app.state.current_questions = {q["id"]: q for q in all_questions}
-        
+
         questions_display = [{
             "id": q["id"], "topic_id": q["topic_id"], "topic_name": q.get("topic_name", ""),
             "course_name": q.get("course_name", ""), "question_type": q["question_type"],
             "question_text": q["question_text"], "options": q.get("options"),
             "difficulty": q["difficulty"], "points": q["points"],
         } for q in all_questions]
-        
-        return {"topics": [t["name"] for t in selected_topics], "questions": questions_display, "total_points": sum(q["points"] for q in all_questions)}
+
+        return {
+            "topics": [t.name for t in scope_topics],
+            "questions": questions_display,
+            "total_points": sum(q["points"] for q in all_questions),
+        }
     finally:
         await generator.close()
 
@@ -1328,48 +1364,47 @@ async def check_answer(question_id: str, answer: str):
 
 @app.get("/daily", tags=["Daily"])
 async def get_daily_content():
-    from .config import get_all_topics, load_courses_config
+    """Daily content: one paper + one topic review + a quiz, all scoped to the user's active topics."""
+    from .database import get_topics_for_scope
     from .services import PaperDiscoveryService, ContentGeneratorService
-    
+
     seen_ids = list(get_seen_paper_ids())
-    
+
     discovery = PaperDiscoveryService()
     generator = ContentGeneratorService()
-    
+
     try:
-        # Get paper (excluding seen)
-        paper = await discovery.select_daily_paper(seen_ids=seen_ids, days_back=30)
+        paper = await discovery.select_daily_paper(seen_ids=seen_ids)
         paper_summary = None
-        
+
         if paper:
-            # Mark as seen
             paper_dict = paper.to_dict()
             paper_dict["unique_id"] = paper.unique_id
             mark_paper_as_seen(paper_dict)
             paper_summary = await generator.generate_paper_summary(paper)
-        
-        # Smart topic selection
-        courses_config = load_courses_config()
-        all_topics = get_all_topics()
-        
+
+        # pick one topic from the active scope, applying the same priority rules
+        scope_topics = get_topics_for_scope()
         completed_ids = get_completed_topic_ids()
         recently_reviewed_ids = get_recently_reviewed_topic_ids(days=3)
         review_later_ids = get_review_later_topic_ids()
-        
+
         topic_reviews = []
         quiz_questions = []
-        
-        for course in courses_config.get("courses", []):
-            topic = select_topic_for_course(
-                course, all_topics, completed_ids,
-                recently_reviewed_ids, review_later_ids
+
+        selected = _select_topic_from_scope(
+            scope_topics, completed_ids, recently_reviewed_ids, review_later_ids
+        )
+        if selected:
+            topic_dict = _topic_to_dict(selected)
+            course_dict = _topic_pseudo_course(selected)
+            review = await generator.generate_topic_review(topic_dict, course_dict)
+            topic_reviews.append({"topic": topic_dict, "review": review})
+            questions = await generator.generate_quiz_questions(
+                topic_dict, course_dict, count=2, difficulty="medium"
             )
-            if topic:
-                review = await generator.generate_topic_review(topic, course)
-                topic_reviews.append({"topic": topic, "review": review})
-                questions = await generator.generate_quiz_questions(topic, course, count=2, difficulty="medium")
-                quiz_questions.extend(questions)
-        
+            quiz_questions.extend(questions)
+
         topics_for_resources = [tr["topic"] for tr in topic_reviews]
         resources = await generator.suggest_resources(topics_for_resources, paper)
         
@@ -1396,3 +1431,15 @@ async def get_daily_content():
     finally:
         await discovery.close()
         await generator.close()
+
+
+# =============================================================================
+# ROUTER MOUNTING (must come AFTER all @app.get/post/put decorators in this
+# file so that specific paths like /topics/status-summary and
+# /topics/{id}/review take precedence over the router's catch-all
+# /topics/{topic_id}.)
+# =============================================================================
+
+from .api.topics import topics_router, scope_router
+app.include_router(topics_router)
+app.include_router(scope_router)

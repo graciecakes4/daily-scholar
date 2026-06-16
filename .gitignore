@@ -59,6 +59,17 @@ htmlcov/
 # Type checking
 .mypy_cache/
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# R session history (can accumulate sensitive commands)
+.Rhistory
+.Rapp.history
+
+# Local-only config archive — pre-unified interests.yaml + courses.yaml
+# kept on disk for reference but never committed (also blocked by *.bak below).
+config/_archive/
+
 # Misc
 *.bak
 *.tmp
