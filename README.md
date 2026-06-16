@@ -604,6 +604,32 @@ send_push_to_user(user_id, {"title": "...", "body": "...", "url": "/topics/foo"}
 
 Examples of where you might wire it next: a daily "topics due for review" digest from APScheduler, a notification when an LLM-generated quiz is ready, or a streak-reminder.
 
+### Storage backend (PDFs + uploads)
+
+File writes (paper PDFs, uploaded course materials) go through a single `Storage` abstraction with two adapters:
+
+| Backend | When | Setup |
+|---|---|---|
+| **local** (default) | Beta testers, development, anyone running solo | Files land under `LOCAL_STORAGE_ROOT` (default `./data`). No extra setup. |
+| **b2** | Hosted deployment | Files land in a Backblaze B2 bucket via S3-compatible API. Browser downloads use time-limited presigned URLs so the backend stays out of the bytes path. |
+
+Switch at runtime via env:
+
+```bash
+STORAGE_BACKEND=b2
+B2_ENDPOINT_URL=https://s3.us-west-002.backblazeb2.com
+B2_KEY_ID=...
+B2_APPLICATION_KEY=...
+B2_BUCKET_NAME=daily-scholar
+B2_REGION=us-west-002
+```
+
+Get B2 keys at https://secure.backblaze.com/app_keys.htm — scope them to the bucket you create.
+
+**Cost tip:** if you put the B2 bucket behind a Cloudflare custom hostname, Backblaze and Cloudflare have a zero-egress agreement, so PDF downloads cost $0 in B2 egress fees. Presigned URLs work fine through CF as long as the bucket allows it. Worth doing before you point real traffic at it.
+
+**Legacy data:** PDFs uploaded before this refactor are stored at `./data/papers/<uuid>.pdf` with that absolute path saved in the DB. The endpoint normalizes the legacy form into a storage key on read, so existing PDFs keep working without a data migration. New writes use the key form directly.
+
 ### Multi-provider LLM routing
 
 Daily Scholar splits each LLM call site into a named *task* and routes each task independently to a provider+model:

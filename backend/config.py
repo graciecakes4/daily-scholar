@@ -82,6 +82,20 @@ class Settings(BaseSettings):
     upload_dir: str = Field(default="./uploads")
     max_upload_size: int = Field(default=52428800)  # 50MB
 
+    # Storage backend for blob writes (PDFs, future uploads):
+    #   "local" — filesystem under local_storage_root (default for solo / beta)
+    #   "b2"    — Backblaze B2 via S3-compatible API (default for cloud)
+    storage_backend: str = Field(default="local")
+    local_storage_root: str = Field(default="./data")
+
+    # Backblaze B2 — required only if storage_backend == "b2"
+    # Endpoint format: https://s3.<region>.backblazeb2.com
+    b2_endpoint_url: Optional[str] = Field(default=None)
+    b2_key_id: Optional[str] = Field(default=None)
+    b2_application_key: Optional[str] = Field(default=None)
+    b2_bucket_name: Optional[str] = Field(default=None)
+    b2_region: str = Field(default="us-west-002")
+
     # Web Push (VAPID) — populate via `python scripts/generate_vapid_keys.py`.
     # All three left empty by default; push endpoints return 503 until set.
     vapid_public_key: Optional[str] = Field(default=None)

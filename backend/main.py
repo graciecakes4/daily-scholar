@@ -20,7 +20,7 @@ import httpx
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional, List
 
@@ -612,49 +612,42 @@ async def delete_archived_paper(paper_id: int):
 
 @app.post("/archive/papers/{paper_id}/upload-pdf", tags=["Archive"])
 async def upload_pdf_to_paper(paper_id: int, file: UploadFile = File(...)):
-    """Upload a PDF file and attach it to an archived paper."""
+    """Upload a PDF and attach it to an archived paper."""
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
-    
+
+    from .services.storage import get_storage
+    storage = get_storage()
     session = get_session()
     try:
         paper = session.query(ArchivedPaper).filter(ArchivedPaper.id == paper_id).first()
         if not paper:
             raise HTTPException(status_code=404, detail="Paper not found")
-        
-        # Create unique filename
+
         file_ext = Path(file.filename).suffix
         stored_filename = f"{uuid.uuid4().hex}{file_ext}"
-        file_path = Path("./data/papers") / stored_filename
-        
-        # Save file
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        # Get file size
-        file_size = file_path.stat().st_size
-        
-        # Create PDF record
+        key = f"papers/{stored_filename}"
+        data = await file.read()
+        storage.put(key, data, content_type="application/pdf")
+
         pdf = PaperPDF(
             archived_paper_id=paper_id,
             original_filename=file.filename,
             stored_filename=stored_filename,
-            file_path=str(file_path),
-            file_size_bytes=file_size,
+            file_path=key,
+            file_size_bytes=len(data),
             source="upload",
         )
         session.add(pdf)
-        
-        # Update paper
-        paper.local_pdf_path = str(file_path)
+        paper.local_pdf_path = key
         paper.has_local_pdf = True
-        
         session.commit()
-        
+
         return {
             "message": "PDF uploaded successfully",
             "pdf_id": pdf.id,
             "filename": stored_filename,
+            "storage_backend": storage.backend,
         }
     except Exception as e:
         session.rollback()
@@ -665,56 +658,46 @@ async def upload_pdf_to_paper(paper_id: int, file: UploadFile = File(...)):
 
 @app.post("/archive/papers/{paper_id}/download-pdf", tags=["Archive"])
 async def download_pdf_from_url(paper_id: int):
-    """Download PDF from the paper's pdf_url and store locally."""
+    """Download PDF from the paper's pdf_url and store via the configured backend."""
+    from .services.storage import get_storage
+    storage = get_storage()
     session = get_session()
     try:
         paper = session.query(ArchivedPaper).filter(ArchivedPaper.id == paper_id).first()
         if not paper:
             raise HTTPException(status_code=404, detail="Paper not found")
-        
         if not paper.pdf_url:
             raise HTTPException(status_code=400, detail="Paper has no PDF URL")
-        
         if paper.has_local_pdf:
             return {"message": "PDF already downloaded", "path": paper.local_pdf_path}
-        
-        # Download the PDF
+
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             response = await client.get(paper.pdf_url)
             response.raise_for_status()
-        
-        # Create unique filename
+
         stored_filename = f"{uuid.uuid4().hex}.pdf"
-        file_path = Path("./data/papers") / stored_filename
-        
-        # Save file
-        with open(file_path, "wb") as f:
-            f.write(response.content)
-        
-        file_size = file_path.stat().st_size
-        
-        # Create PDF record
+        key = f"papers/{stored_filename}"
+        storage.put(key, response.content, content_type="application/pdf")
+
         pdf = PaperPDF(
             archived_paper_id=paper_id,
             original_filename=f"{paper.title[:50]}.pdf",
             stored_filename=stored_filename,
-            file_path=str(file_path),
-            file_size_bytes=file_size,
+            file_path=key,
+            file_size_bytes=len(response.content),
             source="download",
             source_url=paper.pdf_url,
         )
         session.add(pdf)
-        
-        # Update paper
-        paper.local_pdf_path = str(file_path)
+        paper.local_pdf_path = key
         paper.has_local_pdf = True
-        
         session.commit()
-        
+
         return {
             "message": "PDF downloaded successfully",
             "pdf_id": pdf.id,
-            "size_bytes": file_size,
+            "size_bytes": len(response.content),
+            "storage_backend": storage.backend,
         }
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to download PDF: {e}")
@@ -727,25 +710,45 @@ async def download_pdf_from_url(paper_id: int):
 
 @app.get("/archive/papers/{paper_id}/pdf", tags=["Archive"])
 async def get_paper_pdf(paper_id: int):
-    """Get/serve the local PDF for a paper."""
+    """
+    Serve the PDF for a paper.
+      - Local backend  -> FileResponse straight from disk.
+      - B2 / any backend with signed_url support -> 302 to the presigned URL
+        so the backend stays out of the bytes path.
+    """
+    from .services.storage import get_storage, storage_key_from_legacy_path
+    storage = get_storage()
     session = get_session()
     try:
         paper = session.query(ArchivedPaper).filter(ArchivedPaper.id == paper_id).first()
         if not paper:
             raise HTTPException(status_code=404, detail="Paper not found")
-        
         if not paper.has_local_pdf or not paper.local_pdf_path:
-            raise HTTPException(status_code=404, detail="No local PDF available")
-        
-        pdf_path = Path(paper.local_pdf_path)
-        if not pdf_path.exists():
-            raise HTTPException(status_code=404, detail="PDF file not found on disk")
-        
-        return FileResponse(
-            pdf_path,
-            media_type="application/pdf",
-            filename=f"{paper.title[:50]}.pdf"
-        )
+            raise HTTPException(status_code=404, detail="No PDF available")
+
+        # legacy rows stored an absolute fs path; normalize to a storage key
+        key = storage_key_from_legacy_path(paper.local_pdf_path)
+        if not storage.exists(key):
+            raise HTTPException(
+                status_code=404,
+                detail=f"PDF not found in {storage.backend} storage (key={key})",
+            )
+
+        # prefer presigned URL → browser fetches direct from B2/etc
+        url = storage.signed_url(key, expires_seconds=3600)
+        if url:
+            return RedirectResponse(url=url, status_code=302)
+
+        # fallback: stream from local filesystem
+        local = storage.local_path(key)
+        if local and local.exists():
+            return FileResponse(
+                local,
+                media_type="application/pdf",
+                filename=f"{paper.title[:50]}.pdf",
+            )
+
+        raise HTTPException(status_code=500, detail="Storage backend cannot serve this file")
     finally:
         session.close()
 
