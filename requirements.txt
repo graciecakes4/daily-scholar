@@ -13,7 +13,8 @@
 
 # Web Framework
 fastapi>=0.115,<0.120
-uvicorn[standard]>=0.30,<0.35
+# uvicorn ceiling is wide because google-antigravity pins >=0.46 — any 0.x is fine for FastAPI
+uvicorn[standard]>=0.30,<1
 
 # Data Validation
 pydantic>=2.9,<3
