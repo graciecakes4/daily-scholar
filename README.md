@@ -604,6 +604,51 @@ send_push_to_user(user_id, {"title": "...", "body": "...", "url": "/topics/foo"}
 
 Examples of where you might wire it next: a daily "topics due for review" digest from APScheduler, a notification when an LLM-generated quiz is ready, or a streak-reminder.
 
+### Docker / docker-compose
+
+Daily Scholar ships with a containerized stack that mirrors what runs on Railway:
+
+```bash
+docker compose up --build
+# postgres on :5432, backend on :8000, frontend on :3000
+# Ctrl-C to stop; `docker compose down -v` to also nuke volumes
+```
+
+Three services:
+
+| Service | Image | Notes |
+|---|---|---|
+| `postgres` | `postgres:17-alpine` | Volume-backed at `pgdata`. Healthcheck via `pg_isready`. |
+| `backend` | built from `./Dockerfile` (Python 3.13-slim, multi-stage) | Starts only after postgres passes healthcheck. Reads `.env` for secrets, but `DATABASE_URL` is overridden to point at the compose-managed Postgres. |
+| `frontend` | built from `./frontend/Dockerfile` (Next.js standalone) | Starts only after backend healthcheck passes. |
+
+#### Switching between SQLite and Postgres locally
+
+The compose stack defaults to Postgres. To force-switch the *non-compose* dev flow (running `uvicorn backend.main:app --reload` directly), unset or rewrite `DATABASE_URL`:
+
+```bash
+# SQLite — what beta testers use
+unset DATABASE_URL
+# or in .env: DATABASE_URL=sqlite:///./data/daily_scholar.db
+
+# Postgres against the compose stack while running uvicorn natively
+export DATABASE_URL='postgresql+psycopg://scholar:scholar@localhost:5432/daily_scholar'
+```
+
+Alembic migrations apply automatically on startup via `create_tables()` regardless of which backend is selected.
+
+#### Persistent volumes
+
+- `pgdata` — Postgres data files
+- `backend_data` — mounted at `/app/data` (SQLite db fallback + LocalStorage PDFs when `STORAGE_BACKEND=local`)
+- `backend_uploads` — mounted at `/app/uploads` (course materials)
+
+`config/topics` is bind-mounted **read-only** into the backend so you can edit topic YAMLs from your editor and call `POST /topics/import-yaml` to pick them up without rebuilding the image.
+
+#### A note on the frontend build
+
+The frontend Dockerfile passes `--webpack` to `next build` so `@serwist/next` (the PWA service-worker plugin) can run — it doesn't support Turbopack yet. This matches what `dsbpwa` does for native builds. See the "Install as a PWA" section for the full story.
+
 ### Scheduled jobs + deep health check
 
 A background scheduler runs nightly to regenerate the daily content (paper + topic review + quiz) and fire the "today's paper is ready" push notification. The scheduler starts automatically with the backend, runs in-process via APScheduler's AsyncIO loop, and reuses the exact same code path as the `New paper` button — no HTTP round-trips, no duplicated logic.

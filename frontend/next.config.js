@@ -18,6 +18,9 @@ const withSerwist = require("@serwist/next").default({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // produce a self-contained Next.js server in `.next/standalone` for the
+  // Docker runtime stage (no full node_modules in the final image)
+  output: "standalone",
 };
 
 module.exports = withSerwist(nextConfig);

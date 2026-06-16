@@ -1,0 +1,84 @@
+# Daily Scholar — local parity stack.
+#
+# Spins up Postgres + backend + frontend in three containers that mimic the
+# Railway production deploy. Useful for:
+#   - exercising the SQLite -> Postgres compat path before pushing
+#   - testing image builds end-to-end
+#   - giving beta testers a one-command "just run everything"
+#
+# Usage:
+#   docker compose up --build
+#   docker compose down
+#   docker compose down -v        # also nukes persistent volumes
+#
+# Env: reads .env from the repo root for ANTHROPIC_API_KEY, GEMINI_API_KEY,
+# VAPID_*, B2_* etc. See .env.example for the full list.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: scholar
+      POSTGRES_PASSWORD: scholar
+      POSTGRES_DB: daily_scholar
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scholar -d daily_scholar"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # override DATABASE_URL to point at the compose-managed postgres
+      DATABASE_URL: postgresql+psycopg://scholar:scholar@postgres:5432/daily_scholar
+      # frontend lives at the compose-network alias `frontend`
+      FRONTEND_URL: http://frontend:3000
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      # persistent local-mode data (PDFs when STORAGE_BACKEND=local)
+      - backend_data:/app/data
+      - backend_uploads:/app/uploads
+      # hot-edit topic configs without rebuilding the image
+      - ./config/topics:/app/config/topics:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NODE_ENV: production
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
+  backend_data:
+  backend_uploads:

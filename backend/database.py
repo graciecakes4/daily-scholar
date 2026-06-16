@@ -435,10 +435,18 @@ def get_database_url() -> str:
 def get_engine():
     global _engine
     if _engine is None:
+        url = get_database_url()
+        # `check_same_thread=False` is a SQLite-only connect arg; psycopg rejects it.
+        # SQLAlchemy URLs look like 'sqlite:///...', 'sqlite+aiosqlite:///...',
+        # 'postgresql+psycopg://...', etc.
+        connect_args: dict = {}
+        if url.startswith("sqlite"):
+            connect_args["check_same_thread"] = False
         _engine = create_engine(
-            get_database_url(),
+            url,
             echo=False,
-            connect_args={"check_same_thread": False}
+            connect_args=connect_args,
+            pool_pre_ping=True,  # cheap health-check on each checkout; avoids stale conns
         )
     return _engine
 

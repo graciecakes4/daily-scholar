@@ -54,7 +54,23 @@ def _resolve_routing(task: Task) -> tuple[str, Optional[str]]:
         # bare value treated as model name on the default provider
         provider = "anthropic"
         model = raw
-    return provider.strip().lower(), (model.strip() or None)
+
+    model_clean = model.strip() if model else None
+
+    # Catch the common typo: model names should never contain a colon.
+    # The :-separator goes between provider and model, ONCE. If a colon
+    # leaks into the model side, the env var was written like
+    # `anthropic:claude:sonnet-4-6` (two colons) instead of `anthropic:claude-sonnet-4-6`.
+    if model_clean and ":" in model_clean:
+        raise ValueError(
+            f"LLM routing for task {task!r} has a colon inside the model name "
+            f"({model_clean!r}). Format is 'provider:model' with exactly one colon, "
+            f"and Anthropic model names use dashes throughout "
+            f"(e.g. 'anthropic:claude-sonnet-4-6', not 'anthropic:claude:sonnet-4-6'). "
+            f"Check your LLM_TASK_{task.upper()} env var."
+        )
+
+    return provider.strip().lower(), model_clean
 
 
 def get_llm_client(task: Task = "default") -> LLMClient:
