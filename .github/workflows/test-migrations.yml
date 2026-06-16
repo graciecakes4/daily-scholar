@@ -1,0 +1,90 @@
+# Verify Alembic migrations + the data plane against both SQLite and Postgres.
+#
+# Runs on every PR to develop or main. Two jobs, one per backend, so a failure
+# on one is visible without masking the other. Each job:
+#   1. installs deps
+#   2. runs `alembic upgrade head` from scratch
+#   3. runs scripts/check_dialect_compat.py (JSON columns, unique constraints,
+#      composite uniqueness, the works)
+#   4. runs `alembic downgrade base` and `alembic upgrade head` again
+#      to prove the migration is reversible
+
+name: Migrations + dialect compat
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+  workflow_call:  # so deploy.yml can call it as a gate before pushing to Railway
+
+jobs:
+  sqlite:
+    name: SQLite
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ci-dummy-key
+      DATABASE_URL: sqlite:///./data/ci.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Apply migrations
+        run: |
+          mkdir -p data
+          alembic upgrade head
+          alembic current
+      - name: Dialect compat smoke test
+        run: python scripts/check_dialect_compat.py
+      - name: Round-trip migrations (downgrade base -> upgrade head)
+        run: |
+          alembic downgrade base
+          alembic upgrade head
+
+  postgres:
+    name: Postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: scholar
+          POSTGRES_PASSWORD: scholar
+          POSTGRES_DB: daily_scholar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U scholar -d daily_scholar"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ANTHROPIC_API_KEY: ci-dummy-key
+      DATABASE_URL: postgresql+psycopg://scholar:scholar@localhost:5432/daily_scholar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Apply migrations
+        run: |
+          alembic upgrade head
+          alembic current
+      - name: Dialect compat smoke test
+        run: python scripts/check_dialect_compat.py
+      - name: Round-trip migrations (downgrade base -> upgrade head)
+        run: |
+          alembic downgrade base
+          alembic upgrade head

@@ -1,0 +1,31 @@
+# Railway service config — backend.
+#
+# Railway picks this up from the repo root and applies it to the BACKEND
+# service. The frontend service has its own railway.toml under frontend/.
+# Both services + the Postgres add-on live in one Railway project.
+#
+# Provisioning steps (one-time, via Railway web UI):
+#   1. New Project -> Deploy from GitHub repo: daily-scholar
+#   2. Add service from repo root (uses this file + Dockerfile)
+#   3. Add second service from /frontend (uses frontend/railway.toml + frontend/Dockerfile)
+#   4. Add Postgres plugin -> attach to the backend service
+#      (Railway auto-injects DATABASE_URL when attached; we override the
+#       driver prefix below to use psycopg v3 instead of the legacy psycopg2.)
+#   5. Paste env vars from .env (everything except DATABASE_URL)
+#   6. Deploy
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Railway sets PORT for us; the Dockerfile CMD already honors it
+startCommand = "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT}"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+
+# Railway's Postgres plugin sets DATABASE_URL with the `postgres://` prefix;
+# backend/database.py:get_database_url() rewrites that to
+# `postgresql+psycopg://...` at boot so nothing extra is needed here.

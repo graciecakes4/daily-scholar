@@ -604,6 +604,108 @@ send_push_to_user(user_id, {"title": "...", "body": "...", "url": "/topics/foo"}
 
 Examples of where you might wire it next: a daily "topics due for review" digest from APScheduler, a notification when an LLM-generated quiz is ready, or a streak-reminder.
 
+### Migrations + dialect compatibility (CI)
+
+`.github/workflows/test-migrations.yml` runs on every PR to develop or main. Two matrix jobs (SQLite and Postgres) each:
+
+1. Install deps
+2. `alembic upgrade head` from scratch
+3. `python scripts/check_dialect_compat.py` — exercises JSON columns, the composite-unique constraint on `daily_content_cache`, the unique-per-user constraint on `user_stats`, ArchivedQuiz round-trips
+4. `alembic downgrade base && alembic upgrade head` — proves the migration is reversible
+
+To run the compat check locally against whatever DB you're currently pointed at:
+
+```bash
+# against SQLite
+DATABASE_URL=sqlite:///./data/test.db python scripts/check_dialect_compat.py
+
+# against the compose-managed Postgres
+DATABASE_URL='postgresql+psycopg://scholar:scholar@localhost:5432/daily_scholar' \
+  python scripts/check_dialect_compat.py
+```
+
+Fast feedback loop for catching dialect surprises (unique-constraint syntax, JSON serialization, NULL semantics) before they blow up on Railway.
+
+### Deploy to Railway + Cloudflare
+
+End-to-end deploy of the production stack with a **dev + prod environment split** that maps to your branching strategy:
+
+| Git branch | Railway env | Cloudflare hostname (example) | When it deploys |
+|---|---|---|---|
+| `develop` | `dev` | `scholar-dev.yourdomain.com` | every push to `develop` |
+| `main` | `prod` | `scholar.yourdomain.com` | every push to `main` (after dev validates) |
+
+**Stack:** Railway (backend + frontend + Postgres × 2 environments), Cloudflare (DNS + TLS + Access for auth), Backblaze B2 (PDF storage).
+
+#### One-time provisioning
+
+1. **Railway project + environments**
+   - https://railway.app → New Project → Deploy from GitHub repo: `daily-scholar`
+   - The project is created with a default environment called `production`. Rename it to `prod` (Settings → rename) and add a second environment called `dev` (Environments → New).
+   - **In each environment**, add three things:
+     - Backend service from repo root (uses `railway.toml` + `Dockerfile`)
+     - Frontend service from `frontend/` (uses `frontend/railway.toml` + `frontend/Dockerfile`)
+     - Postgres plugin attached to the backend service
+   - Tip: you can clone the dev env's service config to prod after you've validated dev, instead of setting both up by hand twice.
+   - For each environment's backend, paste env vars (skip `DATABASE_URL` — auto-injected; skip `FRONTEND_URL` — set to that env's CF hostname):
+     - **Same in both**: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `CLAUDE_MODEL`, `LLM_TASK_*`, `STORAGE_BACKEND`, `B2_*`
+     - **DIFFERENT in each**: `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` — regenerate a separate keypair for dev so push subscriptions don't cross-pollinate between envs (a device subscribed in dev would otherwise receive prod's pushes too). `FRONTEND_URL` matches the env's CF hostname.
+   - Note each service's public hostname under Settings → Networking (`*.up.railway.app`).
+
+2. **Cloudflare DNS + Access (two apps, one per env)**
+   - Follow [docs/DEPLOY_CLOUDFLARE.md](docs/DEPLOY_CLOUDFLARE.md). For the dev/prod split you'll create two pairs of CNAMEs (one pair per env) and two Access apps:
+     - **Dev**: `scholar-dev` + `api.scholar-dev` → dev Railway services; Access policy = just your email
+     - **Prod**: `scholar` + `api.scholar` → prod Railway services; Access policy = you + beta cohort
+   - On each backend service, set `FRONTEND_URL` to that env's frontend CF hostname so CORS allows the right origin.
+
+3. **GitHub Actions secrets** (Repo → Settings → Secrets and variables → Actions):
+
+   | Secret | What |
+   |---|---|
+   | `RAILWAY_TOKEN` | https://railway.app/account/tokens (one token covers both envs) |
+   | `RAILWAY_BACKEND_SERVICE_ID_DEV` | from the Railway dashboard URL when viewing the dev-env backend service |
+   | `RAILWAY_FRONTEND_SERVICE_ID_DEV` | same, dev frontend |
+   | `RAILWAY_BACKEND_SERVICE_ID_PROD` | prod backend |
+   | `RAILWAY_FRONTEND_SERVICE_ID_PROD` | prod frontend |
+
+   Optional: under repo Settings → Environments, create `development` and `production` GitHub environments. Give `production` a required reviewer (yourself) if you want every prod deploy to require a manual click in the Actions tab.
+
+4. **First push**
+
+   ```bash
+   # ship your in-progress work to dev
+   git push origin develop
+
+   # later, when it's ready for prod
+   git checkout main && git merge develop && git push origin main
+   ```
+
+   The deploy workflow auto-picks the right environment based on which branch you pushed. The migration + dialect-compat gate runs first; if it fails, no deploy happens.
+
+   Tail at https://github.com/{user}/daily-scholar/actions.
+
+#### What runs where
+
+| Component | Hosted on | Domain |
+|---|---|---|
+| Frontend (Next.js standalone) | Railway | `https://scholar.yourdomain.com` |
+| Backend (FastAPI + uvicorn) | Railway | `https://api.scholar.yourdomain.com` |
+| Postgres | Railway plugin | (private network only) |
+| PDF + upload storage | Backblaze B2 (`STORAGE_BACKEND=b2`) | presigned URLs through CF |
+| Auth | Cloudflare Access (Zero Trust free tier) | injects `Cf-Access-Authenticated-User-Email` header |
+| Web Push | self-signed VAPID, fanout from `push_sender.py` | direct to browser push endpoints |
+
+#### Cost guardrails
+
+- **Anthropic / Gemini** — set hard monthly caps in each console (Anthropic: https://console.anthropic.com/settings/billing). Expected praxis-scale spend is under $10/mo with the default routing.
+- **Railway** — Settings → Usage limits → set a $-per-month cap. Free Trial is generous; expect $5–10/mo for the always-on backend + frontend + 1GB Postgres.
+- **Backblaze B2** — first 10 GB free. Egress costs $0 when paired through Cloudflare via the bandwidth alliance.
+- **Cloudflare** — DNS, TLS, Access (up to 50 users), Workers (within free tier) are all $0.
+
+#### Rollback
+
+Railway keeps every previous build. Dashboard → Service → Deployments → click any prior deploy → Redeploy. Migrations only move forward by design; if you need to roll back a schema change, do `alembic downgrade -1` locally first, then redeploy with the older revision pinned.
+
 ### Docker / docker-compose
 
 Daily Scholar ships with a containerized stack that mirrors what runs on Railway:

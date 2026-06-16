@@ -428,8 +428,22 @@ _SessionLocal = None
 
 
 def get_database_url() -> str:
+    """
+    Return the configured DB URL, normalized to a SQLAlchemy-friendly driver.
+
+    Railway / Heroku / many other Postgres providers inject URLs like
+    `postgres://user:pass@host/db`. SQLAlchemy needs an explicit driver name
+    in the scheme (`postgresql+psycopg://...`). This shim rewrites the prefix
+    so the same DATABASE_URL works on every host without per-platform tweaks.
+    """
     from .config import get_settings
-    return get_settings().database_url
+    url = get_settings().database_url
+    if url.startswith("postgres://"):
+        url = "postgresql+psycopg://" + url[len("postgres://"):]
+    elif url.startswith("postgresql://") and "+" not in url.split("://", 1)[0]:
+        # bare `postgresql://` defaults to psycopg2; force psycopg v3
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
 
 
 def get_engine():
