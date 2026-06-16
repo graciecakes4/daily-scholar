@@ -75,9 +75,14 @@ Format as JSON:
 
         try:
             client = get_llm_client(task="summary")
-            result = client.complete_json(prompt, max_tokens=2000, temperature=0.3)
+            # 3500 tokens headroom — JSON-wrapped summaries with key_findings +
+            # reading_approach can run over 2000 once the model gets chatty
+            result = client.complete_json(prompt, max_tokens=3500, temperature=0.3)
             if "__llm_parse_error__" in result:
-                raise ValueError(f"LLM JSON parse failed: {result['__llm_parse_error__']}")
+                raise ValueError(
+                    f"LLM JSON parse failed (likely truncated — try bumping max_tokens "
+                    f"or shortening the prompt): {result['__llm_parse_error__']}"
+                )
             return result
         except Exception as e:
             print(f"Error generating paper summary: {e}")
@@ -118,9 +123,15 @@ Format as JSON:
 
         try:
             client = get_llm_client(task="review")
-            result = client.complete_json(prompt, max_tokens=2500, temperature=0.4)
+            # 4500 tokens because the review prompt asks for 3-5 paragraphs +
+            # 5-7 key points + connections + practice suggestions; 2500 was
+            # consistently truncating mid-string on the praxis-aligned topics
+            result = client.complete_json(prompt, max_tokens=4500, temperature=0.4)
             if "__llm_parse_error__" in result:
-                raise ValueError(f"LLM JSON parse failed: {result['__llm_parse_error__']}")
+                raise ValueError(
+                    f"LLM JSON parse failed (likely truncated — try bumping max_tokens "
+                    f"or shortening the prompt): {result['__llm_parse_error__']}"
+                )
             return result
         except Exception as e:
             print(f"Error generating topic review: {e}")
@@ -176,8 +187,10 @@ Format as JSON array:
         try:
             client = get_llm_client(task="quiz")
             # questions endpoint returns a JSON ARRAY at the top level; complete_json
-            # expects a dict, so we call complete() directly here and parse manually
-            raw = client.complete(prompt, max_tokens=3000, temperature=0.6)
+            # expects a dict, so we call complete() directly here and parse manually.
+            # 5000 tokens because the prompt asks for `count` questions each with
+            # options + correct_answer + explanation + concept_tested.
+            raw = client.complete(prompt, max_tokens=5000, temperature=0.6)
             content = raw.strip()
             if "```json" in content:
                 content = content.split("```json", 1)[1].split("```", 1)[0]
