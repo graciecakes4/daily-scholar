@@ -19,11 +19,11 @@
 
 **Frontend** — Next.js 16, React 18, Tailwind, plain app-router pages (`app/{papers,quiz,topics}/page.tsx` + root). No service worker, no manifest, no PWA infrastructure.
 
-**Config** — `config/interests.yaml` (wide-ranging ML/LLM/CV/RL, zero astronomy) + `config/courses.yaml` (GWU Spring 2026, already wrapped). SEAS 8599 Summer 2026 is the active course and not in the file.
+**Config** — `config/interests.yaml` (wide-ranging ML/LLM/CV/RL, zero astronomy) + `config/courses.yaml` (legacy course curriculum, no longer active).
 
 **Schema** — single-user. `UserStats` is one row; no `user_id` columns anywhere. Database tables: `seen_papers`, `archived_papers`, `paper_pdfs`, `archived_topic_reviews`, `archived_quizzes`, `daily_content_cache`, `user_stats`.
 
-**External APIs you already have:** arXiv (no key needed), CORE (Bearer token), Semantic Scholar (optional key). GWU library API is a stretch goal — depends on what they expose; worth asking the library liaison before architecting around it.
+**External APIs you already have:** arXiv (no key needed), CORE (Bearer token), Semantic Scholar (optional key). A university-library API is a stretch goal — depends on what's exposed; worth confirming scope before architecting around it.
 
 ---
 
@@ -129,7 +129,7 @@ config/topics/
   missing-modality-learning.yaml
   generative-cross-modal-imputation.yaml
   sim-to-real-transfer-astronomy.yaml
-  praxis-proposal-seas8599.yaml          # tracks HW#1–4 deliverables
+  proposal-deliverables.yaml             # tracks proposal-phase milestones
 ```
 
 Six small files instead of two huge ones. Easier to diff, easier to add new ones, easier to compose. The previous broad `interests.yaml` content is moved to `config/topics/_archive/generic-ml.yaml` (inactive by default) so beta testers who want the old behavior can flip a switch.
@@ -159,7 +159,7 @@ You're not way off on UI being the right surface for this — YAML would need a 
 
 ### Phase 0 — Topic-model refactor (3–4 sessions, no infra changes)
 
-Highest-leverage piece, ships independently of everything else, immediately useful for HW #3 annotated bibliography.
+Highest-leverage piece, ships independently of everything else, immediately useful for the annotated-bibliography phase of upstream research.
 
 - New `topics` SQLAlchemy model + Alembic migration (introducing Alembic here so we don't have to retrofit later).
 - `config/topics/` directory + the six initial topic YAMLs, including the praxis-aligned ones above.
@@ -264,7 +264,7 @@ Phase 4 (auth identity) — deferred indefinitely, no work until you flip option
 Phase 5 (beta preservation) — continuous; verified at end of Phase 3
 ```
 
-Phase 0 is independently shippable; if SEAS 8599 deadlines crowd everything else out, Phase 0 alone makes Daily Scholar praxis-aligned.
+Phase 0 is independently shippable; if upstream deadlines crowd everything else out, Phase 0 alone makes Daily Scholar topic-aligned.
 
 ---
 
@@ -280,25 +280,25 @@ Phase 0 is independently shippable; if SEAS 8599 deadlines crowd everything else
 | Backblaze egress fees if PDFs are downloaded repeatedly | Low | Medium | B2 has Cloudflare-egress-free agreement; route PDF downloads through CF for $0 egress. Pre-signed URLs work fine through CF. |
 | LLM cost spikes after deploy | Low at 1 user | Medium | Per-task model selection (cheap for summaries, premium for quizzes); hard caps in provider dashboards. |
 | Multi-provider LLM refactor introduces regressions in content generation | Medium | Medium | Snapshot a "golden" set of summaries + quizzes from the current Anthropic-only path before refactor; assert byte-near-equivalence on the same prompts post-refactor. |
-| SEAS 8599 deadlines crowd out app work | High | High | Phase 0 only is shippable. Phases 1–3 are post-Jul-30 (after final proposal). |
+| Upstream deadlines crowd out app work | High | High | Phase 0 only is shippable. Phases 1–3 are deferred until proposal work lands. |
 | `daily scholar` empty subfolder in repo root | Low | Low | Delete — stray mount artifact. |
 | Schema drift between SQLite-local and Postgres-cloud | Medium | Medium | Alembic is source of truth from Phase 0 forward; CI runs migrations against both backends on every PR. |
-| GWU library API never materializes | Medium | Low | Don't architect around it; if it lands, add as a new paper source plugin behind the existing source-plugin interface. |
+| University-library API never materializes | Medium | Low | Don't architect around it; if it lands, add as a new paper source plugin behind the existing source-plugin interface. |
 | Cloudflare Access free tier (50 users) hit during beta | Low | Low | Beta is 30 testers per memory; well under cap. If exceeded, upgrade to Zero Trust paid (~$3/user/mo). |
 
 ---
 
-## 7. What I Recommend We Do First
+## 7. Recommended sequencing
 
-Today is **June 15, 2026**. SEAS 8599 HW #3 (annotated bibliography, 50+ references) is due **July 9** — 24 days out. HW #4 + final proposal is **July 30**.
+Phase 0 is the highest-leverage piece and ships independently of everything else. Suggested order, scaled to whatever upstream timeline applies:
 
-1. **This week → end of June:** Phase 0 in full. Daily Scholar surfaces transient-classification papers immediately, which directly accelerates HW #3.
-2. **Late July / early August** (after HW #4 lands): Phase 1 (PWA shell + Web Push). Frontend-heavy, low backend risk.
-3. **August** (between proposal defense Aug 15 and Sept 1 research-phase start): Phase 2 (cloudify + multi-LLM + B2 + auth schema).
-4. **Late August / early September:** Phase 3 deploy.
-5. **Continuous**: Phase 5 doc maintenance + tying off pre-beta TODOs.
+1. **Sprint 1:** Phase 0 in full. Daily Scholar starts surfacing on-topic papers immediately, which is the smallest unit of "useful."
+2. **Sprint 2 (after Phase 0 stabilizes):** Phase 1 (PWA shell + Web Push). Frontend-heavy, low backend risk.
+3. **Sprint 3:** Phase 2 (cloudify + multi-LLM + B2 + auth schema).
+4. **Sprint 4:** Phase 3 deploy.
+5. **Continuous:** Phase 5 doc maintenance + tying off pre-beta TODOs.
 
-This puts a hosted, push-enabled, praxis-tuned PWA on your phone before the research phase begins in earnest.
+This puts a hosted, push-enabled, topic-tuned PWA on the phone before any downstream consumers need it.
 
 ---
 
@@ -306,6 +306,6 @@ This puts a hosted, push-enabled, praxis-tuned PWA on your phone before the rese
 
 1. **YAML loader strictness.** When a topic YAML and the DB disagree (you edited via UI, then someone re-edits the YAML and pushes), which wins? My default: **DB wins after first bootstrap**, YAML changes require an explicit `POST /topics/import-yaml` call to merge. Alternative: YAML always wins on startup (simpler, riskier — UI edits can be silently overwritten).
 2. **Topic deletion semantics.** Soft-delete (`active=false`) by default vs hard-delete with confirm? My default: soft. Hard delete only via a flag in the API + a "permanently delete" button in UI.
-3. **Initial seed of topics for the praxis.** Want me to draft the six topic YAMLs based on the `Astronomy_Praxis_Modality_Flexible_Transient_Classification.md` lit-stream outline (photometric classification / multimodal FMs in astronomy / missing-modality learning / generative cross-modal imputation / sim-to-real / SEAS 8599 deliverables)? That would give Phase 0 a complete out-of-the-box content set.
-4. **GWU library API.** Worth pinging the library liaison this week so we know whether it's in scope by the time we hit Phase 2's paper-source plugin work?
+3. **Initial seed of topics.** Want me to draft the topic YAMLs based on the lit-stream outline (photometric classification / multimodal FMs in astronomy / missing-modality learning / generative cross-modal imputation / sim-to-real) plus the two foundations? That would give Phase 0 a complete out-of-the-box content set.
+4. **University-library API.** Worth confirming scope with the library liaison so we know whether it's in scope by the time we hit Phase 2's paper-source plugin work?
 5. **Cloudflare Access for auth.** OK to plan around it (vs building in-app auth later)? Less code to write, leverages your existing CF account, but ties your auth story to Cloudflare.
