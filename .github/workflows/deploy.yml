@@ -6,11 +6,15 @@
 # changes.
 #
 # Required GitHub secrets (Settings → Secrets and variables → Actions):
-#   RAILWAY_TOKEN                          — single account-wide token; works for both envs
+#   RAILWAY_TOKEN_DEV                      — project token scoped to the Railway "dev" env
+#   RAILWAY_TOKEN_PROD                     — project token scoped to the Railway "prod" env
 #   RAILWAY_BACKEND_SERVICE_ID_DEV         — backend service id in the Railway "dev" env
 #   RAILWAY_FRONTEND_SERVICE_ID_DEV        — frontend service id in the Railway "dev" env
 #   RAILWAY_BACKEND_SERVICE_ID_PROD        — backend service id in the Railway "prod" env
 #   RAILWAY_FRONTEND_SERVICE_ID_PROD       — frontend service id in the Railway "prod" env
+#
+# Railway project tokens are env-scoped: one token can only deploy to its own
+# environment. We pick the right one below based on the branch being deployed.
 
 name: Deploy to Railway
 
@@ -68,7 +72,10 @@ jobs:
 
       - name: Deploy
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          # Pick the env-scoped Railway token by branch. main -> prod token,
+          # everything else (develop) -> dev token. The unused secret becomes
+          # an empty string, which the preflight below catches.
+          RAILWAY_TOKEN: ${{ github.ref == 'refs/heads/main' && secrets.RAILWAY_TOKEN_PROD || secrets.RAILWAY_TOKEN_DEV }}
           # Railway CLI uses RAILWAY_SERVICE to target a specific service in an env.
           # Pull the right secret based on the branch + matrix.service combination.
           RAILWAY_SERVICE_BACKEND_DEV: ${{ secrets.RAILWAY_BACKEND_SERVICE_ID_DEV }}
@@ -87,6 +94,10 @@ jobs:
           SERVICE_ID="$(printenv $VAR_NAME)"
           if [ -z "$SERVICE_ID" ]; then
             echo "❌ Missing secret $VAR_NAME — set it in repo Settings → Secrets."
+            exit 1
+          fi
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "❌ RAILWAY_TOKEN is empty — set RAILWAY_TOKEN_${ENV_UPPER} in repo Settings → Secrets."
             exit 1
           fi
           echo "📦 Deploying ${{ matrix.service }} to ${{ steps.target.outputs.env_tag }} (service ${SERVICE_ID:0:8}…)"
