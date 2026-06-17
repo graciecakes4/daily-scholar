@@ -1,43 +1,72 @@
-# Daily Scholar - Python Dependencies
+# Daily Scholar — Python Dependencies
+#
+# Pins are floor versions (>=) chosen to work on Python 3.10–3.13.
+# Pre-3.13 pins from early 2024 don't have wheels for 3.13 and will fail
+# to install. Bump these only if you have a specific reason.
+#
+# ⚠ Don't replace this file with `pip freeze` output — that pins to exact
+# patch versions and loses the floor ranges that keep 3.13 installs working.
+# If you want to lock for reproducibility, use `pip-tools` (pip-compile) or
+# `uv pip compile` against this file as input.
+#
 # Install with: pip install -r requirements.txt
 
 # Web Framework
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
+fastapi>=0.115,<0.120
+# uvicorn ceiling is wide because google-antigravity pins >=0.46 — any 0.x is fine for FastAPI
+uvicorn[standard]>=0.30,<1
 
 # Data Validation
-pydantic==2.5.3
-pydantic-settings==2.1.0
+pydantic>=2.9,<3
+pydantic-settings>=2.5,<3
 
 # Database
-sqlalchemy==2.0.25
-aiosqlite==0.19.0
+sqlalchemy>=2.0.36,<3
+aiosqlite>=0.20,<0.22
+alembic>=1.13.1,<2
+# Postgres driver (psycopg v3, binary distribution — no libpq needed).
+# Only loaded when DATABASE_URL starts with postgresql+psycopg://; SQLite
+# installs that skip this still work, but installing it is cheap (~2MB).
+psycopg[binary]>=3.2,<4
 
 # HTTP Client (for API calls)
-httpx==0.26.0
+httpx>=0.27,<0.30
 
 # Configuration
-pyyaml==6.0.1
-python-dotenv==1.0.0
+pyyaml>=6.0.1,<7
+python-dotenv>=1.0,<2
 
 # File Processing
-python-multipart==0.0.6
-pypdf2==3.0.1
-python-docx==1.1.0
+python-multipart>=0.0.9,<0.1
+pypdf>=4.0,<6
+python-docx>=1.1,<2
 
-# Anthropic SDK (for Claude API)
-anthropic==0.18.1
+# Object Storage (Backblaze B2 via S3-compatible API; only used when STORAGE_BACKEND=b2)
+boto3>=1.34,<2
+
+# Anthropic SDK (Claude — default provider for most LLM tasks)
+anthropic>=0.40,<1
+
+# Google Gen AI SDK (Gemini — optional; only loaded if any LLM_TASK_* routes to gemini)
+google-genai>=0.8,<2
+
+# Google Antigravity SDK (agent harness over Gemini — optional, only loaded if used)
+google-antigravity>=0.1,<2
+
+# Web Push (VAPID + push fanout)
+pywebpush>=2.0,<3
+cryptography>=42,<46
 
 # Date/Time utilities
-python-dateutil==2.8.2
+python-dateutil>=2.8.2,<3
 
 # Async scheduling (for daily jobs)
-apscheduler==3.10.4
+apscheduler>=3.10.4,<4
 
 # Testing (optional but recommended)
-pytest==7.4.4
-pytest-asyncio==0.23.3
+pytest>=7.4,<9
+pytest-asyncio>=0.23,<1
 
 # Development tools (optional)
-black==24.1.1
-ruff==0.1.14
+black>=24.1,<26
+ruff>=0.5,<1

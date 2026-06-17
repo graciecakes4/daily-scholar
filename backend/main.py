@@ -20,11 +20,11 @@ import httpx
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional, List
 
-from .config import get_settings, validate_configuration, load_interests_config, load_courses_config
+from .config import get_settings, validate_configuration
 from .models import ConfigurationStatus
 from .database import (
     create_tables, get_session, get_seen_paper_ids, mark_paper_as_seen, update_user_streak,
@@ -117,9 +117,24 @@ class TopicStatusRequest(BaseModel):
 async def lifespan(app: FastAPI):
     print("🚀 Starting Daily Scholar API...")
     create_tables()
+    # bootstrap topics from config/topics/*.yaml (DB-wins; insert-only)
+    from .services.topic_loader import bootstrap_topics_from_yaml
+    summary = bootstrap_topics_from_yaml()
+    print(
+        f"  ↳ Topics bootstrapped: "
+        f"{summary['inserted']} inserted, "
+        f"{summary['preserved']} preserved, "
+        f"{summary['marked_orphaned']} marked orphaned"
+    )
+    # APScheduler nightly daily-content job
+    from .services.scheduler import start_scheduler, stop_scheduler
+    sched = start_scheduler()
+    if sched is not None:
+        print(f"  ↳ Scheduler started with {len(sched.get_jobs())} job(s)")
     print("✅ Daily Scholar API started!")
     yield
     print("👋 Shutting down Daily Scholar API...")
+    stop_scheduler()
 
 
 # =============================================================================
@@ -142,50 +157,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# topics_router and scope_router are mounted at the END of main.py so the
+# specific @app.get paths (/topics/status-summary, /topics/random-review,
+# /topics/{id}/review) take precedence over the router's catch-all /topics/{id}.
+
 
 # =============================================================================
-# TOPIC SELECTION HELPER
+# TOPIC SELECTION + ADAPTER HELPERS (moved to services/daily_content.py;
+# re-exported here so other endpoints in main.py can keep importing them
+# from the old location)
 # =============================================================================
 
-def select_topic_for_course(course: dict, all_topics: list[dict],
-                            completed_ids: set[str],
-                            recently_reviewed_ids: set[str],
-                            review_later_ids: set[str],
-                            exclude_ids: set[str] = None) -> Optional[dict]:
-    """
-    Smart topic selection for a course:
-    1. Filter out completed topics
-    2. Filter out recently-reviewed topics (last 3 days) to avoid repeats
-    3. Prioritize topics marked as review_later
-    4. Fall back to random selection from remaining pool
-    5. If all are recently reviewed, pick from review_later or random (ignoring recency)
-    """
-    if exclude_ids is None:
-        exclude_ids = set()
-    
-    course_topics = [t for t in all_topics if t["course_id"] == course["id"]]
-    
-    # Filter out completed and explicitly excluded
-    available = [t for t in course_topics
-                 if t["id"] not in completed_ids and t["id"] not in exclude_ids]
-    
-    if not available:
-        return None
-    
-    # Separate into buckets
-    review_later = [t for t in available
-                    if t["id"] in review_later_ids and t["id"] not in recently_reviewed_ids]
-    fresh = [t for t in available
-             if t["id"] not in recently_reviewed_ids and t["id"] not in review_later_ids]
-    
-    # Priority: review_later first, then fresh, then anything not completed
-    if review_later:
-        return random.choice(review_later)
-    elif fresh:
-        return random.choice(fresh)
-    else:
-        # All available topics were recently reviewed; just pick one at random
-        return random.choice(available)
+from .services.daily_content import (
+    _PaperLite,
+    _select_topic_from_scope,
+    _stream_display_name,
+    _topic_pseudo_course,
+    _topic_to_dict,
+)
+
+
+def _get_topic_or_404(topic_id: str):
+    """Load a Topic row from the DB or raise 404."""
+    from .database import Topic as TopicModel
+    session = get_session()
+    try:
+        topic = session.get(TopicModel, topic_id)
+        if topic is None:
+            raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
+        # detach so callers can use it after the session closes
+        session.expunge(topic)
+        return topic
+    finally:
+        session.close()
 
 
 # =============================================================================
@@ -199,44 +203,48 @@ async def root():
 
 @app.get("/health", tags=["Core"])
 async def health_check():
-    config_status = validate_configuration()
-    all_valid = all([config_status["environment"]["valid"], config_status["interests"]["valid"], config_status["courses"]["valid"]])
+    """
+    TRULY lightweight health check — for load balancer / Railway probes.
+
+    Returns 200 the moment uvicorn can serve, with zero DB / external deps.
+    This is what Railway, Cloudflare, and uptime monitors should hit.
+
+    For per-subsystem health (DB, LLM providers, storage, push), use /health/deep.
+    """
     return {
-        "status": "healthy" if all_valid else "degraded",
+        "status": "ok",
         "timestamp": date.today().isoformat(),
-        "configuration": {
-            "environment": "✓" if config_status["environment"]["valid"] else "✗",
-            "interests": "✓" if config_status["interests"]["valid"] else "✗",
-            "courses": "✓" if config_status["courses"]["valid"] else "✗",
-        }
     }
 
 
 @app.get("/config/status", response_model=ConfigurationStatus, tags=["Configuration"])
 async def get_configuration_status():
+    """
+    Report on the topic-table state plus environment validity. The legacy
+    interests/courses YAMLs are no longer consulted; counts come from the DB.
+    """
+    from .database import Topic as TopicModel
+
     status = validate_configuration()
-    interests_count = courses_count = topics_count = 0
+    session = get_session()
     try:
-        interests_config = load_interests_config()
-        for category in ["primary", "secondary", "exploratory"]:
-            interests_count += len(interests_config.get("interests", {}).get(category, []))
-    except: pass
-    try:
-        courses_config = load_courses_config()
-        for course in courses_config.get("courses", []):
-            courses_count += 1
-            topics_count += len(course.get("topics", []))
-    except: pass
-    errors = []
-    for section in ["environment", "interests", "courses"]:
-        errors.extend(status[section]["errors"])
+        topics_count = session.query(TopicModel).count()
+        active_count = session.query(TopicModel).filter(TopicModel.active.is_(True)).count()
+        streams_count = session.query(TopicModel.stream).distinct().count()
+    finally:
+        session.close()
+
+    errors = list(status["environment"]["errors"])
+
     return ConfigurationStatus(
         environment_valid=status["environment"]["valid"],
-        interests_valid=status["interests"]["valid"],
-        courses_valid=status["courses"]["valid"],
+        # 'interests_valid' / 'courses_valid' now reflect the unified topic
+        # store: valid if at least one active topic exists.
+        interests_valid=active_count > 0,
+        courses_valid=streams_count > 0,
         errors=errors,
-        interests_count=interests_count,
-        courses_count=courses_count,
+        interests_count=active_count,
+        courses_count=streams_count,
         topics_count=topics_count,
     )
 
@@ -540,49 +548,42 @@ async def delete_archived_paper(paper_id: int):
 
 @app.post("/archive/papers/{paper_id}/upload-pdf", tags=["Archive"])
 async def upload_pdf_to_paper(paper_id: int, file: UploadFile = File(...)):
-    """Upload a PDF file and attach it to an archived paper."""
+    """Upload a PDF and attach it to an archived paper."""
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
-    
+
+    from .services.storage import get_storage
+    storage = get_storage()
     session = get_session()
     try:
         paper = session.query(ArchivedPaper).filter(ArchivedPaper.id == paper_id).first()
         if not paper:
             raise HTTPException(status_code=404, detail="Paper not found")
-        
-        # Create unique filename
+
         file_ext = Path(file.filename).suffix
         stored_filename = f"{uuid.uuid4().hex}{file_ext}"
-        file_path = Path("./data/papers") / stored_filename
-        
-        # Save file
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        # Get file size
-        file_size = file_path.stat().st_size
-        
-        # Create PDF record
+        key = f"papers/{stored_filename}"
+        data = await file.read()
+        storage.put(key, data, content_type="application/pdf")
+
         pdf = PaperPDF(
             archived_paper_id=paper_id,
             original_filename=file.filename,
             stored_filename=stored_filename,
-            file_path=str(file_path),
-            file_size_bytes=file_size,
+            file_path=key,
+            file_size_bytes=len(data),
             source="upload",
         )
         session.add(pdf)
-        
-        # Update paper
-        paper.local_pdf_path = str(file_path)
+        paper.local_pdf_path = key
         paper.has_local_pdf = True
-        
         session.commit()
-        
+
         return {
             "message": "PDF uploaded successfully",
             "pdf_id": pdf.id,
             "filename": stored_filename,
+            "storage_backend": storage.backend,
         }
     except Exception as e:
         session.rollback()
@@ -593,56 +594,46 @@ async def upload_pdf_to_paper(paper_id: int, file: UploadFile = File(...)):
 
 @app.post("/archive/papers/{paper_id}/download-pdf", tags=["Archive"])
 async def download_pdf_from_url(paper_id: int):
-    """Download PDF from the paper's pdf_url and store locally."""
+    """Download PDF from the paper's pdf_url and store via the configured backend."""
+    from .services.storage import get_storage
+    storage = get_storage()
     session = get_session()
     try:
         paper = session.query(ArchivedPaper).filter(ArchivedPaper.id == paper_id).first()
         if not paper:
             raise HTTPException(status_code=404, detail="Paper not found")
-        
         if not paper.pdf_url:
             raise HTTPException(status_code=400, detail="Paper has no PDF URL")
-        
         if paper.has_local_pdf:
             return {"message": "PDF already downloaded", "path": paper.local_pdf_path}
-        
-        # Download the PDF
+
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             response = await client.get(paper.pdf_url)
             response.raise_for_status()
-        
-        # Create unique filename
+
         stored_filename = f"{uuid.uuid4().hex}.pdf"
-        file_path = Path("./data/papers") / stored_filename
-        
-        # Save file
-        with open(file_path, "wb") as f:
-            f.write(response.content)
-        
-        file_size = file_path.stat().st_size
-        
-        # Create PDF record
+        key = f"papers/{stored_filename}"
+        storage.put(key, response.content, content_type="application/pdf")
+
         pdf = PaperPDF(
             archived_paper_id=paper_id,
             original_filename=f"{paper.title[:50]}.pdf",
             stored_filename=stored_filename,
-            file_path=str(file_path),
-            file_size_bytes=file_size,
+            file_path=key,
+            file_size_bytes=len(response.content),
             source="download",
             source_url=paper.pdf_url,
         )
         session.add(pdf)
-        
-        # Update paper
-        paper.local_pdf_path = str(file_path)
+        paper.local_pdf_path = key
         paper.has_local_pdf = True
-        
         session.commit()
-        
+
         return {
             "message": "PDF downloaded successfully",
             "pdf_id": pdf.id,
-            "size_bytes": file_size,
+            "size_bytes": len(response.content),
+            "storage_backend": storage.backend,
         }
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to download PDF: {e}")
@@ -655,25 +646,45 @@ async def download_pdf_from_url(paper_id: int):
 
 @app.get("/archive/papers/{paper_id}/pdf", tags=["Archive"])
 async def get_paper_pdf(paper_id: int):
-    """Get/serve the local PDF for a paper."""
+    """
+    Serve the PDF for a paper.
+      - Local backend  -> FileResponse straight from disk.
+      - B2 / any backend with signed_url support -> 302 to the presigned URL
+        so the backend stays out of the bytes path.
+    """
+    from .services.storage import get_storage, storage_key_from_legacy_path
+    storage = get_storage()
     session = get_session()
     try:
         paper = session.query(ArchivedPaper).filter(ArchivedPaper.id == paper_id).first()
         if not paper:
             raise HTTPException(status_code=404, detail="Paper not found")
-        
         if not paper.has_local_pdf or not paper.local_pdf_path:
-            raise HTTPException(status_code=404, detail="No local PDF available")
-        
-        pdf_path = Path(paper.local_pdf_path)
-        if not pdf_path.exists():
-            raise HTTPException(status_code=404, detail="PDF file not found on disk")
-        
-        return FileResponse(
-            pdf_path,
-            media_type="application/pdf",
-            filename=f"{paper.title[:50]}.pdf"
-        )
+            raise HTTPException(status_code=404, detail="No PDF available")
+
+        # legacy rows stored an absolute fs path; normalize to a storage key
+        key = storage_key_from_legacy_path(paper.local_pdf_path)
+        if not storage.exists(key):
+            raise HTTPException(
+                status_code=404,
+                detail=f"PDF not found in {storage.backend} storage (key={key})",
+            )
+
+        # prefer presigned URL → browser fetches direct from B2/etc
+        url = storage.signed_url(key, expires_seconds=3600)
+        if url:
+            return RedirectResponse(url=url, status_code=302)
+
+        # fallback: stream from local filesystem
+        local = storage.local_path(key)
+        if local and local.exists():
+            return FileResponse(
+                local,
+                media_type="application/pdf",
+                filename=f"{paper.title[:50]}.pdf",
+            )
+
+        raise HTTPException(status_code=500, detail="Storage backend cannot serve this file")
     finally:
         session.close()
 
@@ -922,20 +933,15 @@ async def update_topic_status(topic_id: str, request: TopicStatusRequest):
             session.commit()
             return {"message": f"Topic status updated to '{request.status}'", "id": existing.id}
         
-        # No archived record yet — create a minimal one
-        from .config import get_all_topics
-        all_topics = get_all_topics()
-        topic = next((t for t in all_topics if t["id"] == topic_id), None)
-        if not topic:
-            raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found in courses config")
-        
+        # no archived record yet — create a minimal one from the Topic row
+        topic = _get_topic_or_404(topic_id)
         new_record = ArchivedTopicReview(
-            topic_id=topic["id"],
-            topic_name=topic["name"],
-            course_id=topic["course_id"],
-            course_name=topic["course_name"],
-            week_covered=topic.get("week_covered"),
-            key_concepts=topic.get("key_concepts"),
+            topic_id=topic.id,
+            topic_name=topic.name,
+            course_id=topic.stream,                              # stream lives in course_id slot
+            course_name=_stream_display_name(topic.stream),
+            week_covered=None,
+            key_concepts=topic.key_concepts or [],
             review_content="",
             key_points=[],
             connections=[],
@@ -962,49 +968,44 @@ async def update_topic_status(topic_id: str, request: TopicStatusRequest):
 @app.get("/topics/random-review", tags=["Topics"])
 async def get_random_topic_review(exclude: Optional[str] = None):
     """
-    Get a review for a randomly-selected topic, respecting completion status.
-    
-    - Excludes completed topics
-    - Avoids recently-reviewed topics when possible
-    - Prioritizes review_later topics
-    - Optional `exclude` param: comma-separated topic_ids to skip (for "New Topic" cycling)
+    Generate a review for a topic randomly chosen from the user's active scope.
+
+    Selection rules (in order):
+      - exclude topics marked completed
+      - avoid topics reviewed in the last 3 days
+      - prioritize topics marked review_later
+      - fall back to anything not completed
+    Optional `exclude` param: comma-separated topic ids to skip ("new topic" cycling).
     """
-    from .config import get_all_topics, load_courses_config
+    from .database import get_topics_for_scope
     from .services import ContentGeneratorService
-    
-    all_topics = get_all_topics()
-    courses_config = load_courses_config()
-    courses = courses_config.get("courses", [])
-    
+
+    scope_topics = get_topics_for_scope()
+    if not scope_topics:
+        raise HTTPException(status_code=404, detail="No topics in active scope")
+
     completed_ids = get_completed_topic_ids()
     recently_reviewed_ids = get_recently_reviewed_topic_ids(days=3)
     review_later_ids = get_review_later_topic_ids()
-    
-    exclude_ids = set()
-    if exclude:
-        exclude_ids = set(exclude.split(","))
-    
-    # Select one topic per course
-    selected = []
-    for course in courses:
-        topic = select_topic_for_course(
-            course, all_topics, completed_ids, recently_reviewed_ids,
-            review_later_ids, exclude_ids
+    exclude_ids = set(exclude.split(",")) if exclude else set()
+
+    topic = _select_topic_from_scope(
+        scope_topics, completed_ids, recently_reviewed_ids, review_later_ids, exclude_ids
+    )
+    if not topic:
+        raise HTTPException(
+            status_code=404,
+            detail="No available topics to review (all may be completed or recently reviewed)",
         )
-        if topic:
-            selected.append((topic, course))
-    
-    if not selected:
-        raise HTTPException(status_code=404, detail="No available topics to review (all may be completed)")
-    
+
+    topic_dict = _topic_to_dict(topic)
+    course_dict = _topic_pseudo_course(topic)
+
     generator = ContentGeneratorService()
     try:
-        topic_reviews = []
-        for topic, course in selected:
-            review = await generator.generate_topic_review(topic, course)
-            topic_reviews.append({"topic": topic, "review": review})
-        
-        return {"topic_reviews": topic_reviews}
+        review = await generator.generate_topic_review(topic_dict, course_dict)
+        # preserve list shape for API compat
+        return {"topic_reviews": [{"topic": topic_dict, "review": review}]}
     finally:
         await generator.close()
 
@@ -1012,19 +1013,23 @@ async def get_random_topic_review(exclude: Optional[str] = None):
 @app.get("/topics/status-summary", tags=["Topics"])
 async def get_topic_status_summary():
     """
-    Get a summary of topic statuses across all courses.
+    Summary of topic statuses across all topics in the Topic table.
+    Counts use the universe of active topics, not the scope-filtered view.
     """
-    from .config import get_all_topics
-    
-    all_topics = get_all_topics()
+    from .database import Topic as TopicModel
+
+    session = get_session()
+    try:
+        total = session.query(TopicModel).filter(TopicModel.active.is_(True)).count()
+    finally:
+        session.close()
+
     completed_ids = get_completed_topic_ids()
     review_later_ids = get_review_later_topic_ids()
-    
-    total = len(all_topics)
     completed = len(completed_ids)
     review_later = len(review_later_ids)
-    active = total - completed - review_later
-    
+    active = max(0, total - completed - review_later)
+
     return {
         "total_topics": total,
         "active": active,
@@ -1191,102 +1196,112 @@ async def get_daily_paper():
 # TOPICS & QUIZ (existing endpoints)
 # =============================================================================
 
-@app.get("/topics", tags=["Topics"])
-async def get_all_topics():
-    from .config import get_all_topics
-    return {"topics": get_all_topics()}
-
+# NOTE: GET /topics is now served by backend.api.topics.topics_router
+# (returns Topic-table rows, not courses.yaml topics). The endpoints below
+# still read from courses.yaml and will be refactored to the new Topic
+# table in a follow-up task.
 
 @app.get("/topics/{topic_id}/review", tags=["Topics"])
 async def get_topic_review(topic_id: str):
-    from .config import get_all_topics, load_courses_config
+    """Generate a review for a topic from the Topic table."""
     from .services import ContentGeneratorService
-    
-    all_topics = get_all_topics()
-    topic = next((t for t in all_topics if t["id"] == topic_id), None)
-    if not topic:
-        raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
-    
-    courses_config = load_courses_config()
-    course = next((c for c in courses_config.get("courses", []) if c["id"] == topic["course_id"]), None)
-    
+
+    topic = _get_topic_or_404(topic_id)
+    topic_dict = _topic_to_dict(topic)
+    course_dict = _topic_pseudo_course(topic)
+
     generator = ContentGeneratorService()
     try:
-        review = await generator.generate_topic_review(topic, course)
-        return {"topic": topic, "review": review}
+        review = await generator.generate_topic_review(topic_dict, course_dict)
+        return {"topic": topic_dict, "review": review}
     finally:
         await generator.close()
 
 
 @app.get("/quiz/generate/{topic_id}", tags=["Quiz"])
 async def generate_quiz(topic_id: str, count: int = 5, difficulty: str = "medium"):
-    from .config import get_all_topics, load_courses_config
+    """Generate a quiz for one topic from the Topic table."""
     from .services import ContentGeneratorService
-    
-    all_topics = get_all_topics()
-    topic = next((t for t in all_topics if t["id"] == topic_id), None)
-    if not topic:
-        raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
-    
-    courses_config = load_courses_config()
-    course = next((c for c in courses_config.get("courses", []) if c["id"] == topic["course_id"]), None)
-    
+
+    topic = _get_topic_or_404(topic_id)
+    topic_dict = _topic_to_dict(topic)
+    course_dict = _topic_pseudo_course(topic)
+
     generator = ContentGeneratorService()
     try:
-        questions = await generator.generate_quiz_questions(topic, course, count=count, difficulty=difficulty)
+        questions = await generator.generate_quiz_questions(
+            topic_dict, course_dict, count=count, difficulty=difficulty
+        )
         questions_display = [{
-            "id": q["id"], "topic_id": q["topic_id"], "topic_name": topic["name"],
-            "course_name": course["name"], "question_type": q["question_type"],
+            "id": q["id"], "topic_id": q["topic_id"], "topic_name": topic.name,
+            "course_name": course_dict["name"], "question_type": q["question_type"],
             "question_text": q["question_text"], "options": q.get("options"),
             "difficulty": q["difficulty"], "points": q["points"],
         } for q in questions]
         app.state.current_questions = {q["id"]: q for q in questions}
-        return {"topic": topic["name"], "course": course["name"], "questions": questions_display, "total_points": sum(q["points"] for q in questions)}
+        return {
+            "topic": topic.name,
+            "course": course_dict["name"],
+            "questions": questions_display,
+            "total_points": sum(q["points"] for q in questions),
+        }
     finally:
         await generator.close()
 
 
 @app.post("/quiz/regenerate", tags=["Quiz"])
-async def regenerate_quiz(count: int = 5, difficulty: str = "medium"):
-    from .config import get_all_topics, load_courses_config
+async def regenerate_quiz(count: int = 5, difficulty: str = "medium", max_topics: int = 3):
+    """
+    Generate a multi-topic quiz drawing from the active scope.
+
+    To keep latency reasonable, we cap at `max_topics` (default 3) randomly
+    chosen from the scope rather than hitting the LLM once per topic. With
+    7+ active topics, the per-topic loop otherwise compounds to several
+    minutes of sequential LLM calls.
+    """
+    from .database import get_topics_for_scope
     from .services import ContentGeneratorService
-    
-    all_topics = get_all_topics()
-    courses_config = load_courses_config()
-    if not all_topics:
-        raise HTTPException(status_code=404, detail="No topics configured")
-    
-    courses = courses_config.get("courses", [])
-    selected_topics = []
-    for course in courses:
-        course_topics = [t for t in all_topics if t["course_id"] == course["id"]]
-        if course_topics:
-            selected_topics.append(random.choice(course_topics))
-    
+
+    scope_topics = get_topics_for_scope()
+    if not scope_topics:
+        raise HTTPException(status_code=404, detail="No topics in active scope")
+
+    # cap the topic pool — random pick keeps quiz variety across reloads
+    if len(scope_topics) > max_topics:
+        scope_topics = random.sample(scope_topics, max_topics)
+
     generator = ContentGeneratorService()
     try:
         all_questions = []
-        questions_per_topic = max(1, count // len(selected_topics))
-        for topic in selected_topics:
-            course = next((c for c in courses if c["id"] == topic["course_id"]), {"id": "unknown", "name": "Unknown"})
-            questions = await generator.generate_quiz_questions(topic, course, count=questions_per_topic, difficulty=difficulty)
+        questions_per_topic = max(1, count // len(scope_topics))
+        for topic in scope_topics:
+            topic_dict = _topic_to_dict(topic)
+            course_dict = _topic_pseudo_course(topic)
+            questions = await generator.generate_quiz_questions(
+                topic_dict, course_dict,
+                count=questions_per_topic, difficulty=difficulty,
+            )
             for q in questions:
-                q["topic_name"] = topic["name"]
-                q["course_name"] = course["name"]
+                q["topic_name"] = topic.name
+                q["course_name"] = course_dict["name"]
             all_questions.extend(questions)
-        
+
         random.shuffle(all_questions)
         all_questions = all_questions[:count]
         app.state.current_questions = {q["id"]: q for q in all_questions}
-        
+
         questions_display = [{
             "id": q["id"], "topic_id": q["topic_id"], "topic_name": q.get("topic_name", ""),
             "course_name": q.get("course_name", ""), "question_type": q["question_type"],
             "question_text": q["question_text"], "options": q.get("options"),
             "difficulty": q["difficulty"], "points": q["points"],
         } for q in all_questions]
-        
-        return {"topics": [t["name"] for t in selected_topics], "questions": questions_display, "total_points": sum(q["points"] for q in all_questions)}
+
+        return {
+            "topics": [t.name for t in scope_topics],
+            "questions": questions_display,
+            "total_points": sum(q["points"] for q in all_questions),
+        }
     finally:
         await generator.close()
 
@@ -1313,72 +1328,179 @@ async def check_answer(question_id: str, answer: str):
 # =============================================================================
 
 @app.get("/daily", tags=["Daily"])
-async def get_daily_content():
-    from .config import get_all_topics, load_courses_config
-    from .services import PaperDiscoveryService, ContentGeneratorService
-    
-    seen_ids = list(get_seen_paper_ids())
-    
-    discovery = PaperDiscoveryService()
-    generator = ContentGeneratorService()
-    
+async def get_daily_content(refresh: str = ""):
+    """
+    Daily content: one paper + one topic review + a quiz, all scoped to
+    the user's active topics. Cached per-day in `daily_content_cache`.
+
+    Body lives in `services/daily_content.generate_daily_content` so the
+    APScheduler nightly job can call the same code path.
+    """
+    from .services.daily_content import generate_daily_content, VALID_REFRESH
+
     try:
-        # Get paper (excluding seen)
-        paper = await discovery.select_daily_paper(seen_ids=seen_ids, days_back=30)
-        paper_summary = None
-        
-        if paper:
-            # Mark as seen
-            paper_dict = paper.to_dict()
-            paper_dict["unique_id"] = paper.unique_id
-            mark_paper_as_seen(paper_dict)
-            paper_summary = await generator.generate_paper_summary(paper)
-        
-        # Smart topic selection
-        courses_config = load_courses_config()
-        all_topics = get_all_topics()
-        
-        completed_ids = get_completed_topic_ids()
-        recently_reviewed_ids = get_recently_reviewed_topic_ids(days=3)
-        review_later_ids = get_review_later_topic_ids()
-        
-        topic_reviews = []
-        quiz_questions = []
-        
-        for course in courses_config.get("courses", []):
-            topic = select_topic_for_course(
-                course, all_topics, completed_ids,
-                recently_reviewed_ids, review_later_ids
-            )
-            if topic:
-                review = await generator.generate_topic_review(topic, course)
-                topic_reviews.append({"topic": topic, "review": review})
-                questions = await generator.generate_quiz_questions(topic, course, count=2, difficulty="medium")
-                quiz_questions.extend(questions)
-        
-        topics_for_resources = [tr["topic"] for tr in topic_reviews]
-        resources = await generator.suggest_resources(topics_for_resources, paper)
-        
-        app.state.current_questions = {q["id"]: q for q in quiz_questions}
-        
-        questions_display = [{
-            "id": q["id"], "topic_id": q["topic_id"], "question_type": q["question_type"],
-            "question_text": q["question_text"], "options": q.get("options"),
-            "difficulty": q["difficulty"], "points": q["points"],
-        } for q in quiz_questions]
-        
-        # Update streak
-        update_user_streak()
-        
+        result = await generate_daily_content(refresh=refresh)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # rehydrate app.state.current_questions so /quiz/answer can look up by id
+    quiz_full = result.pop("_quiz_full", [])
+    app.state.current_questions = {q["id"]: q for q in quiz_full}
+    return result
+
+
+
+# =============================================================================
+# ROUTER MOUNTING (must come AFTER all @app.get/post/put decorators in this
+# file so that specific paths like /topics/status-summary and
+# /topics/{id}/review take precedence over the router's catch-all
+# /topics/{topic_id}.)
+# =============================================================================
+
+from .api.topics import topics_router, scope_router
+from .api.push import push_router
+app.include_router(topics_router)
+app.include_router(scope_router)
+app.include_router(push_router)
+
+
+# =============================================================================
+# ADMIN / SCHEDULER INSPECTION
+# =============================================================================
+
+@app.get("/admin/scheduler/jobs", tags=["Admin"])
+def admin_list_scheduler_jobs():
+    """List active APScheduler jobs (for debugging)."""
+    from .services.scheduler import list_jobs
+    return {"jobs": list_jobs()}
+
+
+@app.post("/admin/scheduler/run/{job_id}", tags=["Admin"])
+async def admin_run_scheduler_job(job_id: str):
+    """Manually fire a scheduled job by id. Useful for testing nightly logic without waiting."""
+    from .services.scheduler import trigger_now
+    return await trigger_now(job_id)
+
+
+# =============================================================================
+# DEEP HEALTH CHECK
+# =============================================================================
+
+@app.get("/health/deep", tags=["Core"])
+async def health_check_deep():
+    """
+    Per-subsystem health with latency. Returns 200 only when all CRITICAL
+    subsystems pass (DB + default LLM provider). Storage and push are
+    informational — degraded but not fatal.
+
+    Use the lightweight /health for platform health checks (Railway, CF);
+    use this when you want to see exactly which dep is unhealthy.
+    """
+    import time as _time
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import text as _sql_text
+
+    settings = get_settings()
+    out: dict[str, dict] = {}
+
+    def _ping(name: str, fn) -> dict:
+        t0 = _time.perf_counter()
+        try:
+            detail = fn() or {}
+            ok = True
+            error: Optional[str] = None
+        except Exception as e:  # noqa: BLE001
+            ok = False
+            detail = {}
+            error = f"{type(e).__name__}: {e}"[:200]
         return {
-            "date": date.today().isoformat(),
-            "paper": paper.to_dict() if paper else None,
-            "paper_summary": paper_summary,
-            "topic_reviews": topic_reviews,
-            "quiz": {"questions": questions_display, "total_points": sum(q["points"] for q in quiz_questions)},
-            "resources": resources,
-            "estimated_time_minutes": 45,
+            "ok": ok,
+            "latency_ms": round((_time.perf_counter() - t0) * 1000, 1),
+            **({"error": error} if error else {}),
+            **detail,
         }
-    finally:
-        await discovery.close()
-        await generator.close()
+
+    # DB
+    def _check_db():
+        engine = get_session().get_bind()
+        with engine.connect() as conn:
+            conn.execute(_sql_text("SELECT 1"))
+        return {"url_scheme": str(engine.url.drivername)}
+    out["db"] = _ping("db", _check_db)
+
+    # default LLM provider — just verify the API key is present (don't burn tokens)
+    def _check_anthropic():
+        if not settings.anthropic_api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY not set")
+        return {"model": settings.claude_model}
+    out["llm.anthropic"] = _ping("llm.anthropic", _check_anthropic)
+
+    # optional LLM providers
+    def _check_gemini():
+        if not settings.gemini_api_key:
+            return {"configured": False}
+        return {"configured": True, "model": settings.gemini_model}
+    out["llm.gemini"] = _ping("llm.gemini", _check_gemini)
+
+    # storage backend (head_bucket for B2, dir-exists for local)
+    def _check_storage():
+        from .services.storage import get_storage
+        s = get_storage()
+        if s.backend == "b2":
+            # exists() does a head_object which would 404 — use the bucket-level head
+            # by listing a single key via the private boto3 client.
+            s._client.head_bucket(Bucket=s.bucket)  # type: ignore[attr-defined]
+            return {"backend": "b2", "bucket": s.bucket}
+        # local: just confirm root dir exists and is writable
+        root = s.local_path("__healthcheck__")
+        if root is None:
+            return {"backend": s.backend}
+        root.parent.mkdir(parents=True, exist_ok=True)
+        return {"backend": "local", "root": str(root.parent)}
+    out["storage"] = _ping("storage", _check_storage)
+
+    # web push setup (just key presence)
+    def _check_vapid():
+        if not (settings.vapid_public_key and settings.vapid_private_key and settings.vapid_subject):
+            return {"configured": False}
+        return {"configured": True, "subject": settings.vapid_subject}
+    out["push.vapid"] = _ping("push.vapid", _check_vapid)
+
+    # arXiv reachability (lightweight HEAD-equivalent)
+    async def _check_arxiv_async():
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as c:
+            r = await c.get("https://export.arxiv.org/api/query?search_query=all:test&max_results=1")
+            r.raise_for_status()
+            return {"status_code": r.status_code}
+    arxiv_t0 = (lambda: 0)()
+    import time as _time2
+    arxiv_t0 = _time2.perf_counter()
+    try:
+        detail = await _check_arxiv_async()
+        out["arxiv"] = {
+            "ok": True,
+            "latency_ms": round((_time2.perf_counter() - arxiv_t0) * 1000, 1),
+            **detail,
+        }
+    except Exception as e:  # noqa: BLE001
+        out["arxiv"] = {
+            "ok": False,
+            "latency_ms": round((_time2.perf_counter() - arxiv_t0) * 1000, 1),
+            "error": f"{type(e).__name__}: {e}"[:200],
+        }
+
+    # scheduler
+    def _check_scheduler():
+        from .services.scheduler import list_jobs
+        jobs = list_jobs()
+        return {"running": len(jobs) > 0, "job_count": len(jobs)}
+    out["scheduler"] = _ping("scheduler", _check_scheduler)
+
+    critical = ("db", "llm.anthropic")
+    status = "healthy" if all(out[k]["ok"] for k in critical) else "degraded"
+    payload = {"status": status, "timestamp": date.today().isoformat(), "subsystems": out}
+    return JSONResponse(
+        content=payload,
+        status_code=200 if status == "healthy" else 503,
+    )

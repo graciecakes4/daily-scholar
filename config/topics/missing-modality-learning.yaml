@@ -1,0 +1,67 @@
+id: missing-modality-learning
+name: Missing-Modality Learning (Learnable Tokens)
+stream: missing_modality_learning
+active: true
+weight: 1.8
+keywords:
+- missing modality
+- modality dropout
+- modality robust
+- incomplete modality
+- partial modality
+- modality flexible
+- any-to-any
+- learnable modality token
+- learnable token
+- modality token
+- modality embedding
+- ModDrop
+- attention-based fusion
+- cross-attention fusion
+- modality-aware regularization
+- zero imputation
+- mean imputation
+- multimodal medical imaging
+- MICCAI
+- multimodal disease detection
+- MRI multimodal
+- missing-modality medical
+- Gu et al
+- Saito
+- contrastive multimodal fusion
+- shared-private representation
+- modality-invariant
+- modality-specific
+arxiv_categories:
+- cs.LG
+- cs.CV
+- cs.AI
+- eess.IV
+- astro-ph.IM
+recency_days: 180
+min_relevance: 0.17
+key_concepts:
+- what "missing modality" means at inference time vs. during training
+- why simply zeroing out a missing modality usually hurts performance
+- learnable modality tokens as a trained replacement for zero/mean imputation
+- 'modality dropout during training: randomly hiding modalities to force the model
+  to handle their absence'
+- 'shortcut learning: when one modality carries near-perfect class info and the model
+  leans entirely on it'
+- attention-based fusion architectures and how they interact with missing inputs
+- methodological transfer from medical imaging (multi-MRI sequences) to astronomy
+learning_objectives:
+- Define missing-modality learning and contrast it with the standard fully-paired
+  multimodal setting
+- List at least three strategies for handling missing modalities at inference (zero
+  imputation, learnable tokens, generative imputation)
+- Explain why modality dropout during training is necessary, not optional
+- Identify shortcut learning when reading a multimodal paper and propose a mitigation
+- Compare the medical-imaging missing-modality literature against the astronomy setting
+  at a high level
+resources:
+- astronomy/Astronomy_Praxis_Modality_Flexible_Transient_Classification.md
+quiz_difficulty: medium
+prerequisites:
+- ml-foundations
+- multimodal-foundation-models-astronomy

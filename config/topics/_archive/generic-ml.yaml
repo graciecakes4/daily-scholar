@@ -1,0 +1,198 @@
+# Archived: broad ML/LLM focus from the pre-praxis interests.yaml.
+#
+# This file is intentionally placed under config/topics/_archive/ so the
+# bootstrap loader does NOT pick it up (it only globs *.yaml at the top
+# level of config/topics/). To restore the broad-ML behavior:
+#
+#   1. Move this file out of _archive/ into config/topics/
+#   2. Restart the backend, OR call POST /topics/import-yaml
+#
+# The original full-granularity interests.yaml is preserved at
+# config/_archive/interests.yaml.bak for reference / partial restoration.
+
+id: generic-ml
+name: Generic ML / LLM / NLP (broad pre-praxis focus)
+stream: archive
+active: false                                       # off by default even if moved out of _archive/
+weight: 1.0
+
+# paper discovery — keyword union of the old primary/secondary/exploratory tiers
+keywords:
+  # LLMs & core
+  - large language model
+  - language model
+  - LLM
+  - GPT
+  - transformer
+  - fine-tuning
+  - pretraining
+  - instruction tuning
+  - alignment
+  - RLHF
+  - preference optimization
+  - inference
+  - speculative decoding
+  - KV cache
+  - quantization
+  - pruning
+  - AI safety
+  - jailbreak
+  - red teaming
+  - guardrails
+  # Deep learning
+  - deep learning
+  - neural network
+  - attention mechanism
+  - self-attention
+  - encoder
+  - decoder
+  - backpropagation
+  - gradient descent
+  - optimization
+  - loss function
+  - regularization
+  - generative model
+  - diffusion model
+  - autoencoder
+  - VAE
+  - GAN
+  # NLP applications
+  - natural language
+  - text generation
+  - text classification
+  - sentiment
+  - summarization
+  - reading comprehension
+  - question answering
+  - information extraction
+  - named entity
+  - word embedding
+  - sentence embedding
+  - semantic similarity
+  # Interpretability
+  - interpretability
+  - mechanistic interpretability
+  - explainability
+  - explainable AI
+  - sparse autoencoder
+  - probing
+  - feature visualization
+  - attention pattern
+  - circuit
+  - representation
+  - latent space
+  # Reinforcement learning
+  - reinforcement learning
+  - policy
+  - reward
+  - agent
+  - Q-learning
+  - policy gradient
+  - actor-critic
+  - PPO
+  - DQN
+  - multi-agent
+  - offline RL
+  - model-based
+  - world model
+  - exploration
+  # Efficient ML
+  - model compression
+  - knowledge distillation
+  - distillation
+  - LoRA
+  - adapter
+  - parameter efficient
+  - low-rank
+  - efficient
+  - lightweight
+  - edge
+  - mobile
+  - memory efficient
+  - gradient checkpointing
+  # Computer vision
+  - computer vision
+  - image
+  - visual
+  - vision transformer
+  - ViT
+  - object detection
+  - segmentation
+  - multimodal
+  - vision-language
+  # ML systems
+  - distributed training
+  - parallel
+  - GPU
+  - TPU
+  - PyTorch
+  - JAX
+  - TensorFlow
+  - serving
+  - deployment
+  - latency
+  - throughput
+  - kernel
+  - CUDA
+  - compiler
+  # Data & evaluation
+  - dataset
+  - data augmentation
+  - synthetic data
+  - data quality
+  - benchmark
+  - evaluation
+  - metric
+  - leaderboard
+  - robustness
+  - adversarial
+  - out-of-distribution
+  - generalization
+  # Probabilistic ML
+  - Bayesian
+  - probabilistic
+  - uncertainty
+  - variational
+  - MCMC
+  - Gaussian process
+  - posterior
+  - prior
+  - likelihood
+
+arxiv_categories:
+  - cs.LG
+  - cs.CL
+  - cs.AI
+  - cs.CV
+  - cs.RO
+  - cs.DC
+  - cs.PF
+  - stat.ML
+  - physics.comp-ph
+  - q-bio.BM
+
+recency_days: 30
+min_relevance: 0.15
+
+# learning content
+key_concepts:
+  - what a language model is at a high level
+  - the basic ingredients of training (loss, gradient descent, optimizer, batch)
+  - common architectures (MLP, CNN, transformer) and when each applies
+  - fine-tuning, transfer learning, and parameter-efficient adaptation (LoRA, adapters)
+  - retrieval-augmented generation (RAG) and vector databases
+  - evaluation under class imbalance (precision, recall, F1)
+  - interpretability tools (attention patterns, probing classifiers, sparse autoencoders)
+  - reinforcement learning vocabulary (policy, reward, value, Q-learning, PPO)
+
+learning_objectives:
+  - Explain transformer architecture and the self-attention mechanism
+  - Choose a fine-tuning strategy (full vs LoRA vs adapters) for a given budget
+  - Identify common LLM safety / alignment terms and their roles
+  - Compare model compression techniques (distillation, quantization, pruning)
+  - Read a benchmark paper and identify the leaderboard task it targets
+
+resources: []
+
+quiz_difficulty: medium
+prerequisites: []

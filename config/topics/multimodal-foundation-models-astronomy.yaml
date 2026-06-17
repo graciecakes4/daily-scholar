@@ -1,0 +1,73 @@
+id: multimodal-foundation-models-astronomy
+name: Multimodal Foundation Models in Astronomy
+stream: multimodal_foundation_models
+active: true
+weight: 2.0
+keywords:
+- multimodal foundation model
+- cross-modal alignment
+- contrastive learning
+- self-supervised
+- representation learning
+- vision-language
+- vision transformer
+- ViT
+- AstroCLIP
+- AstroM3
+- AstroM³
+- AstroPT
+- Maven
+- SpecCLIP
+- Multimodal Universe
+- CLIP
+- cross-modal contrastive
+- cross-modal pretraining
+- cross-modal encoder
+- modality fusion
+- late fusion
+- early fusion
+- attention-based fusion
+- latent space alignment
+- LoRA
+- parameter efficient fine-tuning
+- galaxy spectroscopy
+- galaxy imaging
+- host galaxy
+- photometry spectroscopy fusion
+- light curve transformer
+- astronomical time series
+- tabular metadata fusion
+arxiv_categories:
+- astro-ph.IM
+- astro-ph.GA
+- astro-ph.HE
+- cs.LG
+- cs.CV
+- cs.CL
+recency_days: 120
+min_relevance: 0.18
+key_concepts:
+- what a "foundation model" is and why the term arrived from NLP and vision
+- the main data modalities in astronomy (photometry, spectroscopy, imagery, tabular
+  metadata) and what each captures
+- cross-modal alignment in plain terms (CLIP-style contrastive learning)
+- early fusion vs. late fusion vs. attention-based fusion for combining modalities
+- pretraining on large unlabeled corpora, then fine-tuning on a downstream task
+- frozen pretrained encoders plus lightweight adapters (LoRA) as a cost-saving strategy
+- what current astronomy foundation models (AstroM³, Maven, AstroCLIP, AstroPT) do
+  well — and the modality-flexibility gap they leave open
+learning_objectives:
+- Explain in plain language what makes a model a "foundation model"
+- List the main data modalities in time-domain astronomy and what physical information
+  each carries
+- Sketch a CLIP-style contrastive cross-modal alignment objective at a high level
+- Compare frozen vs. fine-tuned encoders in terms of cost and downstream quality
+- Describe what AstroM³ and Maven contributed and where they fall short of full modality-flexible
+  inference
+resources:
+- astronomy/Astronomy_Praxis_Modality_Flexible_Transient_Classification.md
+quiz_difficulty: medium
+prerequisites:
+- astronomy-foundations
+- ml-foundations
+- transient-photometric-classification

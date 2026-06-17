@@ -1,26 +1,25 @@
 """
 Content Generator Service for Daily Scholar
 
-This service uses Claude to generate:
-1. Paper summaries - Plain language explanations of research papers
-2. Topic reviews - Study material for course topics
-3. Quiz questions - Various question types for testing knowledge
-4. Supplementary content - Connections, examples, etc.
+Generates:
+1. Paper summaries — plain-language explanations of research papers
+2. Topic reviews — study material for active topics
+3. Quiz questions — various question types for testing knowledge
+4. Supplementary content — connections, examples, related papers
 
-LEARNING NOTES:
-- We use the Anthropic SDK for API calls (cleaner than raw HTTP)
-- Prompts are carefully structured for consistent, useful output
-- We request JSON responses for structured data (quizzes)
-- Temperature is kept low for factual content, higher for creative content
+LLM calls go through `backend.services.llm.get_llm_client(task=...)`, which
+routes each task to a configured provider+model (see DEFAULT_TASK_ROUTING).
+Cheap models handle distillation and grading; premium models handle reasoning-
+heavy tasks like quiz construction.
 """
 
 import json
 from datetime import date
 from typing import Optional
-import anthropic
 import httpx
 
 from ..config import get_settings
+from .llm import get_llm_client
 
 
 class Paper:
@@ -33,14 +32,14 @@ class Paper:
 
 
 class ContentGeneratorService:
-    """Service for generating learning content using Claude."""
-    
+    """Service for generating learning content using a multi-provider LLM router."""
+
     def __init__(self):
         self.settings = get_settings()
-        self.client = anthropic.Anthropic(api_key=self.settings.anthropic_api_key)
-        self.model = self.settings.claude_model
+        # LLM clients are constructed per-call by get_llm_client() so swapping
+        # task routing via env vars doesn't require recreating the service.
         self.http_client = httpx.AsyncClient(timeout=30.0)
-    
+
     async def close(self):
         """Close the HTTP client."""
         await self.http_client.aclose()
@@ -75,23 +74,19 @@ Format as JSON:
 }}"""
 
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=2000,
-                temperature=0.3,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
-            content = response.content[0].text
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0]
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0]
-            
-            return json.loads(content)
+            client = get_llm_client(task="summary")
+            # 3500 tokens headroom — JSON-wrapped summaries with key_findings +
+            # reading_approach can run over 2000 once the model gets chatty
+            result = client.complete_json(prompt, max_tokens=3500, temperature=0.3)
+            if "__llm_parse_error__" in result:
+                raise ValueError(
+                    f"LLM JSON parse failed (likely truncated — try bumping max_tokens "
+                    f"or shortening the prompt): {result['__llm_parse_error__']}"
+                )
+            return result
         except Exception as e:
             print(f"Error generating paper summary: {e}")
-            return {"summary": "", "key_findings": [], "relevance_explanation": "", 
+            return {"summary": "", "key_findings": [], "relevance_explanation": "",
                     "reading_approach": {}, "connections": []}
     
     async def generate_topic_review(self, topic: dict, course: dict, 
@@ -127,23 +122,20 @@ Format as JSON:
 }}"""
 
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=2500,
-                temperature=0.4,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
-            content = response.content[0].text
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0]
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0]
-            
-            return json.loads(content)
+            client = get_llm_client(task="review")
+            # 4500 tokens because the review prompt asks for 3-5 paragraphs +
+            # 5-7 key points + connections + practice suggestions; 2500 was
+            # consistently truncating mid-string on the praxis-aligned topics
+            result = client.complete_json(prompt, max_tokens=4500, temperature=0.4)
+            if "__llm_parse_error__" in result:
+                raise ValueError(
+                    f"LLM JSON parse failed (likely truncated — try bumping max_tokens "
+                    f"or shortening the prompt): {result['__llm_parse_error__']}"
+                )
+            return result
         except Exception as e:
             print(f"Error generating topic review: {e}")
-            return {"review_content": "", "key_points": [], "connections": [], 
+            return {"review_content": "", "key_points": [], "connections": [],
                     "practice_suggestions": []}
     
     async def generate_quiz_questions(self, topic: dict, course: dict, count: int = 5,
@@ -193,21 +185,19 @@ Format as JSON array:
 ]"""
 
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=3000,
-                temperature=0.6,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
-            content = response.content[0].text
+            client = get_llm_client(task="quiz")
+            # questions endpoint returns a JSON ARRAY at the top level; complete_json
+            # expects a dict, so we call complete() directly here and parse manually.
+            # 5000 tokens because the prompt asks for `count` questions each with
+            # options + correct_answer + explanation + concept_tested.
+            raw = client.complete(prompt, max_tokens=5000, temperature=0.6)
+            content = raw.strip()
             if "```json" in content:
-                content = content.split("```json")[1].split("```")[0]
+                content = content.split("```json", 1)[1].split("```", 1)[0]
             elif "```" in content:
-                content = content.split("```")[1].split("```")[0]
-            
+                content = content.split("```", 1)[1].split("```", 1)[0]
             questions = json.loads(content)
-            
+
             for i, q in enumerate(questions):
                 q["id"] = f"{topic['id']}_q{i+1}_{date.today().isoformat()}"
                 q["topic_id"] = topic["id"]
@@ -254,18 +244,10 @@ Be generous with partial credit. Format as JSON:
 {{"is_correct": true/false, "score": 0.0-1.0, "feedback": "constructive feedback"}}"""
 
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=500,
-                temperature=0.2,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
-            content = response.content[0].text
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0]
-            
-            result = json.loads(content)
+            client = get_llm_client(task="evaluate")
+            result = client.complete_json(prompt, max_tokens=500, temperature=0.2)
+            if "__llm_parse_error__" in result:
+                raise ValueError(f"LLM JSON parse failed: {result['__llm_parse_error__']}")
             result["correct_answer"] = correct_answer
             return result
         except Exception as e:
@@ -322,7 +304,7 @@ Be generous with partial credit. Format as JSON:
             clean_query = query.replace(":", " ").replace('"', "")
             encoded_query = urllib.parse.quote(clean_query)
             
-            url = f"http://export.arxiv.org/api/query?search_query=all:{encoded_query}&start=0&max_results={limit}&sortBy=relevance"
+            url = f"https://export.arxiv.org/api/query?search_query=all:{encoded_query}&start=0&max_results={limit}&sortBy=relevance"
             
             response = await self.http_client.get(url)
             

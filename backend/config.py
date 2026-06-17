@@ -50,9 +50,29 @@ class Settings(BaseSettings):
     port: int = Field(default=8000)
     frontend_url: str = Field(default="http://localhost:3000")
     
-    # Content Generation
-    claude_model: str = Field(default="claude-sonnet-4-20250514")
+    # Content Generation — Anthropic (default provider)
+    claude_model: str = Field(default="claude-sonnet-4-5")
     max_tokens: int = Field(default=4096)
+
+    # Content Generation — Google Gemini (optional; required if any task routes to gemini or antigravity)
+    gemini_api_key: Optional[str] = Field(default=None)
+    gemini_model: str = Field(default="gemini-2.5-flash")
+
+    # Content Generation — Google Antigravity (uses GEMINI_API_KEY under the hood)
+    # Leave model empty to use the Antigravity SDK's default.
+    antigravity_model: Optional[str] = Field(default=None)
+
+    # Per-task LLM routing overrides — format "provider:model".
+    # Supported providers: anthropic, gemini, antigravity.
+    # Examples:
+    #   LLM_TASK_SUMMARY=gemini:gemini-2.5-flash
+    #   LLM_TASK_QUIZ=antigravity:gemini-2.5-pro
+    # Empty / None = use DEFAULT_TASK_ROUTING in backend/services/llm/factory.py.
+    llm_task_summary: Optional[str] = Field(default=None)
+    llm_task_review: Optional[str] = Field(default=None)
+    llm_task_quiz: Optional[str] = Field(default=None)
+    llm_task_evaluate: Optional[str] = Field(default=None)
+    llm_task_default: Optional[str] = Field(default=None)
     
     # Scheduling
     daily_generation_time: str = Field(default="06:00")
@@ -61,7 +81,27 @@ class Settings(BaseSettings):
     # File Storage
     upload_dir: str = Field(default="./uploads")
     max_upload_size: int = Field(default=52428800)  # 50MB
-    
+
+    # Storage backend for blob writes (PDFs, future uploads):
+    #   "local" — filesystem under local_storage_root (default for solo / beta)
+    #   "b2"    — Backblaze B2 via S3-compatible API (default for cloud)
+    storage_backend: str = Field(default="local")
+    local_storage_root: str = Field(default="./data")
+
+    # Backblaze B2 — required only if storage_backend == "b2"
+    # Endpoint format: https://s3.<region>.backblazeb2.com
+    b2_endpoint_url: Optional[str] = Field(default=None)
+    b2_key_id: Optional[str] = Field(default=None)
+    b2_application_key: Optional[str] = Field(default=None)
+    b2_bucket_name: Optional[str] = Field(default=None)
+    b2_region: str = Field(default="us-west-002")
+
+    # Web Push (VAPID) — populate via `python scripts/generate_vapid_keys.py`.
+    # All three left empty by default; push endpoints return 503 until set.
+    vapid_public_key: Optional[str] = Field(default=None)
+    vapid_private_key: Optional[str] = Field(default=None)
+    vapid_subject: Optional[str] = Field(default=None)
+
     # Pydantic v2 configuration
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -1,0 +1,110 @@
+id: astronomy-foundations
+name: Astronomy Foundations — Photometry, Spectroscopy, Transients, Variables
+stream: foundations
+active: true
+weight: 1.5
+keywords:
+- photometry
+- flux
+- flux density
+- magnitude
+- apparent magnitude
+- absolute magnitude
+- color index
+- K correction
+- light curve
+- photometric calibration
+- photometric system
+- ugriz
+- ugrizy
+- griz
+- Johnson-Cousins
+- SDSS photometry
+- LSST photometry
+- broadband filter
+- point-source photometry
+- spectroscopy
+- spectrum
+- emission line
+- absorption line
+- spectral classification
+- Balmer
+- silicon line
+- helium line
+- hydrogen line
+- redshift
+- rest frame
+- blueshift
+- signal-to-noise
+- spectrograph
+- resolving power
+- transient
+- astronomical transient
+- supernova
+- SN Ia
+- SN II
+- SN Ib
+- SN Ic
+- core-collapse supernova
+- thermonuclear supernova
+- kilonova
+- tidal disruption event
+- TDE
+- gamma-ray burst
+- GRB
+- superluminous supernova
+- fast blue optical transient
+- calcium-rich transient
+- variable star
+- periodic variable
+- RR Lyrae
+- Cepheid
+- delta Scuti
+- Mira
+- eclipsing binary
+- cataclysmic variable
+- period-luminosity
+- light-curve shape
+- sky survey
+- photometric survey
+- spectroscopic survey
+- time-domain survey
+- ZTF
+- SDSS
+- DES
+- Legacy Survey
+- Pan-STARRS
+- host galaxy
+- galaxy morphology
+arxiv_categories:
+- astro-ph.IM
+- astro-ph.SR
+- astro-ph.HE
+- astro-ph.GA
+recency_days: 365
+min_relevance: 0.2
+key_concepts:
+- what flux is, physically, and why astronomers express it as magnitude
+- the inverse-square law and the difference between apparent and absolute magnitude
+- filter bands (ugrizy) and what color information adds beyond a single band
+- what a light curve is and how it encodes physical evolution over time
+- what spectra tell us — composition, temperature, motion (Doppler/redshift), and
+  density
+- emission vs. absorption lines and where each comes from
+- the supernova spectral taxonomy (Ia / Ib / Ic / II) and its physical basis
+- what makes something a "transient" vs. a "variable star"
+- what a sky survey is, and how photometric vs. spectroscopic surveys differ
+- host-galaxy context and why it helps identify transient types
+learning_objectives:
+- Explain flux and the magnitude scale, and convert intuitively between them
+- Read a light curve and identify whether it depicts a transient or a variable
+- Identify supernova types from a few key spectral features (Si II → Ia, H Balmer
+  → II, He I → Ib)
+- Describe at least three reasons photometric surveys cannot replace spectroscopic
+  confirmation
+- Name three major time-domain surveys (e.g., ZTF, Pan-STARRS, Rubin/LSST) and what
+  each produces
+resources:
+- astronomy/foundational_readings_for_praxis.md
+quiz_difficulty: easy
+prerequisites: []

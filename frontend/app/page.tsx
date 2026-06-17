@@ -121,6 +121,42 @@ export default function DashboardPage() {
     }
   };
 
+  const [refreshingPaper, setRefreshingPaper] = useState(false);
+  const handleNewPaper = async () => {
+    setRefreshingPaper(true);
+    setPaperArchived(false);
+    try {
+      const content = await getDailyContent('paper');
+      setDailyContent(content);
+      // paper-only refresh leaves the quiz alone, but rehydrate state for safety
+      setQuizQuestions(content.quiz.questions);
+      setQuizTotalPoints(content.quiz.total_points);
+    } catch (err) {
+      console.error('Failed to refresh paper:', err);
+    } finally {
+      setRefreshingPaper(false);
+    }
+  };
+
+  const [refreshingReview, setRefreshingReview] = useState(false);
+  const handleNewReview = async () => {
+    setRefreshingReview(true);
+    setArchivedTopics(new Set());
+    setQuizArchived(false);
+    setQuizAnswers({});
+    setQuizResults({});
+    try {
+      const content = await getDailyContent('review');
+      setDailyContent(content);
+      setQuizQuestions(content.quiz.questions);
+      setQuizTotalPoints(content.quiz.total_points);
+    } catch (err) {
+      console.error('Failed to refresh topic review:', err);
+    } finally {
+      setRefreshingReview(false);
+    }
+  };
+
   const handleArchiveTopic = async (index: number) => {
     const topicReview = dailyContent?.topic_reviews[index];
     if (!topicReview) return;
@@ -349,18 +385,35 @@ export default function DashboardPage() {
                         </a>
                       )}
                     </div>
-                    <button
-                      onClick={handleArchivePaper}
-                      disabled={archivingPaper || paperArchived}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
-                        paperArchived ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-600 text-white hover:bg-blue-700'
-                      } disabled:opacity-50`}
-                    >
-                      {archivingPaper ? (
-                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : paperArchived ? <CheckIcon /> : <ArchiveIcon />}
-                      {paperArchived ? 'Saved!' : 'Save to Archive'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleNewPaper}
+                        disabled={refreshingPaper}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        title="Skip this paper and find a different one"
+                      >
+                        {refreshingPaper ? (
+                          <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        )}
+                        {refreshingPaper ? 'Loading…' : 'New paper'}
+                      </button>
+                      <button
+                        onClick={handleArchivePaper}
+                        disabled={archivingPaper || paperArchived}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
+                          paperArchived ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-600 text-white hover:bg-blue-700'
+                        } disabled:opacity-50`}
+                      >
+                        {archivingPaper ? (
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : paperArchived ? <CheckIcon /> : <ArchiveIcon />}
+                        {paperArchived ? 'Saved!' : 'Save to Archive'}
+                      </button>
+                    </div>
                   </div>
                 </>
               ) : (
@@ -386,17 +439,36 @@ export default function DashboardPage() {
                     </span>
                     <h2 className="text-xl font-bold text-slate-900 mt-2">{tr.topic.name}</h2>
                   </div>
-                  <button
-                    onClick={() => handleArchiveTopic(index)}
-                    disabled={archivingTopic === tr.topic.id || archivedTopics.has(tr.topic.id)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
-                      archivedTopics.has(tr.topic.id) ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 hover:bg-slate-200'
-                    } disabled:opacity-50`}
-                  >
-                    {archivingTopic === tr.topic.id ? (
-                      <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
-                    ) : archivedTopics.has(tr.topic.id) ? <><CheckIcon /> Saved</> : <><ArchiveIcon /> Save</>}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {index === 0 && (
+                      <button
+                        onClick={handleNewReview}
+                        disabled={refreshingReview}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        title="Generate a different topic review"
+                      >
+                        {refreshingReview ? (
+                          <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        )}
+                        {refreshingReview ? 'Loading…' : 'New'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleArchiveTopic(index)}
+                      disabled={archivingTopic === tr.topic.id || archivedTopics.has(tr.topic.id)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
+                        archivedTopics.has(tr.topic.id) ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 hover:bg-slate-200'
+                      } disabled:opacity-50`}
+                    >
+                      {archivingTopic === tr.topic.id ? (
+                        <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                      ) : archivedTopics.has(tr.topic.id) ? <><CheckIcon /> Saved</> : <><ArchiveIcon /> Save</>}
+                    </button>
+                  </div>
                 </div>
                 <p className="text-slate-700 mb-4">{tr.review.review_content}</p>
                 <div className="grid md:grid-cols-2 gap-4">

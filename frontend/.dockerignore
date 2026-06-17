@@ -1,0 +1,27 @@
+# keep the frontend build context small
+node_modules
+.next
+out
+build
+dist
+.env
+.env.local
+.env.*.local
+
+# coverage/tests
+coverage
+.nyc_output
+
+# editor / OS
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# misc
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.cache
+*.tsbuildinfo

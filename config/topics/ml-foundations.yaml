@@ -1,0 +1,106 @@
+id: ml-foundations
+name: ML Foundations — Neural Networks, Training, Classification, Fine-tuning, Diffusion
+stream: foundations
+active: true
+weight: 1.5
+keywords:
+- neural network
+- deep learning
+- multilayer perceptron
+- MLP
+- convolutional neural network
+- CNN
+- recurrent neural network
+- RNN
+- transformer
+- attention
+- self-attention
+- encoder
+- decoder
+- activation function
+- ReLU
+- sigmoid
+- softmax
+- embedding
+- training
+- gradient descent
+- stochastic gradient descent
+- SGD
+- backpropagation
+- loss function
+- cross-entropy
+- mean squared error
+- optimizer
+- Adam
+- learning rate
+- learning rate schedule
+- batch size
+- epoch
+- overfitting
+- underfitting
+- regularization
+- dropout
+- batch normalization
+- early stopping
+- multi-class classification
+- multiclass
+- imbalanced classification
+- precision
+- recall
+- F1 score
+- macro F1
+- confusion matrix
+- ROC curve
+- AUC
+- calibration
+- class imbalance
+- fine-tuning
+- transfer learning
+- pretraining
+- frozen layers
+- parameter-efficient fine-tuning
+- LoRA
+- adapter
+- knowledge distillation
+- diffusion model
+- denoising diffusion
+- DDPM
+- DDIM
+- score matching
+- score-based generative model
+- latent diffusion
+- conditional diffusion
+- guided diffusion
+- classifier-free guidance
+arxiv_categories:
+- cs.LG
+- cs.AI
+- cs.CV
+- cs.CL
+- stat.ML
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- the structure of a feedforward neural network (layers, weights, activations)
+- 'the basics of training: loss function, gradient descent, backprop, optimizer choice'
+- common architectures (MLP, CNN, transformer) and which data shapes each fits best
+- multi-class classification with softmax and cross-entropy loss
+- evaluating imbalanced classification with F1, macro F1, precision, recall, and confusion
+  matrices
+- overfitting and the standard mitigations (dropout, regularization, early stopping)
+- what fine-tuning a pretrained model does, and why it usually beats training from
+  scratch
+- parameter-efficient fine-tuning (LoRA, adapters) and when to reach for it
+- 'diffusion models: the forward noising process, the learned reverse process, and
+  conditional generation'
+learning_objectives:
+- Diagram a forward pass through a small MLP and explain what backprop computes
+- Choose an appropriate loss function for a multi-class problem and explain the choice
+- Compute macro F1 from a small confusion matrix by hand
+- Identify overfitting from a learning curve and propose three mitigations
+- Explain the difference between full fine-tuning and LoRA at the parameter-update
+  level
+- Describe the forward and reverse processes of a diffusion model in plain language
+resources: []
+quiz_difficulty: easy
+prerequisites: []

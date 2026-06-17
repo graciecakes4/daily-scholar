@@ -12,8 +12,8 @@ Full paper lifecycle with:
 from datetime import datetime, date, timedelta
 from typing import Optional
 from sqlalchemy import (
-    Column, Integer, String, Text, Float, Boolean, 
-    DateTime, Date, ForeignKey, JSON, create_engine, Index
+    Column, Integer, String, Text, Float, Boolean,
+    DateTime, Date, ForeignKey, JSON, create_engine, Index, UniqueConstraint,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, Session
@@ -31,9 +31,11 @@ class SeenPaper(Base):
     This prevents showing the same paper twice.
     """
     __tablename__ = "seen_papers"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+    # Owner — '__local__' sentinel today; real ids when Cloudflare Access lands
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
     # Unique identifier (arxiv:xxx, doi:xxx, s2:xxx, or hash:xxx)
     unique_id = Column(String(200), unique=True, nullable=False, index=True)
     
@@ -69,9 +71,10 @@ class ArchivedPaper(Base):
     Papers the user has explicitly saved to their archive.
     """
     __tablename__ = "archived_papers"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
     # Link to seen paper (if it came from daily discovery)
     seen_paper_id = Column(Integer, ForeignKey("seen_papers.id"), nullable=True)
     
@@ -133,9 +136,10 @@ class PaperPDF(Base):
     Tracks PDF files stored locally.
     """
     __tablename__ = "paper_pdfs"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
     # Link to archived paper
     archived_paper_id = Column(Integer, ForeignKey("archived_papers.id"), nullable=True)
     
@@ -170,9 +174,10 @@ class ArchivedTopicReview(Base):
       - 'completed'    : user marked as mastered, excluded from rotation
     """
     __tablename__ = "archived_topic_reviews"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
     topic_id = Column(String(100), nullable=False, index=True)
     topic_name = Column(String(200), nullable=False)
     course_id = Column(String(100), nullable=False)
@@ -212,9 +217,10 @@ class ArchivedQuiz(Base):
     Completed quizzes.
     """
     __tablename__ = "archived_quizzes"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
     topics = Column(JSON)
     topic_ids = Column(JSON)
     total_questions = Column(Integer)
@@ -237,22 +243,29 @@ class DailyContentCache(Base):
     Cache daily generated content to avoid regenerating.
     """
     __tablename__ = "daily_content_cache"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
-    content_date = Column(Date, unique=True, nullable=False, index=True)
-    
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
+    # content_date is no longer unique on its own — (user_id, content_date) is.
+    # Migration 0003 swaps the unique constraint.
+    content_date = Column(Date, nullable=False, index=True)
+
     paper_unique_id = Column(String(200), nullable=True)
     paper_data = Column(JSON)
     paper_summary = Column(JSON)
-    
+
     topic_reviews = Column(JSON)
     quiz_questions = Column(JSON)
     resources = Column(JSON)
-    
+
     generated_at = Column(DateTime, default=datetime.utcnow)
     is_completed = Column(Boolean, default=False)
     completed_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "content_date", name="uq_daily_content_cache_user_date"),
+    )
 
 
 # =============================================================================
@@ -264,9 +277,12 @@ class UserStats(Base):
     Track user learning statistics.
     """
     __tablename__ = "user_stats"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    
+    user_id = Column(
+        String(100), nullable=False, default="__local__", index=True, unique=True
+    )
+
     total_papers_seen = Column(Integer, default=0)
     total_papers_archived = Column(Integer, default=0)
     total_papers_completed = Column(Integer, default=0)
@@ -283,6 +299,127 @@ class UserStats(Base):
 
 
 # =============================================================================
+# TOPICS - Unified topic model (replaces interests.yaml + courses.yaml)
+# =============================================================================
+
+class Topic(Base):
+    """
+    First-class topic entity that drives paper discovery AND review/quiz
+    generation. Replaces the old split between interests (config/interests.yaml)
+    and courses (config/courses.yaml).
+
+    Loaded from config/topics/*.yaml on startup (one file per topic) and
+    upserted into this table. The DB is canonical at runtime; YAML edits
+    after the first bootstrap require an explicit POST /topics/import-yaml
+    call to merge. UI edits write to this table only; POST /topics/export-yaml
+    dumps the current DB state back to YAML files.
+    """
+    __tablename__ = "topics"
+
+    # stable slug, used as primary key + foreign key from other tables
+    id = Column(String(100), primary_key=True)
+
+    # display
+    name = Column(String(200), nullable=False)
+
+    # grouping tag (e.g., "foundations", "photometric_classification")
+    stream = Column(String(100), nullable=False, index=True)
+
+    # quick on/off without deletion
+    active = Column(Boolean, default=True, nullable=False, index=True)
+
+    # boosts relevance scoring for paper discovery
+    weight = Column(Float, default=1.0, nullable=False)
+
+    # paper-discovery side (replaces interests.yaml content)
+    keywords = Column(JSON, nullable=False, default=list)
+    arxiv_categories = Column(JSON, nullable=False, default=list)
+    recency_days = Column(Integer, default=30, nullable=False)
+    min_relevance = Column(Float, default=0.18, nullable=False)
+
+    # learning-content side (replaces courses.yaml topics)
+    key_concepts = Column(JSON, nullable=False, default=list)
+    learning_objectives = Column(JSON, nullable=False, default=list)
+    resources = Column(JSON, nullable=False, default=list)
+    quiz_difficulty = Column(String(20), default="medium", nullable=False)
+    prerequisites = Column(JSON, nullable=False, default=list)
+
+    # bookkeeping
+    # "yaml" = bootstrapped from config/topics/<id>.yaml
+    # "ui"   = created via the in-app editor (no YAML file unless exported)
+    created_via = Column(String(20), default="yaml", nullable=False)
+
+    # false means the YAML file is no longer on disk but the DB row is kept
+    # (so UI-only topics aren't blown away when YAML files come and go)
+    source_yaml_present = Column(Boolean, default=True, nullable=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index('idx_topic_active_stream', 'active', 'stream'),
+    )
+
+
+# =============================================================================
+# USER SETTINGS - Per-user preferences (topic scope, etc.)
+# =============================================================================
+
+class UserSettings(Base):
+    """
+    Per-user settings. Today the only user is the local sentinel '__local__';
+    when Cloudflare Access is flipped on, this table picks up real user_ids
+    from the JWT claim with no schema change.
+
+    The headline field is `scope_mode` + `scope_topic_ids`, which together
+    define what subset of the topics table drives paper discovery, topic
+    review, and quiz generation:
+      - "silo"  : only the single topic_id in scope_topic_ids[0]
+      - "multi" : explicit set in scope_topic_ids
+      - "all"   : every Topic where active=True (scope_topic_ids ignored)
+    """
+    __tablename__ = "user_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(100), unique=True, nullable=False, default="__local__", index=True)
+
+    scope_mode = Column(String(20), default="all", nullable=False)
+    scope_topic_ids = Column(JSON, nullable=False, default=list)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# =============================================================================
+# PUSH SUBSCRIPTIONS - Web Push (scaffolded for Phase 1)
+# =============================================================================
+
+class PushSubscription(Base):
+    """
+    Web Push subscriptions per the VAPID protocol. Populated by the
+    POST /push/subscribe endpoint when a browser grants notification
+    permission. Wired into actual push fanout during Phase 1 of the
+    PWA migration; the schema lands now so we don't need a second
+    migration later.
+    """
+    __tablename__ = "push_subscriptions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(100), nullable=False, default="__local__", index=True)
+
+    # the three pieces of a Web Push subscription
+    endpoint = Column(String(500), unique=True, nullable=False)
+    p256dh = Column(String(200), nullable=False)
+    auth = Column(String(200), nullable=False)
+
+    # "ios" | "macos" | "android" | "desktop" | "unknown"
+    platform = Column(String(50), default="unknown", nullable=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_used_at = Column(DateTime, nullable=True)
+
+
+# =============================================================================
 # DATABASE SETUP
 # =============================================================================
 
@@ -291,17 +428,39 @@ _SessionLocal = None
 
 
 def get_database_url() -> str:
+    """
+    Return the configured DB URL, normalized to a SQLAlchemy-friendly driver.
+
+    Railway / Heroku / many other Postgres providers inject URLs like
+    `postgres://user:pass@host/db`. SQLAlchemy needs an explicit driver name
+    in the scheme (`postgresql+psycopg://...`). This shim rewrites the prefix
+    so the same DATABASE_URL works on every host without per-platform tweaks.
+    """
     from .config import get_settings
-    return get_settings().database_url
+    url = get_settings().database_url
+    if url.startswith("postgres://"):
+        url = "postgresql+psycopg://" + url[len("postgres://"):]
+    elif url.startswith("postgresql://") and "+" not in url.split("://", 1)[0]:
+        # bare `postgresql://` defaults to psycopg2; force psycopg v3
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
 
 
 def get_engine():
     global _engine
     if _engine is None:
+        url = get_database_url()
+        # `check_same_thread=False` is a SQLite-only connect arg; psycopg rejects it.
+        # SQLAlchemy URLs look like 'sqlite:///...', 'sqlite+aiosqlite:///...',
+        # 'postgresql+psycopg://...', etc.
+        connect_args: dict = {}
+        if url.startswith("sqlite"):
+            connect_args["check_same_thread"] = False
         _engine = create_engine(
-            get_database_url(),
+            url,
             echo=False,
-            connect_args={"check_same_thread": False}
+            connect_args=connect_args,
+            pool_pre_ping=True,  # cheap health-check on each checkout; avoids stale conns
         )
     return _engine
 
@@ -314,63 +473,116 @@ def get_session() -> Session:
 
 
 def create_tables():
+    """
+    Bring the database up to the latest schema via Alembic.
+
+    Handles four scenarios:
+      1. Fresh install (no tables): runs all migrations from scratch.
+      2. Pre-alembic legacy install (app tables exist, no alembic_version
+         table): backfills any columns missing from the old runtime
+         migration, stamps the DB at baseline, then upgrades.
+      3. Failed prior upgrade (alembic_version table exists but is empty
+         because the first attempt errored before stamping): treated as
+         legacy — backfill, stamp, upgrade.
+      4. Already-managed install (alembic_version has a revision): just
+         upgrades to head.
+
+    Also creates the data directory and seeds an initial UserStats row.
+    """
     from pathlib import Path
-    
+    from sqlalchemy import inspect, text
+
     db_path = Path("./data")
     db_path.mkdir(parents=True, exist_ok=True)
-    
-    # Also create papers directory for PDFs
     papers_path = Path("./data/papers")
     papers_path.mkdir(parents=True, exist_ok=True)
-    
+
     engine = get_engine()
-    Base.metadata.create_all(engine)
-    
-    # Initialize user stats if not exists
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    has_legacy_tables = "user_stats" in existing_tables
+
+    # read the actual revision out of alembic_version (table can exist but
+    # be empty if a previous upgrade failed before stamping)
+    current_revision: Optional[str] = None
+    if "alembic_version" in existing_tables:
+        with engine.connect() as conn:
+            row = conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).first()
+            if row is not None:
+                current_revision = row[0]
+
+    if current_revision is not None:
+        # fully managed — just upgrade
+        _run_alembic("upgrade", "head")
+    elif has_legacy_tables:
+        # legacy DB (with or without an empty alembic_version table)
+        _backfill_legacy_columns(engine)
+        _run_alembic("stamp", "0001_baseline")
+        _run_alembic("upgrade", "head")
+    else:
+        # fresh install — alembic creates everything
+        _run_alembic("upgrade", "head")
+
+    # seed user_stats row if absent
     session = get_session()
     try:
         stats = session.query(UserStats).first()
         if not stats:
             session.add(UserStats())
             session.commit()
-        
-        # Migrate: add status column to existing archived_topic_reviews if missing
-        _migrate_topic_status(session)
     finally:
         session.close()
-    
-    print("✅ Database tables created successfully!")
+
+    print("✅ Database schema is up to date.")
     return engine
 
 
-def _migrate_topic_status(session: Session):
+def _run_alembic(action: str, revision: str):
+    """Invoke alembic programmatically using the project's alembic.ini."""
+    from pathlib import Path
+    from alembic import command
+    from alembic.config import Config
+
+    alembic_ini = Path(__file__).resolve().parent.parent / "alembic.ini"
+    cfg = Config(str(alembic_ini))
+    cfg.set_main_option("sqlalchemy.url", get_database_url())
+
+    if action == "upgrade":
+        command.upgrade(cfg, revision)
+    elif action == "stamp":
+        command.stamp(cfg, revision)
+    else:
+        raise ValueError(f"unknown alembic action: {action}")
+
+
+def _backfill_legacy_columns(engine):
     """
-    Backfill the 'status' and 'completed_at' columns for existing rows.
-    SQLAlchemy's create_all won't add new columns to existing tables,
-    so we handle it manually with raw SQL.
+    Pre-alembic Daily Scholar applied a manual ALTER TABLE at runtime to
+    add 'status' and 'completed_at' columns on archived_topic_reviews. If a
+    beta-tester DB predates that migration, replay it here so stamping
+    baseline reflects reality.
     """
     from sqlalchemy import text, inspect
-    
-    engine = get_engine()
+
     inspector = inspect(engine)
-    
-    existing_columns = [col["name"] for col in inspector.get_columns("archived_topic_reviews")]
-    
-    if "status" not in existing_columns:
-        with engine.connect() as conn:
+    if "archived_topic_reviews" not in set(inspector.get_table_names()):
+        return
+
+    existing_columns = {col["name"] for col in inspector.get_columns("archived_topic_reviews")}
+    with engine.connect() as conn:
+        if "status" not in existing_columns:
             conn.execute(text(
-                "ALTER TABLE archived_topic_reviews ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"
+                "ALTER TABLE archived_topic_reviews "
+                "ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"
             ))
-            conn.commit()
-        print("  ↳ Migrated: added 'status' column to archived_topic_reviews")
-    
-    if "completed_at" not in existing_columns:
-        with engine.connect() as conn:
+            print("  ↳ Backfilled: archived_topic_reviews.status")
+        if "completed_at" not in existing_columns:
             conn.execute(text(
-                "ALTER TABLE archived_topic_reviews ADD COLUMN completed_at DATETIME"
+                "ALTER TABLE archived_topic_reviews "
+                "ADD COLUMN completed_at DATETIME"
             ))
-            conn.commit()
-        print("  ↳ Migrated: added 'completed_at' column to archived_topic_reviews")
+            print("  ↳ Backfilled: archived_topic_reviews.completed_at")
+        conn.commit()
 
 
 # =============================================================================
@@ -485,6 +697,95 @@ def get_recently_reviewed_topic_ids(days: int = 3) -> set[str]:
             ArchivedTopicReview.last_reviewed_at >= cutoff
         ).all()
         return {r[0] for r in results}
+    finally:
+        session.close()
+
+
+# =============================================================================
+# TOPIC / SCOPE HELPERS
+# =============================================================================
+
+# sentinel for the default (pre-auth, local) user
+DEFAULT_USER_ID = "__local__"
+
+
+def get_or_create_user_settings(user_id: str = DEFAULT_USER_ID) -> UserSettings:
+    """
+    Fetch the UserSettings row for this user, creating a default one if it
+    doesn't yet exist. Default scope is 'all' (every active topic).
+    """
+    session = get_session()
+    try:
+        settings = session.query(UserSettings).filter(
+            UserSettings.user_id == user_id
+        ).first()
+        if settings is None:
+            settings = UserSettings(user_id=user_id, scope_mode="all", scope_topic_ids=[])
+            session.add(settings)
+            session.commit()
+            session.refresh(settings)
+        return settings
+    finally:
+        session.close()
+
+
+def get_active_topics(session: Optional[Session] = None) -> list[Topic]:
+    """All active topics, ordered by descending weight then name."""
+    own_session = session is None
+    if own_session:
+        session = get_session()
+    try:
+        return (
+            session.query(Topic)
+            .filter(Topic.active.is_(True))
+            .order_by(Topic.weight.desc(), Topic.name.asc())
+            .all()
+        )
+    finally:
+        if own_session:
+            session.close()
+
+
+def get_topics_for_scope(user_id: str = DEFAULT_USER_ID) -> list[Topic]:
+    """
+    Resolve the user's topic scope into the actual list of Topic rows that
+    paper discovery, topic review, and quiz generation should operate on.
+
+    Behavior:
+      - 'silo'  : the single topic id in scope_topic_ids[0], if active
+      - 'multi' : every topic in scope_topic_ids whose row is active
+      - 'all'   : every active topic (default)
+    Falls back to 'all' if a silo/multi scope resolves to zero topics.
+    """
+    settings = get_or_create_user_settings(user_id)
+    session = get_session()
+    try:
+        if settings.scope_mode == "silo" and settings.scope_topic_ids:
+            topics = (
+                session.query(Topic)
+                .filter(
+                    Topic.id == settings.scope_topic_ids[0],
+                    Topic.active.is_(True),
+                )
+                .all()
+            )
+        elif settings.scope_mode == "multi" and settings.scope_topic_ids:
+            topics = (
+                session.query(Topic)
+                .filter(
+                    Topic.id.in_(settings.scope_topic_ids),
+                    Topic.active.is_(True),
+                )
+                .order_by(Topic.weight.desc(), Topic.name.asc())
+                .all()
+            )
+        else:
+            topics = get_active_topics(session=session)
+
+        # fallback: never return an empty list — discovery/review needs *something*
+        if not topics:
+            topics = get_active_topics(session=session)
+        return topics
     finally:
         session.close()
 

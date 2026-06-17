@@ -1,0 +1,20 @@
+# Railway service config — frontend (Next.js standalone).
+#
+# Mounted as a separate Railway service inside the same project as the backend.
+# Builds from frontend/Dockerfile (multi-stage; build via webpack so @serwist
+# can hook the bundler; final image is just `node server.js` on Alpine).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# No startCommand — the frontend Dockerfile's CMD (`node server.js`) handles
+# this. Next.js's standalone server reads $PORT and $HOSTNAME from env directly,
+# no shell expansion needed.
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+
+# health check — the Next.js server responds 200 at / by default
+healthcheckPath = "/"
+healthcheckTimeout = 120

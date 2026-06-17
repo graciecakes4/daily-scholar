@@ -1,0 +1,104 @@
+# Deploy to Railway: develop -> dev environment, main -> prod environment.
+#
+# Both branches run the migration + dialect compat gate first; only then does
+# the deploy step touch Railway. Each environment has its own pair of service
+# IDs in GitHub secrets so the workflow can target dev vs prod without code
+# changes.
+#
+# Required GitHub secrets (Settings → Secrets and variables → Actions):
+#   RAILWAY_TOKEN_DEV                      — project token scoped to the Railway "dev" env
+#   RAILWAY_TOKEN_PROD                     — project token scoped to the Railway "prod" env
+#   RAILWAY_BACKEND_SERVICE_ID_DEV         — backend service id in the Railway "dev" env
+#   RAILWAY_FRONTEND_SERVICE_ID_DEV        — frontend service id in the Railway "dev" env
+#   RAILWAY_BACKEND_SERVICE_ID_PROD        — backend service id in the Railway "prod" env
+#   RAILWAY_FRONTEND_SERVICE_ID_PROD       — frontend service id in the Railway "prod" env
+#
+# Railway project tokens are env-scoped: one token can only deploy to its own
+# environment. We pick the right one below based on the branch being deployed.
+
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+# Serialize deploys to avoid two pushes racing into the same environment.
+concurrency:
+  group: deploy-railway-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  # gate: don't deploy until migrations + compat pass on both DBs
+  test:
+    name: Tests pass (migrations + dialect compat)
+    uses: ./.github/workflows/test-migrations.yml
+
+  deploy:
+    name: Deploy ${{ matrix.service }} to ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+    needs: test
+    runs-on: ubuntu-latest
+    # Use GitHub Environments so prod can require a manual approval if you
+    # ever want to gate it (Settings → Environments → production → required reviewers).
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Pick service id + working dir
+        id: target
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            ENV_TAG=prod
+          else
+            ENV_TAG=dev
+          fi
+          if [ "${{ matrix.service }}" = "backend" ]; then
+            SERVICE_VAR="RAILWAY_BACKEND_SERVICE_ID_${ENV_TAG}"
+            WORKDIR="."
+          else
+            SERVICE_VAR="RAILWAY_FRONTEND_SERVICE_ID_${ENV_TAG}"
+            WORKDIR="frontend"
+          fi
+          echo "env_tag=${ENV_TAG}" >> "$GITHUB_OUTPUT"
+          echo "service_var=${SERVICE_VAR}" >> "$GITHUB_OUTPUT"
+          echo "workdir=${WORKDIR}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy
+        env:
+          # Pick the env-scoped Railway token by branch. main -> prod token,
+          # everything else (develop) -> dev token. The unused secret becomes
+          # an empty string, which the preflight below catches.
+          RAILWAY_TOKEN: ${{ github.ref == 'refs/heads/main' && secrets.RAILWAY_TOKEN_PROD || secrets.RAILWAY_TOKEN_DEV }}
+          # Railway CLI uses RAILWAY_SERVICE to target a specific service in an env.
+          # Pull the right secret based on the branch + matrix.service combination.
+          RAILWAY_SERVICE_BACKEND_DEV: ${{ secrets.RAILWAY_BACKEND_SERVICE_ID_DEV }}
+          RAILWAY_SERVICE_FRONTEND_DEV: ${{ secrets.RAILWAY_FRONTEND_SERVICE_ID_DEV }}
+          RAILWAY_SERVICE_BACKEND_PROD: ${{ secrets.RAILWAY_BACKEND_SERVICE_ID_PROD }}
+          RAILWAY_SERVICE_FRONTEND_PROD: ${{ secrets.RAILWAY_FRONTEND_SERVICE_ID_PROD }}
+        working-directory: ${{ steps.target.outputs.workdir }}
+        run: |
+          # resolve the right service id from the constructed env-var name.
+          # env_tag is lowercase (dev/prod) for the --environment flag below,
+          # but the secret-backed env vars use uppercase suffixes — uppercase
+          # both halves here to match.
+          SERVICE_UPPER="$(echo '${{ matrix.service }}' | tr a-z A-Z)"
+          ENV_UPPER="$(echo '${{ steps.target.outputs.env_tag }}' | tr a-z A-Z)"
+          VAR_NAME="RAILWAY_SERVICE_${SERVICE_UPPER}_${ENV_UPPER}"
+          SERVICE_ID="$(printenv $VAR_NAME)"
+          if [ -z "$SERVICE_ID" ]; then
+            echo "❌ Missing secret $VAR_NAME — set it in repo Settings → Secrets."
+            exit 1
+          fi
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "❌ RAILWAY_TOKEN is empty — set RAILWAY_TOKEN_${ENV_UPPER} in repo Settings → Secrets."
+            exit 1
+          fi
+          echo "📦 Deploying ${{ matrix.service }} to ${{ steps.target.outputs.env_tag }} (service ${SERVICE_ID:0:8}…)"
+          railway up --service "$SERVICE_ID" --environment "${{ steps.target.outputs.env_tag }}" --detach

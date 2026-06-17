@@ -65,11 +65,56 @@ export interface SeenPaper {
 export interface Topic {
   id: string;
   name: string;
-  course_id: string;
-  course_name: string;
-  week_covered: number;
+  stream: string;
+  active: boolean;
+  weight: number;
+  keywords: string[];
+  arxiv_categories: string[];
+  recency_days: number;
+  min_relevance: number;
   key_concepts: string[];
   learning_objectives: string[];
+  resources: string[];
+  quiz_difficulty: string;
+  prerequisites: string[];
+  created_via: string;
+  source_yaml_present: boolean;
+  created_at: string;
+  updated_at: string;
+
+  // legacy fields kept for back-compat with /topics/{id}/review payloads;
+  // backend's _topic_to_dict() populates course_id with the stream slug.
+  course_id?: string;
+  course_name?: string;
+  week_covered?: number;
+}
+
+export interface TopicCreate {
+  id: string;
+  name: string;
+  stream?: string;
+  active?: boolean;
+  weight?: number;
+  keywords?: string[];
+  arxiv_categories?: string[];
+  recency_days?: number;
+  min_relevance?: number;
+  key_concepts?: string[];
+  learning_objectives?: string[];
+  resources?: string[];
+  quiz_difficulty?: string;
+  prerequisites?: string[];
+}
+
+export type TopicUpdate = Partial<Omit<TopicCreate, 'id'>>;
+
+export type ScopeMode = 'silo' | 'multi' | 'all';
+
+export interface Scope {
+  user_id: string;
+  scope_mode: ScopeMode;
+  scope_topic_ids: string[];
+  updated_at: string;
 }
 
 export interface TopicReview {
@@ -125,6 +170,7 @@ export interface ArchivedQuiz {
   score_earned: number;
   percentage: number;
   taken_at: string;
+  duration_seconds?: number;
 }
 
 export interface Resource {
@@ -524,6 +570,72 @@ export async function submitAnswer(questionId: string, answer: string): Promise<
 // Daily Content
 // -----------------------------------------------------------------------------
 
-export async function getDailyContent(): Promise<DailyContent> {
-  return fetchAPI('/daily');
+/** Partial-refresh selectors for getDailyContent(). */
+export type DailyRefresh = '' | 'paper' | 'review' | 'all';
+
+export async function getDailyContent(refresh: DailyRefresh | boolean = ''): Promise<DailyContent & { cached?: boolean }> {
+  // legacy callers may pass `true` meaning "refresh all"
+  const value: DailyRefresh = refresh === true ? 'all' : refresh === false ? '' : refresh;
+  return fetchAPI(`/daily${value ? `?refresh=${value}` : ''}`);
+}
+
+// -----------------------------------------------------------------------------
+// Topic catalog (unified Topic model, replaces interests + courses)
+// -----------------------------------------------------------------------------
+
+export async function listTopics(opts?: {
+  stream?: string;
+  active?: boolean;
+  includeOrphaned?: boolean;
+}): Promise<Topic[]> {
+  const params = new URLSearchParams();
+  if (opts?.stream) params.set('stream', opts.stream);
+  if (opts?.active !== undefined) params.set('active', String(opts.active));
+  if (opts?.includeOrphaned !== undefined) params.set('include_orphaned', String(opts.includeOrphaned));
+  const qs = params.toString();
+  return fetchAPI(`/topics${qs ? `?${qs}` : ''}`);
+}
+
+export async function listStreams(): Promise<{ streams: string[] }> {
+  return fetchAPI('/topics/streams');
+}
+
+export async function getTopic(id: string): Promise<Topic> {
+  return fetchAPI(`/topics/${encodeURIComponent(id)}`);
+}
+
+export async function createTopic(payload: TopicCreate): Promise<Topic> {
+  return fetchAPI('/topics', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateTopic(id: string, payload: TopicUpdate): Promise<Topic> {
+  return fetchAPI(`/topics/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteTopic(id: string, opts?: { hard?: boolean }): Promise<{ deleted: string; mode: string }> {
+  const qs = opts?.hard ? '?hard=true' : '';
+  return fetchAPI(`/topics/${encodeURIComponent(id)}${qs}`, { method: 'DELETE' });
+}
+
+export async function importTopicsFromYaml(): Promise<{ upserted: number; inserted: number; updated: number; marked_orphaned: number }> {
+  return fetchAPI('/topics/import-yaml', { method: 'POST' });
+}
+
+export async function exportTopicsToYaml(): Promise<{ exported: number; directory: string }> {
+  return fetchAPI('/topics/export-yaml', { method: 'POST' });
+}
+
+// -----------------------------------------------------------------------------
+// Scope (silo / multi / all topic selector)
+// -----------------------------------------------------------------------------
+
+export async function getScope(): Promise<Scope> {
+  return fetchAPI('/user/scope');
+}
+
+export async function updateScope(payload: { scope_mode: ScopeMode; scope_topic_ids: string[] }): Promise<Scope> {
+  return fetchAPI('/user/scope', { method: 'PUT', body: JSON.stringify(payload) });
 }
