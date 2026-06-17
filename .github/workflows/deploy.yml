@@ -77,8 +77,13 @@ jobs:
           RAILWAY_SERVICE_FRONTEND_PROD: ${{ secrets.RAILWAY_FRONTEND_SERVICE_ID_PROD }}
         working-directory: ${{ steps.target.outputs.workdir }}
         run: |
-          # resolve the right service id from the constructed env-var name
-          VAR_NAME="RAILWAY_SERVICE_$(echo '${{ matrix.service }}' | tr a-z A-Z)_${{ steps.target.outputs.env_tag }}"
+          # resolve the right service id from the constructed env-var name.
+          # env_tag is lowercase (dev/prod) for the --environment flag below,
+          # but the secret-backed env vars use uppercase suffixes — uppercase
+          # both halves here to match.
+          SERVICE_UPPER="$(echo '${{ matrix.service }}' | tr a-z A-Z)"
+          ENV_UPPER="$(echo '${{ steps.target.outputs.env_tag }}' | tr a-z A-Z)"
+          VAR_NAME="RAILWAY_SERVICE_${SERVICE_UPPER}_${ENV_UPPER}"
           SERVICE_ID="$(printenv $VAR_NAME)"
           if [ -z "$SERVICE_ID" ]; then
             echo "❌ Missing secret $VAR_NAME — set it in repo Settings → Secrets."
