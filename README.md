@@ -1,6 +1,6 @@
 # Daily Scholar 📚
 
-A personalized daily learning system for doctoral students and data scientists. Automatically delivers:
+A personalized daily learning system for students. Automatically delivers:
 - **Fresh research papers** matching your interests
 - **Topic reviews** from your current courses  
 - **Interactive quizzes** with spaced repetition
