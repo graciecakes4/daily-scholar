@@ -30,6 +30,7 @@ from .models import ConfigurationStatus
 from .database import (
     create_tables, get_session, get_seen_paper_ids, mark_paper_as_seen, update_user_streak,
     get_completed_topic_ids, get_review_later_topic_ids, get_recently_reviewed_topic_ids,
+    get_or_create_user_stats,
     SeenPaper, ArchivedPaper, ArchivedTopicReview, ArchivedQuiz, PaperPDF, UserStats, DailyContentCache
 )
 
@@ -429,17 +430,20 @@ async def archive_paper(
         )
         session.add(paper)
 
-        # update per-user stats
-        stats = session.query(UserStats).filter(UserStats.user_id == user_id).first()
-        if stats:
-            stats.total_papers_archived += 1
-            stats.updated_at = datetime.utcnow()
+        # update per-user stats (auto-creates the row for first-time users)
+        stats = get_or_create_user_stats(user_id, session=session)
+        stats.total_papers_archived += 1
+        stats.updated_at = datetime.utcnow()
 
         update_user_streak(user_id=user_id)
         session.commit()
         session.refresh(paper)
 
         return {"message": "Paper archived successfully", "id": paper.id}
+    except HTTPException:
+        # don't let the catch-all swallow 4xx/404 raised inside the try block
+        session.rollback()
+        raise
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -563,13 +567,16 @@ async def update_archived_paper(
             paper.read_status = request.read_status
             if request.read_status == "completed" and old_status != "completed":
                 paper.completed_at = datetime.utcnow()
-                stats = session.query(UserStats).filter(UserStats.user_id == user_id).first()
-                if stats:
-                    stats.total_papers_completed += 1
+                stats = get_or_create_user_stats(user_id, session=session)
+                stats.total_papers_completed += 1
 
         paper.last_accessed_at = datetime.utcnow()
         session.commit()
         return {"message": "Paper updated successfully"}
+    except HTTPException:
+        # don't let the catch-all swallow 4xx/404 raised inside the try block
+        session.rollback()
+        raise
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -656,6 +663,10 @@ async def upload_pdf_to_paper(
             "filename": stored_filename,
             "storage_backend": storage.backend,
         }
+    except HTTPException:
+        # don't let the catch-all swallow 4xx/404 raised inside the try block
+        session.rollback()
+        raise
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -715,6 +726,10 @@ async def download_pdf_from_url(
         }
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to download PDF: {e}")
+    except HTTPException:
+        # don't let the catch-all swallow 4xx/404 raised inside the try block
+        session.rollback()
+        raise
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -826,10 +841,9 @@ async def upload_standalone_pdf(
         )
         session.add(pdf)
 
-        # update per-user stats
-        stats = session.query(UserStats).filter(UserStats.user_id == user_id).first()
-        if stats:
-            stats.total_papers_archived += 1
+        # update per-user stats (auto-creates the row for first-time users)
+        stats = get_or_create_user_stats(user_id, session=session)
+        stats.total_papers_archived += 1
 
         session.commit()
         
@@ -838,6 +852,10 @@ async def upload_standalone_pdf(
             "paper_id": paper.id,
             "title": paper_title,
         }
+    except HTTPException:
+        # don't let the catch-all swallow 4xx/404 raised inside the try block
+        session.rollback()
+        raise
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -879,9 +897,8 @@ async def archive_topic_review(
                     existing.completed_at = datetime.utcnow()
             session.commit()
 
-            stats = session.query(UserStats).filter(UserStats.user_id == user_id).first()
-            if stats:
-                stats.total_topics_reviewed += 1
+            stats = get_or_create_user_stats(user_id, session=session)
+            stats.total_topics_reviewed += 1
 
             return {"message": "Topic review updated", "id": existing.id, "review_count": existing.review_count}
 
@@ -915,6 +932,10 @@ async def archive_topic_review(
         session.commit()
         session.refresh(topic)
         return {"message": "Topic review archived", "id": topic.id}
+    except HTTPException:
+        # don't let the catch-all swallow 4xx/404 raised inside the try block
+        session.rollback()
+        raise
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -992,6 +1013,10 @@ async def update_archived_topic(
                 topic.completed_at = None
         session.commit()
         return {"message": "Topic updated"}
+    except HTTPException:
+        # don't let the catch-all swallow 4xx/404 raised inside the try block
+        session.rollback()
+        raise
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -1077,6 +1102,8 @@ async def update_topic_status(
         session.refresh(new_record)
         return {"message": f"Topic status set to '{request.status}'", "id": new_record.id}
     except HTTPException:
+        # don't let the catch-all swallow 4xx/404 raised inside the try block
+        session.rollback()
         raise
     except Exception as e:
         session.rollback()
@@ -1186,17 +1213,20 @@ async def archive_quiz(
         )
         session.add(quiz)
 
-        stats = session.query(UserStats).filter(UserStats.user_id == user_id).first()
-        if stats:
-            stats.total_quizzes_taken += 1
-            stats.total_quiz_questions += request.total_questions
-            correct = sum(1 for q in request.questions if q.get("result", {}).get("correct", False))
-            stats.total_correct_answers += correct
+        stats = get_or_create_user_stats(user_id, session=session)
+        stats.total_quizzes_taken += 1
+        stats.total_quiz_questions += request.total_questions
+        correct = sum(1 for q in request.questions if q.get("result", {}).get("correct", False))
+        stats.total_correct_answers += correct
 
         update_user_streak(user_id=user_id)
         session.commit()
         session.refresh(quiz)
         return {"message": "Quiz archived", "id": quiz.id}
+    except HTTPException:
+        # don't let the catch-all swallow 4xx/404 raised inside the try block
+        session.rollback()
+        raise
     except Exception as e:
         session.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -1530,9 +1560,11 @@ async def get_daily_content(
 
 from .api.topics import topics_router, scope_router
 from .api.push import push_router
+from .api.admin import admin_router
 app.include_router(topics_router)
 app.include_router(scope_router)
 app.include_router(push_router)
+app.include_router(admin_router)
 
 
 # =============================================================================
