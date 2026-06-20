@@ -6,6 +6,36 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+/**
+ * Thrown by fetchAPI on a 401 response. Distinct subclass so the AuthBoundary
+ * component can listen for the global 'daily-scholar:auth-error' event without
+ * mistaking ordinary error toasts for authentication failures.
+ *
+ * In solo mode this should never fire — get_current_user_id falls back to the
+ * '__local__' sentinel. It only triggers once CF_ACCESS_VERIFY_JWT is on and
+ * the request arrives without a valid JWT (e.g., the user's CF session expired).
+ */
+export class AuthError extends Error {
+  status: number;
+  constructor(message = 'Authentication required') {
+    super(message);
+    this.name = 'AuthError';
+    this.status = 401;
+  }
+}
+
+// browser-only: dispatched on every 401 so AuthBoundary can show a banner
+// from anywhere in the tree without prop-drilling. SSR guards are required
+// because Next renders this file on the server first.
+const AUTH_EVENT = 'daily-scholar:auth-error';
+
+function emitAuthError(detail: { status: number; message: string }) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(AUTH_EVENT, { detail }));
+}
+
+export const AUTH_ERROR_EVENT = AUTH_EVENT;
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -249,6 +279,14 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    // 401 gets its own subclass + a global event so the AuthBoundary can
+    // surface a "please re-authenticate" banner without each call site
+    // having to special-case it.
+    if (response.status === 401) {
+      const message = error.detail || 'Authentication required';
+      emitAuthError({ status: 401, message });
+      throw new AuthError(message);
+    }
     throw new Error(error.detail || `API error: ${response.status}`);
   }
 

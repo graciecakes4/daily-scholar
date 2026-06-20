@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
 import InstallPrompt from "@/components/InstallPrompt";
+import AuthBoundary from "@/components/AuthBoundary";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -127,6 +128,9 @@ export default function RootLayout({
             Daily Scholar — Learn something new every day 🎓
           </div>
         </footer>
+
+        {/* Global 401 banner — only fires once CF Access JWT verification is on */}
+        <AuthBoundary />
 
         {/* PWA install prompt (shows on capable browsers / iOS Safari) */}
         <InstallPrompt />

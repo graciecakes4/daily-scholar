@@ -105,14 +105,19 @@ def subscribe(body: SubscribeRequest, user_id: str = Depends(get_current_user_id
 
     session = get_session()
     try:
+        # scope the upsert by (user_id, endpoint) — without this filter a
+        # second user could land on the same endpoint string (possible in
+        # tests; in production browsers ensure URL uniqueness but we shouldn't
+        # rely on that for an auth boundary) and overwrite the original user's
+        # subscription. The (user_id, endpoint) pair is the real identity.
         existing = session.query(PushSubscription).filter(
-            PushSubscription.endpoint == body.endpoint
+            PushSubscription.user_id == user_id,
+            PushSubscription.endpoint == body.endpoint,
         ).first()
         if existing:
             existing.p256dh = body.keys.p256dh
             existing.auth = body.keys.auth
             existing.platform = body.platform or existing.platform
-            existing.user_id = user_id
             existing.last_used_at = datetime.utcnow()
             session.commit()
             return {"id": existing.id, "updated": True}

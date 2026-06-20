@@ -635,12 +635,10 @@ def mark_paper_as_seen(paper_data: dict, user_id: str = DEFAULT_USER_ID) -> Seen
         )
         session.add(seen)
 
-        stats = session.query(UserStats).filter(
-            UserStats.user_id == user_id
-        ).first()
-        if stats:
-            stats.total_papers_seen += 1
-            stats.updated_at = datetime.utcnow()
+        # auto-create the stats row for first-time users so the counter sticks
+        stats = get_or_create_user_stats(user_id, session=session)
+        stats.total_papers_seen += 1
+        stats.updated_at = datetime.utcnow()
 
         session.commit()
         return seen
@@ -648,15 +646,41 @@ def mark_paper_as_seen(paper_data: dict, user_id: str = DEFAULT_USER_ID) -> Seen
         session.close()
 
 
-def update_user_streak(user_id: str = DEFAULT_USER_ID):
-    """Update this user's activity streak."""
-    session = get_session()
+def get_or_create_user_stats(user_id: str, session: Optional[Session] = None) -> UserStats:
+    """
+    Fetch the UserStats row for this user, creating a zeroed one if absent.
+
+    Without this, counters silently stay at 0 for any user_id other than the
+    `__local__` sentinel (the only row seeded by create_tables). When a CF
+    Access identity first hits an archive endpoint, the stats row needs to
+    exist before we can increment it.
+
+    Pass an existing session to participate in its transaction; otherwise we
+    open and close our own.
+    """
+    own_session = session is None
+    if own_session:
+        session = get_session()
     try:
         stats = session.query(UserStats).filter(
             UserStats.user_id == user_id
         ).first()
-        if not stats:
-            return
+        if stats is None:
+            stats = UserStats(user_id=user_id)
+            session.add(stats)
+            session.commit()
+            session.refresh(stats)
+        return stats
+    finally:
+        if own_session:
+            session.close()
+
+
+def update_user_streak(user_id: str = DEFAULT_USER_ID):
+    """Update this user's activity streak. Creates the stats row if absent."""
+    session = get_session()
+    try:
+        stats = get_or_create_user_stats(user_id, session=session)
 
         today = date.today()
 
