@@ -57,6 +57,10 @@ google-antigravity>=0.1,<2
 pywebpush>=2.0,<3
 cryptography>=42,<46
 
+# Cloudflare Access JWT verification (optional; only required when CF_ACCESS_VERIFY_JWT=1).
+# Pulls cryptography for RS256/ES256 signature checks — already pinned above.
+pyjwt>=2.8,<3
+
 # Date/Time utilities
 python-dateutil>=2.8.2,<3
 

@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import get_current_user_id
 from ..config import get_settings
-from ..database import DEFAULT_USER_ID, PushSubscription, get_session
+from ..database import PushSubscription, get_session
 
 push_router = APIRouter(prefix="/push", tags=["Push"])
 
@@ -75,11 +75,6 @@ def _ensure_vapid_configured() -> None:
                 "and paste the output into .env, then restart the backend."
             ),
         )
-
-
-def _current_user_id() -> str:
-    """Kept as a function for callers that don't go through FastAPI's DI."""
-    return DEFAULT_USER_ID
 
 
 # ---------------------------------------------------------------------------
@@ -138,12 +133,16 @@ def subscribe(body: SubscribeRequest, user_id: str = Depends(get_current_user_id
 
 
 @push_router.post("/unsubscribe")
-def unsubscribe(body: UnsubscribeRequest):
-    """Remove the subscription identified by endpoint. Idempotent."""
+def unsubscribe(
+    body: UnsubscribeRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Remove this user's subscription identified by endpoint. Idempotent."""
     session = get_session()
     try:
         row = session.query(PushSubscription).filter(
-            PushSubscription.endpoint == body.endpoint
+            PushSubscription.user_id == user_id,
+            PushSubscription.endpoint == body.endpoint,
         ).first()
         if row is None:
             return {"removed": False}

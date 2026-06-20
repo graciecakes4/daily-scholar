@@ -241,9 +241,12 @@ Highest-leverage piece, ships independently of everything else, immediately usef
 Two parallel tracks of "auth readiness":
 
 - **Schema (now):** add nullable `user_id` columns (default `'__local__'`) to `seen_papers`, `archived_papers`, `archived_quizzes`, `archived_topic_reviews`, `paper_pdfs`, `daily_content_cache`, `user_stats`, `push_subscriptions`, `user_settings`. Index appropriately. Every endpoint filters by current user. Behavior unchanged for solo + beta.
-- **Identity (deferred):** Cloudflare Access is the recommended path for hosted multi-user; the in-app `get_current_user` dependency reads the `Cf-Access-Jwt-Assertion` header when present, falls back to the sentinel otherwise. No UI work to flip on real auth — just a Cloudflare Access policy change.
+- **Identity (hybrid, two layers):** Cloudflare Access is the recommended path for hosted multi-user. The in-app `get_current_user_id` dependency uses two layers, both env-controlled so solo / beta deployments need zero new config:
+  - **Layer 1 (always-on when present):** read `Cf-Access-Authenticated-User-Email` as the identity. Trusted iff the origin only accepts CF traffic (firewall allowlist or Cloudflare Tunnel).
+  - **Layer 2 (env-gated by `CF_ACCESS_VERIFY_JWT=1`):** additionally require + cryptographically validate `Cf-Access-Jwt-Assertion` against the team JWKS (`https://<CF_ACCESS_TEAM_DOMAIN>/cdn-cgi/access/certs`), the configured `CF_ACCESS_AUD_TAG`, and standard `iss`/`exp` claims. When both layers are on and the email header is also present, the JWT email claim must match the header. Mismatch → 401.
+  - **Solo fallback:** with no headers and the flag off, identity is the sentinel `'__local__'`. An `X-User-Id` header is honored as a local-dev escape hatch when no CF headers are present.
 
-**Exit criteria:** option-3 (multi-user beta on the hosted PWA) becomes a Cloudflare Access policy update plus enabling the JWT-validation middleware. No migration, no UI build.
+**Exit criteria:** option-3 (multi-user beta on the hosted PWA) becomes (a) a Cloudflare Access policy update, and (b) optionally setting `CF_ACCESS_VERIFY_JWT=1` + `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD_TAG` in Railway env to layer cryptographic JWT verification on top of the email-header trust. No migration, no UI build. If pre-existing single-tenant data needs to move from `'__local__'` to a real identity post-cutover, run `python scripts/reassign_user_id.py --from __local__ --to <new-id>` (dry-run by default).
 
 ### Phase 5 — Beta-flow preservation (continuous)
 

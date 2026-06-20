@@ -102,6 +102,16 @@ class Settings(BaseSettings):
     vapid_private_key: Optional[str] = Field(default=None)
     vapid_subject: Optional[str] = Field(default=None)
 
+    # Cloudflare Access — multi-user identity (optional).
+    # The app always reads Cf-Access-Authenticated-User-Email as the identity
+    # source when present. When CF_ACCESS_VERIFY_JWT is on, the app also
+    # requires + cryptographically validates the Cf-Access-Jwt-Assertion
+    # header against the team JWKS. Both TEAM_DOMAIN and AUD_TAG are required
+    # at flag-on time; with the flag off they're unused.
+    cf_access_verify_jwt: bool = Field(default=False)
+    cf_access_team_domain: Optional[str] = Field(default=None)
+    cf_access_aud_tag: Optional[str] = Field(default=None)
+
     # Pydantic v2 configuration
     model_config = SettingsConfigDict(
         env_file=".env",

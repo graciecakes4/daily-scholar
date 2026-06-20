@@ -18,12 +18,13 @@ import shutil
 import uuid
 import httpx
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional, List
 
+from .auth import get_current_user_id
 from .config import get_settings, validate_configuration
 from .models import ConfigurationStatus
 from .database import (
@@ -254,25 +255,40 @@ async def get_configuration_status():
 # =============================================================================
 
 @app.get("/stats", tags=["Stats"])
-async def get_user_stats():
+async def get_user_stats(user_id: str = Depends(get_current_user_id)):
     """Get comprehensive user learning statistics."""
     session = get_session()
     try:
-        stats = session.query(UserStats).first()
-        
-        # Get additional counts
+        stats = session.query(UserStats).filter(UserStats.user_id == user_id).first()
+
+        # per-user paper status counts
         papers_by_status = {}
         for status in ["unread", "reading", "completed"]:
-            count = session.query(ArchivedPaper).filter(ArchivedPaper.read_status == status).count()
+            count = session.query(ArchivedPaper).filter(
+                ArchivedPaper.user_id == user_id,
+                ArchivedPaper.read_status == status,
+            ).count()
             papers_by_status[status] = count
-        
-        topics_count = session.query(ArchivedTopicReview).count()
-        topics_completed = session.query(ArchivedTopicReview).filter(ArchivedTopicReview.status == "completed").count()
-        topics_review_later = session.query(ArchivedTopicReview).filter(ArchivedTopicReview.status == "review_later").count()
-        quizzes_count = session.query(ArchivedQuiz).count()
-        
-        # Recent activity
-        recent_papers = session.query(SeenPaper).order_by(SeenPaper.shown_at.desc()).limit(5).all()
+
+        topics_count = session.query(ArchivedTopicReview).filter(
+            ArchivedTopicReview.user_id == user_id
+        ).count()
+        topics_completed = session.query(ArchivedTopicReview).filter(
+            ArchivedTopicReview.user_id == user_id,
+            ArchivedTopicReview.status == "completed",
+        ).count()
+        topics_review_later = session.query(ArchivedTopicReview).filter(
+            ArchivedTopicReview.user_id == user_id,
+            ArchivedTopicReview.status == "review_later",
+        ).count()
+        quizzes_count = session.query(ArchivedQuiz).filter(
+            ArchivedQuiz.user_id == user_id
+        ).count()
+
+        # recent activity for this user
+        recent_papers = session.query(SeenPaper).filter(
+            SeenPaper.user_id == user_id
+        ).order_by(SeenPaper.shown_at.desc()).limit(5).all()
         
         return {
             "lifetime": {
@@ -308,12 +324,23 @@ async def get_user_stats():
 # =============================================================================
 
 @app.get("/papers/history", tags=["Papers"])
-async def get_paper_history(limit: int = 50, offset: int = 0):
-    """Get history of all papers shown to the user."""
+async def get_paper_history(
+    limit: int = 50,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Get history of all papers shown to this user."""
     session = get_session()
     try:
-        papers = session.query(SeenPaper).order_by(SeenPaper.shown_at.desc()).offset(offset).limit(limit).all()
-        total = session.query(SeenPaper).count()
+        papers = (
+            session.query(SeenPaper)
+            .filter(SeenPaper.user_id == user_id)
+            .order_by(SeenPaper.shown_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        total = session.query(SeenPaper).filter(SeenPaper.user_id == user_id).count()
         
         return {
             "papers": [
@@ -340,11 +367,14 @@ async def get_paper_history(limit: int = 50, offset: int = 0):
 # =============================================================================
 
 @app.post("/archive/papers", tags=["Archive"])
-async def archive_paper(request: ArchivePaperRequest):
-    """Archive a paper to your reading list."""
+async def archive_paper(
+    request: ArchivePaperRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Archive a paper to this user's reading list."""
     session = get_session()
     try:
-        # Generate unique_id if not provided
+        # generate unique_id if not provided
         unique_id = request.unique_id
         if not unique_id:
             if request.arxiv_id:
@@ -356,18 +386,25 @@ async def archive_paper(request: ArchivePaperRequest):
             else:
                 import hashlib
                 unique_id = f"hash:{hashlib.md5(request.title.lower().encode()).hexdigest()[:12]}"
-        
-        # Check if already archived
-        existing = session.query(ArchivedPaper).filter(ArchivedPaper.unique_id == unique_id).first()
+
+        # check if already archived for this user
+        existing = session.query(ArchivedPaper).filter(
+            ArchivedPaper.user_id == user_id,
+            ArchivedPaper.unique_id == unique_id,
+        ).first()
         if existing:
             return {"message": "Paper already archived", "id": existing.id}
-        
-        # Mark as archived in seen papers if exists
-        seen = session.query(SeenPaper).filter(SeenPaper.unique_id == unique_id).first()
+
+        # mark as archived in this user's seen papers if exists
+        seen = session.query(SeenPaper).filter(
+            SeenPaper.user_id == user_id,
+            SeenPaper.unique_id == unique_id,
+        ).first()
         if seen:
             seen.was_archived = True
-        
+
         paper = ArchivedPaper(
+            user_id=user_id,
             unique_id=unique_id,
             seen_paper_id=seen.id if seen else None,
             title=request.title,
@@ -391,17 +428,17 @@ async def archive_paper(request: ArchivePaperRequest):
             linked_topic_ids=request.linked_topic_ids,
         )
         session.add(paper)
-        
-        # Update stats
-        stats = session.query(UserStats).first()
+
+        # update per-user stats
+        stats = session.query(UserStats).filter(UserStats.user_id == user_id).first()
         if stats:
             stats.total_papers_archived += 1
             stats.updated_at = datetime.utcnow()
-        
-        update_user_streak()
+
+        update_user_streak(user_id=user_id)
         session.commit()
         session.refresh(paper)
-        
+
         return {"message": "Paper archived successfully", "id": paper.id}
     except Exception as e:
         session.rollback()
@@ -411,11 +448,18 @@ async def archive_paper(request: ArchivePaperRequest):
 
 
 @app.get("/archive/papers", tags=["Archive"])
-async def get_archived_papers(limit: int = 50, offset: int = 0, status: Optional[str] = None):
-    """Get all archived papers."""
+async def get_archived_papers(
+    limit: int = 50,
+    offset: int = 0,
+    status: Optional[str] = None,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Get all archived papers for this user."""
     session = get_session()
     try:
-        query = session.query(ArchivedPaper).order_by(ArchivedPaper.archived_at.desc())
+        query = session.query(ArchivedPaper).filter(
+            ArchivedPaper.user_id == user_id
+        ).order_by(ArchivedPaper.archived_at.desc())
         if status:
             query = query.filter(ArchivedPaper.read_status == status)
         papers = query.offset(offset).limit(limit).all()
@@ -448,11 +492,17 @@ async def get_archived_papers(limit: int = 50, offset: int = 0, status: Optional
 
 
 @app.get("/archive/papers/{paper_id}", tags=["Archive"])
-async def get_archived_paper(paper_id: int):
-    """Get a specific archived paper."""
+async def get_archived_paper(
+    paper_id: int,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Get a specific archived paper owned by this user."""
     session = get_session()
     try:
-        paper = session.query(ArchivedPaper).filter(ArchivedPaper.id == paper_id).first()
+        paper = session.query(ArchivedPaper).filter(
+            ArchivedPaper.user_id == user_id,
+            ArchivedPaper.id == paper_id,
+        ).first()
         if not paper:
             raise HTTPException(status_code=404, detail="Paper not found")
         
@@ -487,14 +537,21 @@ async def get_archived_paper(paper_id: int):
 
 
 @app.put("/archive/papers/{paper_id}", tags=["Archive"])
-async def update_archived_paper(paper_id: int, request: UpdatePaperRequest):
-    """Update an archived paper."""
+async def update_archived_paper(
+    paper_id: int,
+    request: UpdatePaperRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Update an archived paper owned by this user."""
     session = get_session()
     try:
-        paper = session.query(ArchivedPaper).filter(ArchivedPaper.id == paper_id).first()
+        paper = session.query(ArchivedPaper).filter(
+            ArchivedPaper.user_id == user_id,
+            ArchivedPaper.id == paper_id,
+        ).first()
         if not paper:
             raise HTTPException(status_code=404, detail="Paper not found")
-        
+
         if request.user_notes is not None:
             paper.user_notes = request.user_notes
         if request.user_rating is not None:
@@ -506,10 +563,10 @@ async def update_archived_paper(paper_id: int, request: UpdatePaperRequest):
             paper.read_status = request.read_status
             if request.read_status == "completed" and old_status != "completed":
                 paper.completed_at = datetime.utcnow()
-                stats = session.query(UserStats).first()
+                stats = session.query(UserStats).filter(UserStats.user_id == user_id).first()
                 if stats:
                     stats.total_papers_completed += 1
-        
+
         paper.last_accessed_at = datetime.utcnow()
         session.commit()
         return {"message": "Paper updated successfully"}
@@ -521,11 +578,17 @@ async def update_archived_paper(paper_id: int, request: UpdatePaperRequest):
 
 
 @app.delete("/archive/papers/{paper_id}", tags=["Archive"])
-async def delete_archived_paper(paper_id: int):
-    """Delete an archived paper."""
+async def delete_archived_paper(
+    paper_id: int,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Delete an archived paper owned by this user."""
     session = get_session()
     try:
-        paper = session.query(ArchivedPaper).filter(ArchivedPaper.id == paper_id).first()
+        paper = session.query(ArchivedPaper).filter(
+            ArchivedPaper.user_id == user_id,
+            ArchivedPaper.id == paper_id,
+        ).first()
         if not paper:
             raise HTTPException(status_code=404, detail="Paper not found")
         
@@ -547,8 +610,12 @@ async def delete_archived_paper(paper_id: int):
 # =============================================================================
 
 @app.post("/archive/papers/{paper_id}/upload-pdf", tags=["Archive"])
-async def upload_pdf_to_paper(paper_id: int, file: UploadFile = File(...)):
-    """Upload a PDF and attach it to an archived paper."""
+async def upload_pdf_to_paper(
+    paper_id: int,
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Upload a PDF and attach it to an archived paper owned by this user."""
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
@@ -556,7 +623,10 @@ async def upload_pdf_to_paper(paper_id: int, file: UploadFile = File(...)):
     storage = get_storage()
     session = get_session()
     try:
-        paper = session.query(ArchivedPaper).filter(ArchivedPaper.id == paper_id).first()
+        paper = session.query(ArchivedPaper).filter(
+            ArchivedPaper.user_id == user_id,
+            ArchivedPaper.id == paper_id,
+        ).first()
         if not paper:
             raise HTTPException(status_code=404, detail="Paper not found")
 
@@ -567,6 +637,7 @@ async def upload_pdf_to_paper(paper_id: int, file: UploadFile = File(...)):
         storage.put(key, data, content_type="application/pdf")
 
         pdf = PaperPDF(
+            user_id=user_id,
             archived_paper_id=paper_id,
             original_filename=file.filename,
             stored_filename=stored_filename,
@@ -593,13 +664,19 @@ async def upload_pdf_to_paper(paper_id: int, file: UploadFile = File(...)):
 
 
 @app.post("/archive/papers/{paper_id}/download-pdf", tags=["Archive"])
-async def download_pdf_from_url(paper_id: int):
-    """Download PDF from the paper's pdf_url and store via the configured backend."""
+async def download_pdf_from_url(
+    paper_id: int,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Download PDF from this user's paper's pdf_url and store via the configured backend."""
     from .services.storage import get_storage
     storage = get_storage()
     session = get_session()
     try:
-        paper = session.query(ArchivedPaper).filter(ArchivedPaper.id == paper_id).first()
+        paper = session.query(ArchivedPaper).filter(
+            ArchivedPaper.user_id == user_id,
+            ArchivedPaper.id == paper_id,
+        ).first()
         if not paper:
             raise HTTPException(status_code=404, detail="Paper not found")
         if not paper.pdf_url:
@@ -616,6 +693,7 @@ async def download_pdf_from_url(paper_id: int):
         storage.put(key, response.content, content_type="application/pdf")
 
         pdf = PaperPDF(
+            user_id=user_id,
             archived_paper_id=paper_id,
             original_filename=f"{paper.title[:50]}.pdf",
             stored_filename=stored_filename,
@@ -645,9 +723,12 @@ async def download_pdf_from_url(paper_id: int):
 
 
 @app.get("/archive/papers/{paper_id}/pdf", tags=["Archive"])
-async def get_paper_pdf(paper_id: int):
+async def get_paper_pdf(
+    paper_id: int,
+    user_id: str = Depends(get_current_user_id),
+):
     """
-    Serve the PDF for a paper.
+    Serve the PDF for one of this user's papers.
       - Local backend  -> FileResponse straight from disk.
       - B2 / any backend with signed_url support -> 302 to the presigned URL
         so the backend stays out of the bytes path.
@@ -656,7 +737,10 @@ async def get_paper_pdf(paper_id: int):
     storage = get_storage()
     session = get_session()
     try:
-        paper = session.query(ArchivedPaper).filter(ArchivedPaper.id == paper_id).first()
+        paper = session.query(ArchivedPaper).filter(
+            ArchivedPaper.user_id == user_id,
+            ArchivedPaper.id == paper_id,
+        ).first()
         if not paper:
             raise HTTPException(status_code=404, detail="Paper not found")
         if not paper.has_local_pdf or not paper.local_pdf_path:
@@ -693,29 +777,31 @@ async def get_paper_pdf(paper_id: int):
 async def upload_standalone_pdf(
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
+    user_id: str = Depends(get_current_user_id),
 ):
-    """Upload a standalone PDF (not attached to an existing paper)."""
+    """Upload a standalone PDF (not attached to an existing paper) for this user."""
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
-    
+
     session = get_session()
     try:
-        # Create unique filename
+        # create unique filename
         stored_filename = f"{uuid.uuid4().hex}.pdf"
         file_path = Path("./data/papers") / stored_filename
-        
-        # Save file
+
+        # save file
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        
+
         file_size = file_path.stat().st_size
         paper_title = title or Path(file.filename).stem
-        
-        # Create a new archived paper entry
+
+        # create a new archived paper entry for this user
         import hashlib
         unique_id = f"upload:{hashlib.md5(f'{paper_title}{datetime.utcnow().isoformat()}'.encode()).hexdigest()[:12]}"
-        
+
         paper = ArchivedPaper(
+            user_id=user_id,
             unique_id=unique_id,
             title=paper_title,
             authors=json.dumps([]),
@@ -727,9 +813,10 @@ async def upload_standalone_pdf(
         )
         session.add(paper)
         session.flush()
-        
-        # Create PDF record
+
+        # create PDF record
         pdf = PaperPDF(
+            user_id=user_id,
             archived_paper_id=paper.id,
             original_filename=file.filename,
             stored_filename=stored_filename,
@@ -738,12 +825,12 @@ async def upload_standalone_pdf(
             source="upload",
         )
         session.add(pdf)
-        
-        # Update stats
-        stats = session.query(UserStats).first()
+
+        # update per-user stats
+        stats = session.query(UserStats).filter(UserStats.user_id == user_id).first()
         if stats:
             stats.total_papers_archived += 1
-        
+
         session.commit()
         
         return {
@@ -763,10 +850,16 @@ async def upload_standalone_pdf(
 # =============================================================================
 
 @app.post("/archive/topics", tags=["Archive"])
-async def archive_topic_review(request: ArchiveTopicRequest):
+async def archive_topic_review(
+    request: ArchiveTopicRequest,
+    user_id: str = Depends(get_current_user_id),
+):
     session = get_session()
     try:
-        existing = session.query(ArchivedTopicReview).filter(ArchivedTopicReview.topic_id == request.topic_id).first()
+        existing = session.query(ArchivedTopicReview).filter(
+            ArchivedTopicReview.user_id == user_id,
+            ArchivedTopicReview.topic_id == request.topic_id,
+        ).first()
         if existing:
             existing.review_content = request.review_content
             existing.key_points = request.key_points
@@ -785,14 +878,15 @@ async def archive_topic_review(request: ArchiveTopicRequest):
                 if request.status == "completed" and not existing.completed_at:
                     existing.completed_at = datetime.utcnow()
             session.commit()
-            
-            stats = session.query(UserStats).first()
+
+            stats = session.query(UserStats).filter(UserStats.user_id == user_id).first()
             if stats:
                 stats.total_topics_reviewed += 1
-            
+
             return {"message": "Topic review updated", "id": existing.id, "review_count": existing.review_count}
-        
+
         topic = ArchivedTopicReview(
+            user_id=user_id,
             topic_id=request.topic_id,
             topic_name=request.topic_name,
             course_id=request.course_id,
@@ -810,14 +904,14 @@ async def archive_topic_review(request: ArchiveTopicRequest):
         )
         if request.status == "completed":
             topic.completed_at = datetime.utcnow()
-        
+
         session.add(topic)
-        
-        stats = session.query(UserStats).first()
+
+        stats = session.query(UserStats).filter(UserStats.user_id == user_id).first()
         if stats:
             stats.total_topics_reviewed += 1
-        
-        update_user_streak()
+
+        update_user_streak(user_id=user_id)
         session.commit()
         session.refresh(topic)
         return {"message": "Topic review archived", "id": topic.id}
@@ -829,11 +923,18 @@ async def archive_topic_review(request: ArchiveTopicRequest):
 
 
 @app.get("/archive/topics", tags=["Archive"])
-async def get_archived_topics(limit: int = 50, offset: int = 0, course_id: Optional[str] = None,
-                              status: Optional[str] = None):
+async def get_archived_topics(
+    limit: int = 50,
+    offset: int = 0,
+    course_id: Optional[str] = None,
+    status: Optional[str] = None,
+    user_id: str = Depends(get_current_user_id),
+):
     session = get_session()
     try:
-        query = session.query(ArchivedTopicReview).order_by(ArchivedTopicReview.last_reviewed_at.desc())
+        query = session.query(ArchivedTopicReview).filter(
+            ArchivedTopicReview.user_id == user_id
+        ).order_by(ArchivedTopicReview.last_reviewed_at.desc())
         if course_id:
             query = query.filter(ArchivedTopicReview.course_id == course_id)
         if status:
@@ -864,10 +965,17 @@ async def get_archived_topics(limit: int = 50, offset: int = 0, course_id: Optio
 
 
 @app.put("/archive/topics/{topic_db_id}", tags=["Archive"])
-async def update_archived_topic(topic_db_id: int, request: UpdateTopicRequest):
+async def update_archived_topic(
+    topic_db_id: int,
+    request: UpdateTopicRequest,
+    user_id: str = Depends(get_current_user_id),
+):
     session = get_session()
     try:
-        topic = session.query(ArchivedTopicReview).filter(ArchivedTopicReview.id == topic_db_id).first()
+        topic = session.query(ArchivedTopicReview).filter(
+            ArchivedTopicReview.user_id == user_id,
+            ArchivedTopicReview.id == topic_db_id,
+        ).first()
         if not topic:
             raise HTTPException(status_code=404, detail="Topic not found")
         if request.user_notes is not None:
@@ -892,10 +1000,16 @@ async def update_archived_topic(topic_db_id: int, request: UpdateTopicRequest):
 
 
 @app.delete("/archive/topics/{topic_db_id}", tags=["Archive"])
-async def delete_archived_topic(topic_db_id: int):
+async def delete_archived_topic(
+    topic_db_id: int,
+    user_id: str = Depends(get_current_user_id),
+):
     session = get_session()
     try:
-        topic = session.query(ArchivedTopicReview).filter(ArchivedTopicReview.id == topic_db_id).first()
+        topic = session.query(ArchivedTopicReview).filter(
+            ArchivedTopicReview.user_id == user_id,
+            ArchivedTopicReview.id == topic_db_id,
+        ).first()
         if not topic:
             raise HTTPException(status_code=404, detail="Topic not found")
         session.delete(topic)
@@ -910,20 +1024,25 @@ async def delete_archived_topic(topic_db_id: int):
 # =============================================================================
 
 @app.put("/topics/{topic_id}/status", tags=["Topics"])
-async def update_topic_status(topic_id: str, request: TopicStatusRequest):
+async def update_topic_status(
+    topic_id: str,
+    request: TopicStatusRequest,
+    user_id: str = Depends(get_current_user_id),
+):
     """
-    Set a topic's lifecycle status: active, completed, or review_later.
+    Set a topic's lifecycle status for this user: active, completed, or review_later.
     Creates an archived record if one doesn't exist yet.
     """
     if request.status not in ("active", "completed", "review_later"):
         raise HTTPException(status_code=400, detail="Status must be 'active', 'completed', or 'review_later'")
-    
+
     session = get_session()
     try:
         existing = session.query(ArchivedTopicReview).filter(
-            ArchivedTopicReview.topic_id == topic_id
+            ArchivedTopicReview.user_id == user_id,
+            ArchivedTopicReview.topic_id == topic_id,
         ).first()
-        
+
         if existing:
             existing.status = request.status
             if request.status == "completed" and not existing.completed_at:
@@ -932,10 +1051,11 @@ async def update_topic_status(topic_id: str, request: TopicStatusRequest):
                 existing.completed_at = None
             session.commit()
             return {"message": f"Topic status updated to '{request.status}'", "id": existing.id}
-        
-        # no archived record yet — create a minimal one from the Topic row
+
+        # no archived record yet for this user — create a minimal one from the Topic row
         topic = _get_topic_or_404(topic_id)
         new_record = ArchivedTopicReview(
+            user_id=user_id,
             topic_id=topic.id,
             topic_name=topic.name,
             course_id=topic.stream,                              # stream lives in course_id slot
@@ -966,9 +1086,12 @@ async def update_topic_status(topic_id: str, request: TopicStatusRequest):
 
 
 @app.get("/topics/random-review", tags=["Topics"])
-async def get_random_topic_review(exclude: Optional[str] = None):
+async def get_random_topic_review(
+    exclude: Optional[str] = None,
+    user_id: str = Depends(get_current_user_id),
+):
     """
-    Generate a review for a topic randomly chosen from the user's active scope.
+    Generate a review for a topic randomly chosen from this user's active scope.
 
     Selection rules (in order):
       - exclude topics marked completed
@@ -980,13 +1103,13 @@ async def get_random_topic_review(exclude: Optional[str] = None):
     from .database import get_topics_for_scope
     from .services import ContentGeneratorService
 
-    scope_topics = get_topics_for_scope()
+    scope_topics = get_topics_for_scope(user_id=user_id)
     if not scope_topics:
         raise HTTPException(status_code=404, detail="No topics in active scope")
 
-    completed_ids = get_completed_topic_ids()
-    recently_reviewed_ids = get_recently_reviewed_topic_ids(days=3)
-    review_later_ids = get_review_later_topic_ids()
+    completed_ids = get_completed_topic_ids(user_id=user_id)
+    recently_reviewed_ids = get_recently_reviewed_topic_ids(user_id=user_id, days=3)
+    review_later_ids = get_review_later_topic_ids(user_id=user_id)
     exclude_ids = set(exclude.split(",")) if exclude else set()
 
     topic = _select_topic_from_scope(
@@ -1011,9 +1134,9 @@ async def get_random_topic_review(exclude: Optional[str] = None):
 
 
 @app.get("/topics/status-summary", tags=["Topics"])
-async def get_topic_status_summary():
+async def get_topic_status_summary(user_id: str = Depends(get_current_user_id)):
     """
-    Summary of topic statuses across all topics in the Topic table.
+    Summary of topic statuses for this user across all topics in the Topic table.
     Counts use the universe of active topics, not the scope-filtered view.
     """
     from .database import Topic as TopicModel
@@ -1024,8 +1147,8 @@ async def get_topic_status_summary():
     finally:
         session.close()
 
-    completed_ids = get_completed_topic_ids()
-    review_later_ids = get_review_later_topic_ids()
+    completed_ids = get_completed_topic_ids(user_id=user_id)
+    review_later_ids = get_review_later_topic_ids(user_id=user_id)
     completed = len(completed_ids)
     review_later = len(review_later_ids)
     active = max(0, total - completed - review_later)
@@ -1044,10 +1167,14 @@ async def get_topic_status_summary():
 # =============================================================================
 
 @app.post("/archive/quizzes", tags=["Archive"])
-async def archive_quiz(request: ArchiveQuizRequest):
+async def archive_quiz(
+    request: ArchiveQuizRequest,
+    user_id: str = Depends(get_current_user_id),
+):
     session = get_session()
     try:
         quiz = ArchivedQuiz(
+            user_id=user_id,
             topics=request.topics,
             topic_ids=request.topic_ids,
             total_questions=request.total_questions,
@@ -1058,15 +1185,15 @@ async def archive_quiz(request: ArchiveQuizRequest):
             duration_seconds=request.duration_seconds,
         )
         session.add(quiz)
-        
-        stats = session.query(UserStats).first()
+
+        stats = session.query(UserStats).filter(UserStats.user_id == user_id).first()
         if stats:
             stats.total_quizzes_taken += 1
             stats.total_quiz_questions += request.total_questions
             correct = sum(1 for q in request.questions if q.get("result", {}).get("correct", False))
             stats.total_correct_answers += correct
-        
-        update_user_streak()
+
+        update_user_streak(user_id=user_id)
         session.commit()
         session.refresh(quiz)
         return {"message": "Quiz archived", "id": quiz.id}
@@ -1078,10 +1205,16 @@ async def archive_quiz(request: ArchiveQuizRequest):
 
 
 @app.get("/archive/quizzes", tags=["Archive"])
-async def get_archived_quizzes(limit: int = 50, offset: int = 0):
+async def get_archived_quizzes(
+    limit: int = 50,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user_id),
+):
     session = get_session()
     try:
-        query = session.query(ArchivedQuiz).order_by(ArchivedQuiz.taken_at.desc())
+        query = session.query(ArchivedQuiz).filter(
+            ArchivedQuiz.user_id == user_id
+        ).order_by(ArchivedQuiz.taken_at.desc())
         quizzes = query.offset(offset).limit(limit).all()
         total = query.count()
         return {
@@ -1102,10 +1235,16 @@ async def get_archived_quizzes(limit: int = 50, offset: int = 0):
 
 
 @app.delete("/archive/quizzes/{quiz_id}", tags=["Archive"])
-async def delete_archived_quiz(quiz_id: int):
+async def delete_archived_quiz(
+    quiz_id: int,
+    user_id: str = Depends(get_current_user_id),
+):
     session = get_session()
     try:
-        quiz = session.query(ArchivedQuiz).filter(ArchivedQuiz.id == quiz_id).first()
+        quiz = session.query(ArchivedQuiz).filter(
+            ArchivedQuiz.user_id == user_id,
+            ArchivedQuiz.id == quiz_id,
+        ).first()
         if not quiz:
             raise HTTPException(status_code=404, detail="Quiz not found")
         session.delete(quiz)
@@ -1116,16 +1255,36 @@ async def delete_archived_quiz(quiz_id: int):
 
 
 @app.get("/archive/stats", tags=["Archive"])
-async def get_archive_stats():
+async def get_archive_stats(user_id: str = Depends(get_current_user_id)):
     session = get_session()
     try:
-        papers_total = session.query(ArchivedPaper).count()
-        papers_completed = session.query(ArchivedPaper).filter(ArchivedPaper.read_status == "completed").count()
-        topics_count = session.query(ArchivedTopicReview).count()
-        topics_completed = session.query(ArchivedTopicReview).filter(ArchivedTopicReview.status == "completed").count()
-        total_reviews = sum(r[0] for r in session.query(ArchivedTopicReview.review_count).all()) or 0
-        quizzes_count = session.query(ArchivedQuiz).count()
-        quiz_scores = [s[0] for s in session.query(ArchivedQuiz.percentage).all()]
+        papers_total = session.query(ArchivedPaper).filter(
+            ArchivedPaper.user_id == user_id
+        ).count()
+        papers_completed = session.query(ArchivedPaper).filter(
+            ArchivedPaper.user_id == user_id,
+            ArchivedPaper.read_status == "completed",
+        ).count()
+        topics_count = session.query(ArchivedTopicReview).filter(
+            ArchivedTopicReview.user_id == user_id
+        ).count()
+        topics_completed = session.query(ArchivedTopicReview).filter(
+            ArchivedTopicReview.user_id == user_id,
+            ArchivedTopicReview.status == "completed",
+        ).count()
+        total_reviews = sum(
+            r[0] for r in session.query(ArchivedTopicReview.review_count).filter(
+                ArchivedTopicReview.user_id == user_id
+            ).all()
+        ) or 0
+        quizzes_count = session.query(ArchivedQuiz).filter(
+            ArchivedQuiz.user_id == user_id
+        ).count()
+        quiz_scores = [
+            s[0] for s in session.query(ArchivedQuiz.percentage).filter(
+                ArchivedQuiz.user_id == user_id
+            ).all()
+        ]
         avg_score = sum(quiz_scores) / len(quiz_scores) if quiz_scores else 0
         
         return {
@@ -1142,19 +1301,23 @@ async def get_archive_stats():
 # =============================================================================
 
 @app.get("/papers/discover", tags=["Papers"])
-async def discover_papers(max_results: int = 10, days_back: int = 30):
+async def discover_papers(
+    max_results: int = 10,
+    days_back: int = 30,
+    user_id: str = Depends(get_current_user_id),
+):
     from .services import PaperDiscoveryService
-    
-    # Get seen paper IDs to exclude
-    seen_ids = get_seen_paper_ids()
-    
-    service = PaperDiscoveryService()
+
+    # exclude papers this user has already seen
+    seen_ids = get_seen_paper_ids(user_id=user_id)
+
+    service = PaperDiscoveryService(user_id=user_id)
     try:
         papers = await service.discover_papers(max_results=max_results + len(seen_ids), days_back=days_back)
-        
-        # Filter out seen papers
+
+        # filter out seen papers
         new_papers = [p for p in papers if p.unique_id not in seen_ids][:max_results]
-        
+
         return {
             "count": len(new_papers),
             "papers": [p.to_dict() for p in new_papers],
@@ -1165,27 +1328,27 @@ async def discover_papers(max_results: int = 10, days_back: int = 30):
 
 
 @app.get("/papers/daily", tags=["Papers"])
-async def get_daily_paper():
+async def get_daily_paper(user_id: str = Depends(get_current_user_id)):
     from .services import PaperDiscoveryService, ContentGeneratorService
-    
-    seen_ids = list(get_seen_paper_ids())
-    
-    discovery = PaperDiscoveryService()
+
+    seen_ids = list(get_seen_paper_ids(user_id=user_id))
+
+    discovery = PaperDiscoveryService(user_id=user_id)
     generator = ContentGeneratorService()
-    
+
     try:
         paper = await discovery.select_daily_paper(seen_ids=seen_ids, days_back=30)
-        
+
         if not paper:
             return {"message": "No new papers found", "paper": None}
-        
-        # Mark as seen
+
+        # mark as seen for this user
         paper_dict = paper.to_dict()
         paper_dict["unique_id"] = paper.unique_id
-        mark_paper_as_seen(paper_dict)
-        
+        mark_paper_as_seen(paper_dict, user_id=user_id)
+
         summary = await generator.generate_paper_summary(paper)
-        
+
         return {"paper": paper.to_dict(), "summary": summary}
     finally:
         await discovery.close()
@@ -1250,9 +1413,14 @@ async def generate_quiz(topic_id: str, count: int = 5, difficulty: str = "medium
 
 
 @app.post("/quiz/regenerate", tags=["Quiz"])
-async def regenerate_quiz(count: int = 5, difficulty: str = "medium", max_topics: int = 3):
+async def regenerate_quiz(
+    count: int = 5,
+    difficulty: str = "medium",
+    max_topics: int = 3,
+    user_id: str = Depends(get_current_user_id),
+):
     """
-    Generate a multi-topic quiz drawing from the active scope.
+    Generate a multi-topic quiz drawing from this user's active scope.
 
     To keep latency reasonable, we cap at `max_topics` (default 3) randomly
     chosen from the scope rather than hitting the LLM once per topic. With
@@ -1262,7 +1430,7 @@ async def regenerate_quiz(count: int = 5, difficulty: str = "medium", max_topics
     from .database import get_topics_for_scope
     from .services import ContentGeneratorService
 
-    scope_topics = get_topics_for_scope()
+    scope_topics = get_topics_for_scope(user_id=user_id)
     if not scope_topics:
         raise HTTPException(status_code=404, detail="No topics in active scope")
 
@@ -1328,10 +1496,13 @@ async def check_answer(question_id: str, answer: str):
 # =============================================================================
 
 @app.get("/daily", tags=["Daily"])
-async def get_daily_content(refresh: str = ""):
+async def get_daily_content(
+    refresh: str = "",
+    user_id: str = Depends(get_current_user_id),
+):
     """
     Daily content: one paper + one topic review + a quiz, all scoped to
-    the user's active topics. Cached per-day in `daily_content_cache`.
+    this user's active topics. Cached per-day in `daily_content_cache`.
 
     Body lives in `services/daily_content.generate_daily_content` so the
     APScheduler nightly job can call the same code path.
@@ -1339,7 +1510,7 @@ async def get_daily_content(refresh: str = ""):
     from .services.daily_content import generate_daily_content, VALID_REFRESH
 
     try:
-        result = await generate_daily_content(refresh=refresh)
+        result = await generate_daily_content(refresh=refresh, user_id=user_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

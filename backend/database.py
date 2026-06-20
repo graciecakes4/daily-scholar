@@ -20,6 +20,9 @@ from sqlalchemy.orm import relationship, sessionmaker, Session
 
 Base = declarative_base()
 
+# sentinel for the default (pre-auth, local) user. real ids land when Cloudflare Access is enabled.
+DEFAULT_USER_ID = "__local__"
+
 
 # =============================================================================
 # SEEN PAPERS - Track what user has been shown (avoid duplicates)
@@ -523,12 +526,14 @@ def create_tables():
         # fresh install — alembic creates everything
         _run_alembic("upgrade", "head")
 
-    # seed user_stats row if absent
+    # seed user_stats row for the local sentinel user if absent
     session = get_session()
     try:
-        stats = session.query(UserStats).first()
+        stats = session.query(UserStats).filter(
+            UserStats.user_id == DEFAULT_USER_ID
+        ).first()
         if not stats:
-            session.add(UserStats())
+            session.add(UserStats(user_id=DEFAULT_USER_ID))
             session.commit()
     finally:
         session.close()
@@ -589,30 +594,35 @@ def _backfill_legacy_columns(engine):
 # HELPER FUNCTIONS
 # =============================================================================
 
-def get_seen_paper_ids() -> set[str]:
-    """Get all unique IDs of papers the user has seen."""
+def get_seen_paper_ids(user_id: str = DEFAULT_USER_ID) -> set[str]:
+    """Get all unique IDs of papers this user has seen."""
     session = get_session()
     try:
-        results = session.query(SeenPaper.unique_id).all()
+        results = session.query(SeenPaper.unique_id).filter(
+            SeenPaper.user_id == user_id
+        ).all()
         return {r[0] for r in results}
     finally:
         session.close()
 
 
-def mark_paper_as_seen(paper_data: dict) -> SeenPaper:
-    """Mark a paper as seen."""
+def mark_paper_as_seen(paper_data: dict, user_id: str = DEFAULT_USER_ID) -> SeenPaper:
+    """Mark a paper as seen for this user."""
     import json
-    
+
     session = get_session()
     try:
+        # unique_id is globally unique, so we scope existence checks per-user
         existing = session.query(SeenPaper).filter(
-            SeenPaper.unique_id == paper_data.get("unique_id")
+            SeenPaper.unique_id == paper_data.get("unique_id"),
+            SeenPaper.user_id == user_id,
         ).first()
-        
+
         if existing:
             return existing
-        
+
         seen = SeenPaper(
+            user_id=user_id,
             unique_id=paper_data.get("unique_id"),
             arxiv_id=paper_data.get("arxiv_id"),
             semantic_scholar_id=paper_data.get("semantic_scholar_id"),
@@ -624,28 +634,32 @@ def mark_paper_as_seen(paper_data: dict) -> SeenPaper:
             shown_date=date.today(),
         )
         session.add(seen)
-        
-        stats = session.query(UserStats).first()
+
+        stats = session.query(UserStats).filter(
+            UserStats.user_id == user_id
+        ).first()
         if stats:
             stats.total_papers_seen += 1
             stats.updated_at = datetime.utcnow()
-        
+
         session.commit()
         return seen
     finally:
         session.close()
 
 
-def update_user_streak():
-    """Update the user's activity streak."""
+def update_user_streak(user_id: str = DEFAULT_USER_ID):
+    """Update this user's activity streak."""
     session = get_session()
     try:
-        stats = session.query(UserStats).first()
+        stats = session.query(UserStats).filter(
+            UserStats.user_id == user_id
+        ).first()
         if not stats:
             return
-        
+
         today = date.today()
-        
+
         if stats.last_activity_date is None:
             stats.current_streak_days = 1
         elif stats.last_activity_date == today:
@@ -654,47 +668,50 @@ def update_user_streak():
             stats.current_streak_days += 1
         else:
             stats.current_streak_days = 1
-        
+
         stats.last_activity_date = today
         stats.longest_streak_days = max(stats.longest_streak_days, stats.current_streak_days)
         stats.updated_at = datetime.utcnow()
-        
+
         session.commit()
     finally:
         session.close()
 
 
-def get_completed_topic_ids() -> set[str]:
-    """Get topic_ids that the user has marked as completed."""
+def get_completed_topic_ids(user_id: str = DEFAULT_USER_ID) -> set[str]:
+    """Get topic_ids that this user has marked as completed."""
     session = get_session()
     try:
         results = session.query(ArchivedTopicReview.topic_id).filter(
-            ArchivedTopicReview.status == "completed"
+            ArchivedTopicReview.user_id == user_id,
+            ArchivedTopicReview.status == "completed",
         ).all()
         return {r[0] for r in results}
     finally:
         session.close()
 
 
-def get_review_later_topic_ids() -> set[str]:
-    """Get topic_ids that the user has saved for later review."""
+def get_review_later_topic_ids(user_id: str = DEFAULT_USER_ID) -> set[str]:
+    """Get topic_ids that this user has saved for later review."""
     session = get_session()
     try:
         results = session.query(ArchivedTopicReview.topic_id).filter(
-            ArchivedTopicReview.status == "review_later"
+            ArchivedTopicReview.user_id == user_id,
+            ArchivedTopicReview.status == "review_later",
         ).all()
         return {r[0] for r in results}
     finally:
         session.close()
 
 
-def get_recently_reviewed_topic_ids(days: int = 3) -> set[str]:
+def get_recently_reviewed_topic_ids(user_id: str = DEFAULT_USER_ID, days: int = 3) -> set[str]:
     """Get topic_ids reviewed within the last N days (to avoid immediate repeats)."""
     session = get_session()
     try:
         cutoff = datetime.utcnow() - timedelta(days=days)
         results = session.query(ArchivedTopicReview.topic_id).filter(
-            ArchivedTopicReview.last_reviewed_at >= cutoff
+            ArchivedTopicReview.user_id == user_id,
+            ArchivedTopicReview.last_reviewed_at >= cutoff,
         ).all()
         return {r[0] for r in results}
     finally:
@@ -704,9 +721,6 @@ def get_recently_reviewed_topic_ids(days: int = 3) -> set[str]:
 # =============================================================================
 # TOPIC / SCOPE HELPERS
 # =============================================================================
-
-# sentinel for the default (pre-auth, local) user
-DEFAULT_USER_ID = "__local__"
 
 
 def get_or_create_user_settings(user_id: str = DEFAULT_USER_ID) -> UserSettings:
