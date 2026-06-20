@@ -5,9 +5,9 @@ Topics drive both paper discovery (via keywords + arxiv_categories) and the
 review/quiz surfaces (via key_concepts + learning_objectives). They are
 canonical in the DB; YAML files under config/topics/ are bootstrap + export.
 
-Auth: today everyone is the sentinel '__local__' user. When Cloudflare
-Access is enabled, `current_user_id()` becomes a request-scoped dependency
-that extracts the user identifier from the Cf-Access-Jwt-Assertion header.
+Auth: scope endpoints resolve the user id via the shared `get_current_user_id`
+dependency (Cf-Access header → X-User-Id → '__local__' sentinel). Flipping on
+Cloudflare Access is a policy + JWT-validation change, not a code change here.
 """
 
 from __future__ import annotations
@@ -15,11 +15,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from ..auth import get_current_user_id
 from ..database import (
-    DEFAULT_USER_ID,
     Topic,
     UserSettings,
     get_or_create_user_settings,
@@ -133,19 +133,6 @@ class ScopeUpdateRequest(BaseModel):
 
     scope_mode: str = Field(pattern="^(silo|multi|all)$")
     scope_topic_ids: list[str] = Field(default_factory=list)
-
-
-# =============================================================================
-# auth shim — to be replaced by a real dependency when Cloudflare Access lands
-# =============================================================================
-
-
-def current_user_id() -> str:
-    """
-    Resolve the current user id. Today there is only the sentinel '__local__'.
-    Wire to a FastAPI Depends() that reads Cf-Access-Jwt-Assertion in Phase 4.
-    """
-    return DEFAULT_USER_ID
 
 
 # =============================================================================
@@ -317,9 +304,8 @@ def delete_topic(
 
 
 @scope_router.get("/scope", response_model=ScopeResponse)
-def get_scope():
-    """Return the current user's topic scope (defaults to 'all')."""
-    user_id = current_user_id()
+def get_scope(user_id: str = Depends(get_current_user_id)):
+    """Return this user's topic scope (defaults to 'all')."""
     settings = get_or_create_user_settings(user_id)
     return ScopeResponse(
         user_id=settings.user_id,
@@ -330,17 +316,18 @@ def get_scope():
 
 
 @scope_router.put("/scope", response_model=ScopeResponse)
-def update_scope(body: ScopeUpdateRequest):
+def update_scope(
+    body: ScopeUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+):
     """
-    Update scope mode + selected topic ids.
+    Update scope mode + selected topic ids for this user.
 
     Validation:
       - silo: exactly one topic id in scope_topic_ids
       - multi: at least one topic id, all must exist
       - all: scope_topic_ids ignored (kept for round-trip but not used)
     """
-    user_id = current_user_id()
-
     if body.scope_mode == "silo" and len(body.scope_topic_ids) != 1:
         raise HTTPException(
             status_code=400,
