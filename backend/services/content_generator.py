@@ -46,7 +46,7 @@ class ContentGeneratorService:
     
     async def generate_paper_summary(self, paper) -> dict:
         """Generate a comprehensive summary of a research paper."""
-        prompt = f"""You are helping a doctoral student in data science understand a research paper.
+        prompt = f"""You are helping a learner understand a research paper.
 
 PAPER INFORMATION:
 Title: {paper.title}
@@ -99,7 +99,7 @@ Format as JSON:
             elif previous_performance.get("streak", 0) >= 3:
                 performance_context = "\nNote: Student doing well. Include advanced material."
         
-        prompt = f"""You are a knowledgeable tutor helping a doctoral student review a topic.
+        prompt = f"""You are a knowledgeable tutor helping a learner review a topic.
 
 COURSE: {course.get('name', 'Unknown Course')}
 TOPIC: {topic.get('name', 'Unknown Topic')}
@@ -125,7 +125,7 @@ Format as JSON:
             client = get_llm_client(task="review")
             # 4500 tokens because the review prompt asks for 3-5 paragraphs +
             # 5-7 key points + connections + practice suggestions; 2500 was
-            # consistently truncating mid-string on the praxis-aligned topics
+            # consistently truncating mid-string on the domain-specific topics
             result = client.complete_json(prompt, max_tokens=4500, temperature=0.4)
             if "__llm_parse_error__" in result:
                 raise ValueError(

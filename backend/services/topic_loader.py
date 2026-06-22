@@ -59,13 +59,25 @@ def _topics_dir() -> Path:
 
 
 def _iter_topic_yaml_paths() -> list[Path]:
-    """Return all *.yaml files in config/topics/ (excluding archive subdirs)."""
+    """
+    Return all *.yaml files under config/topics/.
+
+    Scans the top-level directory plus any immediate child directory whose
+    name does NOT start with '_'. This keeps `_archive/` (and any future
+    `_disabled/`-style folders) excluded by convention while allowing
+    `examples/` (tracked demo topics) and `private/` (gitignored user
+    topics) to coexist. Nested subdirectories beyond one level are not
+    scanned.
+    """
     topics_dir = _topics_dir()
     if not topics_dir.exists():
         logger.info("config/topics/ does not exist; skipping topic loader")
         return []
-    # only top-level files; _archive/ and any other subdirs are ignored
-    return sorted(p for p in topics_dir.glob("*.yaml") if p.is_file())
+    paths: list[Path] = list(topics_dir.glob("*.yaml"))
+    for child in topics_dir.iterdir():
+        if child.is_dir() and not child.name.startswith("_"):
+            paths.extend(child.glob("*.yaml"))
+    return sorted(p for p in paths if p.is_file())
 
 
 def _load_topic_yaml(path: Path) -> dict[str, Any]:
