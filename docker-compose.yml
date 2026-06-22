@@ -47,7 +47,7 @@ services:
       DATABASE_URL: postgresql+psycopg://scholar:scholar@postgres:5432/daily_scholar
       # frontend lives at the compose-network alias `frontend`
       FRONTEND_URL: http://frontend:3000
-      BACKEND_PORT: "8000"
+      PORT: "8000"
     ports:
       - "8000:8000"
     volumes:

@@ -38,9 +38,10 @@ FROM python:3.13-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
-# port resolution order: explicit BACKEND_PORT (local dev / docker-compose) >
-# PORT (injected by Railway / Heroku-style PaaS at runtime) > 8000 default.
-# do NOT set BACKEND_PORT here as an ENV — that would mask Railway's PORT.
+# the container honors $PORT — set by Railway (and Heroku-style PaaS) at
+# runtime, by docker-compose, or defaults to 8000 here. BACKEND_PORT is a
+# local-dev / .env name only (avoids Next.js PORT collision in `make start`);
+# inside the container we stay on the Railway-canonical $PORT.
 
 # minimal runtime deps; libffi for cryptography, curl for healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -68,8 +69,8 @@ USER app
 EXPOSE 8000
 
 # uvicorn binds 0.0.0.0 inside the container; Railway / docker-compose maps it
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-${PORT:-8000}}"]
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
 
 # light shell-based healthcheck — hits /health (the lightweight one)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS "http://localhost:${BACKEND_PORT:-${PORT:-8000}}/health" || exit 1
+    CMD curl -fsS "http://localhost:${PORT:-8000}/health" || exit 1
