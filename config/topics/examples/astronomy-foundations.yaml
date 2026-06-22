@@ -104,7 +104,6 @@ learning_objectives:
   confirmation
 - Name three major time-domain surveys (e.g., ZTF, Pan-STARRS, Rubin/LSST) and what
   each produces
-resources:
-- astronomy/foundational_readings_for_praxis.md
+resources: []
 quiz_difficulty: easy
 prerequisites: []

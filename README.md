@@ -13,7 +13,7 @@ A personalized daily learning system for students. Automatically delivers:
 | Path | For | What you get | Where to start |
 |---|---|---|---|
 | **Run locally** (clone + `make setup` + `make start`) | beta testers and developers who want full control | SQLite + local filesystem + local frontend; nothing leaves your machine | [Run Locally](#run-locally) |
-| **Use the hosted version** | Grace and invited beta testers | the production PWA at `scholar.<domain>` — install on your phone, push notifications, your data syncs across devices | [Hosted version](#hosted-version) |
+| **Use the hosted version** | you and any invited collaborators | the production PWA at `scholar.<domain>` — install on your phone, push notifications, your data syncs across devices | [Hosted version](#hosted-version) |
 
 The same codebase powers both. The hosted version layers Postgres, Backblaze B2, Cloudflare Access, and Railway on top, but every cloud-only feature has a local-mode fallback or graceful skip.
 
@@ -241,7 +241,7 @@ If `make` isn't your thing, `./setup.sh` and `./start.sh` do the same work direc
 
 ### Configure your topics
 
-The default topic set is the praxis-tight transient-classification stack — seven YAMLs under `config/topics/`. To switch focus or add a new stream, see [docs/topics.md](docs/topics.md). You can edit YAMLs directly OR use the in-app editor at `http://localhost:3000/topics` — both paths are documented there.
+The default topic set ships under `config/topics/examples/` (an astronomy-foundations topic, an ML-foundations topic, and a broad ML/LLM demo). Add your own under `config/topics/examples/` to share, or under `config/topics/private/` to keep them out of git. To switch focus or add a new stream, see [docs/topics.md](docs/topics.md). You can edit YAMLs directly OR use the in-app editor at `http://localhost:3000/topics` — both paths are documented there.
 
 ### Daily usage
 
@@ -521,7 +521,7 @@ End-to-end deploy of the production stack with a **dev + prod environment split*
 
 #### Cost guardrails
 
-- **Anthropic / Gemini** — set hard monthly caps in each console (Anthropic: https://console.anthropic.com/settings/billing). Expected praxis-scale spend is under $10/mo with the default routing.
+- **Anthropic / Gemini** — set hard monthly caps in each console (Anthropic: https://console.anthropic.com/settings/billing). Expected single-user spend is under $10/mo with the default routing.
 - **Railway** — Settings → Usage limits → set a $-per-month cap. Free Trial is generous; expect $5–10/mo for the always-on backend + frontend + 1GB Postgres.
 - **Backblaze B2** — first 10 GB free. Egress costs $0 when paired through Cloudflare via the bandwidth alliance.
 - **Cloudflare** — DNS, TLS, Access (up to 50 users), Workers (within free tier) are all $0.

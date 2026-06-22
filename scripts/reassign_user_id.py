@@ -8,7 +8,7 @@ and now Cloudflare Access is on, so your real identity becomes
 tables in one transaction so your archives, history, stats, push subs, and
 scope settings follow you to the new identity.
 
-Tables touched (must match the Phase 4 schema list in PWA_PRAXIS_MIGRATION_PLAN.md):
+Tables touched (the nine user-scoped tables introduced with the auth-identity schema):
 
   seen_papers
   archived_papers

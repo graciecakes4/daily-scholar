@@ -77,3 +77,10 @@ config/_archive/
 
 # pr scripts
 pr-scripts/
+
+# internal docs
+PUBLIC_REPO_AUDIT.md
+PWA_MIGRATION_PLAN.md
+
+# user-private topic configs (not shipped with the public repo)
+config/topics/private/
