@@ -24,6 +24,15 @@ from ..database import DEFAULT_USER_ID, Topic, get_topics_for_scope
 # to UserSettings if we want per-user overrides later.
 DEFAULT_SOURCES: tuple[str, ...] = ("arxiv", "semantic_scholar", "core")
 
+# Semantic Scholar and CORE both go through cycles of 429/5xx storms and
+# slow-response hangs. The shared client timeout (30s) means N parallel
+# in-flight calls all wait the full 30s when those APIs are flapping —
+# turning a transient external blip into a 30s+ cold-start dashboard hang.
+# A tighter per-call timeout for known-flaky sources keeps total cycle time
+# bounded by the worst-behaving source. arXiv is reliable enough to keep
+# the default.
+_FLAKY_EXTERNAL_TIMEOUT_SECONDS: float = 8.0
+
 
 class Paper:
     """Normalized paper representation."""
@@ -304,13 +313,20 @@ class PaperDiscoveryService:
             headers["x-api-key"] = self.settings.semantic_scholar_api_key
         
         try:
-            response = await self.client.get(base_url, params=params, headers=headers)
+            response = await self.client.get(
+                base_url,
+                params=params,
+                headers=headers,
+                timeout=_FLAKY_EXTERNAL_TIMEOUT_SECONDS,
+            )
             response.raise_for_status()
             data = response.json()
             return self._parse_semantic_scholar_response(data)
-            
+
         except httpx.HTTPError as e:
-            print(f"Semantic Scholar API error: {e}")
+            # fast-fail and let arXiv / CORE carry this cycle. logged once
+            # per failed call (orchestrator runs many in parallel).
+            print(f"Semantic Scholar skipped (flap or timeout): {e}")
             return []
     
     def _parse_semantic_scholar_response(self, data: dict) -> list[Paper]:
@@ -381,13 +397,18 @@ class PaperDiscoveryService:
         }
         
         try:
-            response = await self.client.get(base_url, params=params, headers=headers)
+            response = await self.client.get(
+                base_url,
+                params=params,
+                headers=headers,
+                timeout=_FLAKY_EXTERNAL_TIMEOUT_SECONDS,
+            )
             response.raise_for_status()
             data = response.json()
             return self._parse_core_response(data, days_back)
-            
+
         except httpx.HTTPError as e:
-            print(f"CORE API error: {e}")
+            print(f"CORE skipped (flap or timeout): {e}")
             return []
     
     def _parse_core_response(self, data: dict, days_back: int = 30) -> list[Paper]:
