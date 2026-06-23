@@ -28,6 +28,15 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# NEXT_PUBLIC_API_URL is baked into the client JS bundle at build time
+# (Next.js inlines anything matching NEXT_PUBLIC_* into client code). If
+# this isn't passed in as a build arg, the fallback in lib/api.ts wins and
+# every visitor hits http://localhost:8000 (their own machine) — meaning
+# the deployed frontend can't reach the backend. Railway passes service
+# env vars as --build-arg automatically.
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
 ENV NEXT_TELEMETRY_DISABLED=1 \
     SERWIST_SUPPRESS_TURBOPACK_WARNING=1
 
