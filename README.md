@@ -1,87 +1,93 @@
 # Daily Scholar 📚
 
-A personalized daily learning system for students. Automatically delivers:
-- **Fresh research papers** matching your interests
-- **Topic reviews** from your current courses
+A self-hosted, personalized daily learning system. Fork the repo, point it at the topics you care about, and every day it delivers:
+
+- **Fresh research papers** matched to your topics (arXiv, Semantic Scholar, CORE)
+- **Topic reviews** synthesized by an LLM from your reading list
 - **Interactive quizzes** with spaced repetition
-- **Supplementary resources** via web search
+- **Supplementary resources** to deepen what you're studying
+
+Daily Scholar is designed to be your tool: you run it, you tune the topics, the data stays where you put it.
 
 ---
 
-## Two ways to run Daily Scholar
+## Get started
 
-| Path | For | What you get | Where to start |
-|---|---|---|---|
-| **Run locally** (clone + `make setup` + `make start`) | beta testers and developers who want full control | SQLite + local filesystem + local frontend; nothing leaves your machine | [Run Locally](#run-locally) |
-| **Use the hosted version** | you and any invited collaborators | the production PWA at `scholar.<domain>` — install on your phone, push notifications, your data syncs across devices | [Hosted version](#hosted-version) |
+> **Fork first.** Daily Scholar is shipped as source. The intended workflow is to **[fork this repo on GitHub](https://github.com/graciecakes4/daily-scholar/fork)**, clone your fork, and customize from there. Your topics, notes, and configuration belong to *your* instance — the upstream repo only ships generic example topics and the codebase.
 
-The same codebase powers both. The hosted version layers Postgres, Backblaze B2, Cloudflare Access, and Railway on top, but every cloud-only feature has a local-mode fallback or graceful skip.
+Two ways to run your fork:
+
+| Setup | What you get | Pick when |
+|---|---|---|
+| **Local** (`make setup` + `make start`) | SQLite + local filesystem; everything stays on your laptop | You want a single-machine daily driver, are evaluating the app, or are developing on it |
+| **Hosted PWA** (Railway + Cloudflare + B2) | Install on your phone, push notifications, data syncs across devices | You want it available wherever you are, with mobile-friendly notifications |
+
+The same codebase powers both. The hosted setup layers Postgres, Backblaze B2, and Cloudflare Access on top, but every cloud-only feature has a local-mode fallback or graceful skip — you can start local and graduate to hosted later without rewriting anything.
 
 ---
 
 ## Table of Contents
 
-1. [Architecture Overview](#architecture-overview)
-2. [Directory Structure](#directory-structure)
-3. [Run Locally](#run-locally)
+1. [Run Locally](#run-locally) — fork → clone → `make setup` → `make start`
+2. [Configure Your Topics](#configuration)
+3. [Architecture Overview](#architecture-overview)
 4. [API Reference](#api-reference)
-5. [Configuration](#configuration) (see also [docs/topics.md](docs/topics.md) for the unified Topic model)
-6. [Install as a PWA](#install-as-a-pwa)
-7. [Hosted version](#hosted-version) — Railway + Cloudflare + B2 deploy
-8. [Tech Stack](#tech-stack)
-9. [Learning Path](#learning-path)
-10. [Troubleshooting](#troubleshooting)
+5. [Install as a PWA](#install-as-a-pwa)
+6. [Deploy to Railway + Cloudflare](#hosted-version) — turn your fork into a hosted PWA
+7. [Tech Stack](#tech-stack)
+8. [Troubleshooting](#troubleshooting)
+9. [Directory Structure](#directory-structure) (reference)
+10. [Contributing](#contributing) (upstream PRs welcome) · [License](#license)
 
 ---
 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              DAILY SCHOLAR                                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌──────────────────────────────────────────────────────────────────────┐  │
-│  │                         FRONTEND (Next.js)                            │  │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐   │  │
-│  │  │Dashboard│  │ Paper   │  │ Review  │  │  Quiz   │  │Settings │   │  │
-│  │  │  Home   │  │ Reader  │  │  Mode   │  │  Mode   │  │ Upload  │   │  │
-│  │  └─────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘   │  │
-│  └──────────────────────────────────────────────────────────────────────┘  │
-│                                    │                                         │
-│                                    ▼                                         │
-│  ┌──────────────────────────────────────────────────────────────────────┐  │
-│  │                      BACKEND API (FastAPI)                            │  │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐    │  │
-│  │  │  /papers   │  │  /topics   │  │  /quiz     │  │  /upload   │    │  │
-│  │  │  endpoint  │  │  endpoint  │  │  endpoint  │  │  endpoint  │    │  │
-│  │  └────────────┘  └────────────┘  └────────────┘  └────────────┘    │  │
-│  └──────────────────────────────────────────────────────────────────────┘  │
-│                                    │                                         │
-│                                    ▼                                         │
-│  ┌──────────────────────────────────────────────────────────────────────┐  │
-│  │                         SERVICES LAYER                                │  │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐      │  │
-│  │  │ Paper Discovery │  │ Content Gen     │  │ Quiz Engine     │      │  │
-│  │  │ - arXiv API     │  │ - Claude API    │  │ - Spaced Rep    │      │  │
-│  │  │ - Semantic Sch. │  │ - Summarization │  │ - Scoring       │      │  │
-│  │  │ - CORE API      │  │ - Q&A Gen       │  │ - Progress      │      │  │
-│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘      │  │
-│  └──────────────────────────────────────────────────────────────────────┘  │
-│                                    │                                         │
-│                                    ▼                                         │
-│  ┌──────────────────────────────────────────────────────────────────────┐  │
-│  │                          DATA LAYER                                   │  │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐      │  │
-│  │  │ SQLite Database │  │ File Storage    │  │ Config (YAML)   │      │  │
-│  │  │ - seen_papers   │  │ - course docs   │  │ - interests     │      │  │
-│  │  │ - quiz_history  │  │ - uploaded PDFs │  │ - courses       │      │  │
-│  │  │ - progress      │  │                 │  │ - schedule      │      │  │
-│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘      │  │
-│  └──────────────────────────────────────────────────────────────────────┘  │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+                ┌────────────────────────────────────────────────┐
+                │  Browser / installed PWA (Next.js standalone)  │
+                │   • dashboard / paper reader / quiz session    │
+                │   • topic catalog + in-app editor              │
+                │   • settings (scope, push, notifications)      │
+                │   • service worker (offline + Web Push)        │
+                └─────────────────────┬──────────────────────────┘
+                                      │  HTTPS
+                                      │  (Cloudflare Access edge auth on hosted)
+                                      ▼
+                ┌────────────────────────────────────────────────┐
+                │  Backend (FastAPI + uvicorn)                    │
+                │   /daily  /papers  /topics  /quiz               │
+                │   /push  /admin  /scope  /health  /health/deep  │
+                └─────────────────────┬──────────────────────────┘
+                                      │
+       ┌──────────────────┬───────────┴────────────┬──────────────────┐
+       ▼                  ▼                        ▼                  ▼
+┌────────────────┐ ┌──────────────────┐ ┌────────────────────┐ ┌──────────────┐
+│ Paper          │ │ Content Gen      │ │ Scheduler          │ │ Push fanout  │
+│ Discovery      │ │ (LLM router:     │ │ (APScheduler)      │ │ (VAPID +     │
+│  • arXiv       │ │  anthropic /     │ │  • nightly daily-  │ │  pywebpush)  │
+│  • Semantic    │ │  gemini /        │ │    content build   │ │              │
+│    Scholar     │ │  antigravity,    │ │  • per-user push   │ │              │
+│  • CORE        │ │  routed per task)│ │                    │ │              │
+└────────────────┘ └──────────────────┘ └────────────────────┘ └──────────────┘
+                                      │
+                ┌─────────────────────┴───────────────────────┐
+                ▼                                             ▼
+       ┌──────────────────────┐                  ┌───────────────────────┐
+       │ Database              │                 │ Storage abstraction   │
+       │  • SQLite (local)     │                 │  • Local filesystem   │
+       │  • Postgres (hosted)  │                 │  • Backblaze B2 (S3)  │
+       │  via SQLAlchemy +     │                 │  presigned URLs go    │
+       │  alembic migrations   │                 │  direct to browser    │
+       └──────────────────────┘                  └───────────────────────┘
 ```
+
+Two switches govern environment behavior, both via env:
+
+- `DATABASE_URL` — `sqlite:///./data/daily_scholar.db` (local default) or a Postgres URL (Railway / docker-compose).
+- `STORAGE_BACKEND` — `local` (default; PDFs land under `./data`) or `b2` (Backblaze, presigned URLs).
+
+Cloudflare Access is the only auth path on hosted deployments — there's no in-app login UI. Local mode runs as a single `__local__` user with no auth.
 
 ---
 
@@ -89,96 +95,123 @@ The same codebase powers both. The hosted version layers Postgres, Backblaze B2,
 
 ```
 daily-scholar/
-├── README.md                 # This file
-├── .env                      # Environment variables (API keys) - DO NOT COMMIT
-├── .env.example              # Template for environment variables
-├── .gitignore                # Git ignore rules
+├── README.md                 # this file
+├── LICENSE                   # MIT
+├── SECURITY.md               # how to report vulnerabilities
+├── CLAUDE.md                 # code-style + project notes for AI-assisted dev
+├── .env.example              # template for required environment variables
+├── .gitignore
+├── .dockerignore
 ├── requirements.txt          # Python dependencies
+├── pytest.ini                # pytest config
+├── Makefile                  # `make setup` / `make start` / `make test` etc.
+├── setup.sh                  # idempotent local bootstrap (called by `make setup`)
+├── start.sh                  # boots backend + frontend with /health polling
+├── Dockerfile                # backend image (Railway + docker-compose)
+├── docker-compose.yml        # full stack: postgres + backend + frontend
+├── railway.toml              # Railway deploy config (backend)
 │
 ├── backend/
 │   ├── __init__.py
-│   ├── main.py              # FastAPI application entry point
-│   ├── config.py            # Environment + YAML loaders
-│   ├── database.py          # SQLAlchemy models + alembic glue
-│   ├── models.py            # Pydantic models (data validation)
+│   ├── main.py               # FastAPI app + lifespan (migrations, topic bootstrap, scheduler)
+│   ├── config.py             # Settings + env loaders
+│   ├── database.py           # SQLAlchemy models, alembic glue, helper queries
+│   ├── models.py             # Pydantic request/response schemas
+│   ├── auth.py               # Cloudflare Access identity (email header + optional JWT verify)
 │   ├── api/
 │   │   ├── __init__.py
-│   │   └── topics.py        # Topic CRUD + scope endpoints (FastAPI router)
+│   │   ├── topics.py         # Topic CRUD, scope, import/export YAML
+│   │   ├── push.py           # Web Push subscribe / unsubscribe / test
+│   │   └── admin.py          # Scheduler inspection + manual job runs
 │   └── services/
 │       ├── __init__.py
-│       ├── paper_discovery.py    # arXiv, Semantic Scholar, CORE; topic-scoped
+│       ├── paper_discovery.py    # arXiv + Semantic Scholar + CORE, topic-scoped
 │       ├── content_generator.py  # LLM-driven reviews + quizzes
-│       └── topic_loader.py       # YAML <-> topics-table sync (bootstrap/import/export)
+│       ├── daily_content.py      # daily paper/review/quiz orchestration + caching
+│       ├── topic_loader.py       # YAML ↔ topics-table sync (bootstrap/import/export)
+│       ├── scheduler.py          # APScheduler nightly daily-content job
+│       ├── push_sender.py        # Web Push fanout (VAPID + pywebpush)
+│       ├── llm/                  # Multi-provider LLM router (anthropic/gemini/antigravity)
+│       │   ├── factory.py        # per-task routing table + provider selection
+│       │   ├── anthropic_client.py
+│       │   ├── gemini_client.py
+│       │   └── antigravity_client.py
+│       └── storage/              # Storage abstraction (LocalStorage / B2Storage)
+│           ├── base.py
+│           ├── local.py
+│           └── b2.py
 │
-├── alembic/                 # database migrations
+├── alembic/                  # database migrations (managed via SQLAlchemy)
 │   ├── env.py
 │   ├── script.py.mako
 │   └── versions/
 │       ├── 0001_baseline.py
-│       └── 0002_topics_user_settings_push.py
+│       ├── 0002_topics_user_settings_push.py
+│       └── 0003_auth_ready_user_id.py
 ├── alembic.ini
 │
 ├── frontend/
-│   ├── package.json         # Node.js dependencies
-│   ├── tsconfig.json        # TypeScript configuration
-│   ├── tailwind.config.js   # Tailwind CSS configuration
-│   ├── postcss.config.js    # PostCSS configuration
-│   ├── next.config.js       # Next.js configuration
+│   ├── package.json          # Next.js 16, React, Tailwind, @serwist/next
+│   ├── next.config.js        # Next config + Serwist PWA wrapper
+│   ├── Dockerfile            # multi-stage build (deps → builder → runner)
+│   ├── railway.toml          # Railway deploy config (frontend)
+│   ├── tsconfig.json
+│   ├── tailwind.config.js
+│   ├── postcss.config.js
 │   ├── app/
-│   │   ├── layout.tsx       # Root layout (with nav)
-│   │   ├── page.tsx         # Dashboard
-│   │   ├── globals.css      # Global styles
-│   │   ├── papers/          # Paper discovery + archive pages
-│   │   ├── quiz/            # Quiz session pages
-│   │   ├── topics/
-│   │   │   ├── page.tsx          # Topic catalog (list, grouped by stream)
-│   │   │   ├── new/page.tsx      # Create new topic
-│   │   │   ├── archive/page.tsx  # Past topic-review history
-│   │   │   └── [id]/edit/page.tsx
-│   │   └── settings/
-│   │       └── scope/page.tsx    # Silo / multi / all scope selector
-│   ├── components/
-│   │   └── TopicForm.tsx    # Shared topic editor (new + edit)
-│   └── lib/
-│       └── api.ts           # Typed API client
+│   │   ├── layout.tsx        # root layout + PWA shell
+│   │   ├── page.tsx          # dashboard
+│   │   ├── sw.ts             # service worker source (Serwist)
+│   │   ├── globals.css
+│   │   ├── papers/           # discover + archive
+│   │   ├── quiz/             # quiz session pages
+│   │   ├── topics/           # catalog, new, edit, archive
+│   │   └── settings/         # scope, notifications
+│   ├── components/           # shared React components (TopicForm, install prompts, etc.)
+│   ├── lib/
+│   │   └── api.ts            # typed API client
+│   └── public/
+│       ├── manifest.json     # PWA manifest
+│       └── icons/            # PWA icons (replace with your own brand)
 │
 ├── config/
-│   ├── topics/              # ONE FILE PER TOPIC. bootstrapped on app start.
-│   │   ├── astronomy-foundations.yaml
-│   │   ├── ml-foundations.yaml
-│   │   ├── transient-photometric-classification.yaml
-│   │   ├── multimodal-foundation-models-astronomy.yaml
-│   │   ├── missing-modality-learning.yaml
-│   │   ├── generative-cross-modal-imputation.yaml
-│   │   ├── sim-to-real-transfer-astronomy.yaml
-│   │   └── _archive/        # files here are NOT auto-loaded
-│   │       └── generic-ml.yaml   # restore point for old broad-ML behavior
-│   └── _archive/
-│       ├── interests.yaml.bak   # original pre-unified interests (reference only)
-│       └── courses.yaml.bak     # original pre-unified courses (reference only)
+│   └── topics/               # one YAML per topic; loaded at startup
+│       ├── examples/         # tracked demo topics shipped with the repo
+│       │   ├── astronomy-foundations.yaml
+│       │   ├── ml-foundations.yaml
+│       │   └── generic-ml.yaml
+│       └── private/          # gitignored; YOUR topics live here on your fork
 │
 ├── scripts/
-│   └── setup_db.py          # Database initialization
+│   ├── setup_db.py           # standalone DB init (rarely needed; `make setup` covers this)
+│   ├── generate_vapid_keys.py    # one-time VAPID keypair for Web Push
+│   ├── check_dialect_compat.py   # CI gate: exercises SQLite + Postgres parity
+│   └── reassign_user_id.py       # move user-scoped rows from one user_id to another
 │
 ├── docs/
-│   └── LEARNING_GUIDE.md    # Explains each component for learning
+│   ├── topics.md             # Topic model reference (schema, examples, import/export)
+│   ├── DEPLOY_CLOUDFLARE.md  # Cloudflare DNS + Access setup for hosted PWA
+│   └── LEARNING_GUIDE.md     # component-by-component explainer (developer onboarding)
 │
-├── data/                    # SQLite database (auto-generated)
+├── .github/
+│   └── workflows/
+│       ├── test-migrations.yml   # SQLite + Postgres migration parity on PR
+│       ├── deploy.yml            # Railway deploy gated on dialect-compat
+│       └── claude-review.yml     # AI code review on PR
+│
+├── data/                     # auto-generated; SQLite DB + LocalStorage PDFs
 │   └── daily_scholar.db
 │
-└── uploads/                 # Uploaded course materials
-    └── course_materials/
-        ├── data-engineering/
-        │   └── textbooks/
-        └── dl-nlp/
-            └── textbooks/
+└── uploads/                  # auto-generated; uploaded course materials (gitignored)
 ```
+
+A few directories are intentionally gitignored: `config/topics/private/` (your personal topics), `uploads/` (your course materials), `data/` (SQLite + PDFs), `.env` (secrets), and any internal planning docs. See [.gitignore](.gitignore) for the full list.
 
 ---
 
 ## Run Locally
 
-The local-mode path is SQLite + local filesystem + local frontend. No Railway, Cloudflare, or Backblaze required. Three commands get you from a fresh clone to a running app.
+The local-mode path is SQLite + local filesystem + local frontend. No Railway, Cloudflare, or Backblaze required. Five commands get you from a fresh fork to a running app.
 
 ### Prerequisites
 
@@ -189,30 +222,35 @@ The local-mode path is SQLite + local filesystem + local frontend. No Railway, C
 ### Quick start
 
 ```bash
-git clone https://github.com/graciecakes4/daily-scholar.git
+# 1. Fork this repo on GitHub (top-right "Fork" button), then clone your fork:
+git clone https://github.com/<your-username>/daily-scholar.git
 cd daily-scholar
-make setup                           # venv, deps, .env, migrations, frontend install
-nano .env                            # paste your ANTHROPIC_API_KEY
-make start                           # backend + frontend, waits for /health, opens up
+
+# 2. Idempotent setup: venv, deps, .env, migrations, frontend install
+make setup
+
+# 3. Paste your ANTHROPIC_API_KEY into .env (any editor):
+$EDITOR .env
+
+# 4. Boot backend + frontend, wait for /health, open the app
+make start
 ```
 
-That's it. The dashboard is at http://localhost:3000.
+That's it. The dashboard is at http://localhost:3000. Re-running `make setup` is safe — every step is idempotent.
 
 ### What `make setup` did
 
 | Step | Effect |
 |---|---|
 | `python3 -m venv venv` | created the virtualenv (skipped if present) |
-| `pip install -r requirements.txt` | installed FastAPI, SQLAlchemy, Alembic, Anthropic SDK, pyjwt, etc. |
+| `pip install -r requirements.txt` | installed FastAPI, SQLAlchemy, Alembic, the Anthropic SDK, `pyjwt`, `apscheduler`, etc. |
 | `cp .env.example .env` | created a local config file (skipped if present) |
-| `alembic upgrade head` | created `data/daily_scholar.db` and applied every migration |
+| `alembic upgrade head` | created `data/daily_scholar.db` and applied every migration (0001 → 0003) |
 | `cd frontend && npm install` | installed Next.js 16, React, Tailwind, `@serwist/next` |
-
-Re-running `make setup` is safe — every step is idempotent.
 
 ### What `make start` did
 
-`start.sh` launches `uvicorn` on `:8000` and `npm run dev` on `:3000`, then polls `http://127.0.0.1:8000/health` until the backend responds 200 (30s timeout). Once both are up, you see:
+`start.sh` launches `uvicorn` on `:8000` and `npm run dev` on `:3000`, then polls `http://127.0.0.1:8000/health` until the backend responds 200 (default 300s timeout — alembic migrations on a cold-start DB legitimately need that much). Once both are up, you see:
 
 ```
 ✅ Daily Scholar is running:
@@ -269,22 +307,37 @@ Then enable notifications in the app at `/settings/scope`. Regenerating the keyp
 | Backend won't start, says `ANTHROPIC_API_KEY` not set | edit `.env` to add your key |
 | `make start` times out on `/health` | check the uvicorn output above the timeout — usually a missing env value or a port-3000/8000 collision (run `make clean`) |
 | "table seen_papers already exists" on `alembic upgrade head` | you have a pre-Alembic DB; just run `make start` once and the backend's smart detection handles it |
-| Frontend builds but won't hot-reload | confirm `node --version` is 18+; older Node breaks Next.js 16's Turbopack |
+| Frontend builds but won't hot-reload | confirm `node --version` is 18+; if hot-reload still misbehaves and your repo is on a cloud-synced volume (OneDrive / Dropbox / iCloud), see the "Frontend is slow to compile" entry under Troubleshooting |
 
 ---
 
 ## API Reference
 
-### Core Endpoints
+The full, always-current API surface is auto-documented at `http://localhost:8000/docs` (Swagger UI) when the backend is running. The table below covers the load-bearing endpoints; archive CRUD, history, and per-paper PDF endpoints are in Swagger.
+
+### Core
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check |
-| `GET` | `/config/status` | Configuration status (topic-table-backed) |
-| `GET` | `/daily` | Today's paper + review + quiz, scoped to active topics |
-| `GET` | `/papers/discover` | Discover new papers from the active topic scope |
-| `GET` | `/papers/daily` | Today's selected paper |
-| `GET` | `/topics` | List all topics (`?stream=`, `?active=`, `?include_orphaned=` filters) |
+|---|---|---|
+| `GET` | `/health` | Lightweight health (env config + active topic count); used by Railway / Cloudflare probes |
+| `GET` | `/health/deep` | Per-subsystem ping (DB, LLM keys, storage, push, arXiv, scheduler) with latency |
+| `GET` | `/config/status` | Configuration snapshot — providers configured, storage backend, topic counts |
+| `GET` | `/stats` | Counters for current user (papers seen / archived / completed, quizzes, streak) |
+
+### Daily content
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/daily` | Today's paper + topic review + quiz, scoped to active topics (cached per day) |
+| `GET` | `/papers/discover` | Discover papers from the active topic scope across arXiv / Semantic Scholar / CORE |
+| `GET` | `/papers/daily` | Today's selected paper (without reviews / quiz) |
+| `GET` | `/papers/history` | Recent papers seen |
+
+### Topics
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/topics` | List topics (`?stream=`, `?active=`, `?include_orphaned=` filters) |
 | `GET` | `/topics/streams` | Distinct stream tags in use |
 | `GET` | `/topics/{id}` | Topic detail |
 | `POST` | `/topics` | Create a new topic (UI path) |
@@ -296,11 +349,42 @@ Then enable notifications in the app at `/settings/scope`. Regenerating the keyp
 | `GET` | `/topics/random-review` | Generate a review for one topic chosen from active scope |
 | `GET` | `/topics/status-summary` | Counts of active / completed / review_later topics |
 | `PUT` | `/topics/{id}/status` | Set lifecycle status (`active` / `completed` / `review_later`) |
-| `GET` | `/quiz/generate/{id}` | Generate a quiz for a topic |
+
+### Quiz
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/quiz/generate/{topic_id}` | Generate a quiz for a topic |
 | `POST` | `/quiz/regenerate` | Multi-topic quiz drawing from active scope |
-| `POST` | `/quiz/answer` | Submit quiz answer for evaluation |
-| `GET` | `/user/scope` | Current user's topic scope (silo / multi / all) |
-| `PUT` | `/user/scope` | Update the topic scope |
+| `POST` | `/quiz/answer` | Submit a quiz answer for evaluation |
+
+### Scope (per-user)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/scope` | Current user's topic scope (silo / multi / all) |
+| `PUT` | `/scope` | Update the topic scope |
+
+### Web Push
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/push/vapid-public-key` | VAPID public key for browser subscription |
+| `POST` | `/push/subscribe` | Register a browser push subscription |
+| `POST` | `/push/unsubscribe` | Drop a subscription |
+| `POST` | `/push/test` | Fire a test push to the current user's subscriptions |
+| `GET` | `/push/subscriptions` | List current user's active subscriptions |
+
+### Admin (scheduler + multi-user inspection)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/admin/scheduler/jobs` | List APScheduler jobs with their next-run timestamps |
+| `POST` | `/admin/scheduler/run/{job_id}` | Trigger a scheduled job immediately (instead of waiting for cron) |
+| `GET` | `/admin/whoami` | Identity of the current request (handy for verifying CF Access wiring) |
+| `GET` | `/admin/users` | List user ids with row counts across user-scoped tables |
+| `GET` | `/admin/users/{user_id}/stats` | Stats for a specific user |
+| `GET` | `/admin/users/{user_id}/papers` | Paper history for a specific user |
 
 ### Example API Calls
 
@@ -387,7 +471,7 @@ python scripts/generate_vapid_keys.py
 #    into your .env
 
 # 3. Restart the backend so it picks up the new env vars
-dsf
+make start
 ```
 
 > **Important:** regenerating the VAPID keypair invalidates every existing browser subscription — clients silently stop receiving pushes until they re-subscribe via the toggle. Treat the keys like an API secret.
@@ -426,7 +510,7 @@ Examples of where you might wire it next: a daily "topics due for review" digest
 
 ## Hosted version
 
-Everything below this point is for running Daily Scholar as a public PWA on Railway + Cloudflare + Backblaze B2 — Grace's production setup. Beta testers running their own local clone can skip to [Tech Stack](#tech-stack); none of this applies in local mode.
+Everything below this point is for turning your fork into a hosted PWA on Railway + Cloudflare + Backblaze B2 — install on your phone, push notifications, data syncing across devices. If you're happy running locally, skip ahead to [Tech Stack](#tech-stack); none of this applies in local mode.
 
 ### Migrations + dialect compatibility (CI)
 
@@ -553,7 +637,7 @@ Three services:
 The compose stack defaults to Postgres. To force-switch the *non-compose* dev flow (running `uvicorn backend.main:app --reload` directly), unset or rewrite `DATABASE_URL`:
 
 ```bash
-# SQLite — what beta testers use
+# SQLite — the local-mode default
 unset DATABASE_URL
 # or in .env: DATABASE_URL=sqlite:///./data/daily_scholar.db
 
@@ -573,7 +657,7 @@ Alembic migrations apply automatically on startup via `create_tables()` regardle
 
 #### A note on the frontend build
 
-The frontend Dockerfile passes `--webpack` to `next build` so `@serwist/next` (the PWA service-worker plugin) can run — it doesn't support Turbopack yet. This matches what `dsbpwa` does for native builds. See the "Install as a PWA" section for the full story.
+The frontend Dockerfile passes `--webpack` to `next build` so `@serwist/next` (the PWA service-worker plugin) can run — Serwist v9 doesn't support Turbopack yet. The `dev` script in `frontend/package.json` also pins `--webpack` for the same reason. See the "Install as a PWA" section for the full story.
 
 ### Scheduled jobs + deep health check
 
@@ -703,37 +787,34 @@ for s in (192, 256, 384, 512):
 ## Tech Stack
 
 | Layer | Technology | Purpose |
-|-------|------------|---------|
-| **Backend** | Python 3.10+ (3.13 recommended) | Core language |
-| | FastAPI | Web framework |
-| | SQLite | Database |
-| | Pydantic | Data validation |
-| | httpx | HTTP client |
-| **Frontend** | Next.js 16+ | React framework |
-| | TypeScript | Type safety |
-| | Tailwind CSS | Styling |
-| | @serwist/next | PWA service worker (Workbox-based) |
-| **APIs** | Anthropic Claude | Content generation (default for all tasks) |
-| | Google Gemini | Content generation (optional, per-task routing) |
-| | Google Antigravity | Content generation via agent harness (optional, per-task routing) |
-| | arXiv | Paper discovery |
-| | Semantic Scholar | Paper metadata |
+|---|---|---|
+| **Backend** | Python 3.10+ (3.13 recommended) | core language |
+| | FastAPI + uvicorn | web framework + ASGI server |
+| | SQLAlchemy + alembic | ORM + database migrations |
+| | Pydantic | request/response validation |
+| | APScheduler | nightly daily-content + push-notification jobs |
+| | httpx | HTTP client (arXiv, Semantic Scholar, CORE) |
+| | pywebpush + VAPID | Web Push fanout |
+| | boto3 | S3-compatible client (Backblaze B2 backend) |
+| **Database** | SQLite | default — local single-machine path |
+| | Postgres 17 | hosted / docker-compose path |
+| **Storage** | Local filesystem | default — PDFs under `./data` |
+| | Backblaze B2 (S3 API) | hosted — presigned URLs straight to browser |
+| **Frontend** | Next.js 16+ (standalone) | React framework |
+| | TypeScript | type safety |
+| | Tailwind CSS | styling |
+| | `@serwist/next` | PWA service worker (Workbox-based) |
+| **LLM providers** | Anthropic Claude | default for every task |
+| | Google Gemini | optional, per-task override |
+| | Google Antigravity | optional, agent-harness flavor |
+| **Paper sources** | arXiv | physics, math, CS, stats (free) |
+| | Semantic Scholar | broad coverage + metadata |
+| | CORE | open-access aggregator |
+| **Hosting (optional)** | Railway | backend + frontend + Postgres |
+| | Cloudflare | DNS + TLS + Access (auth) |
+| | Backblaze B2 | PDF / upload storage (zero-egress with CF) |
 
----
-
-## Learning Path
-
-This project is designed to help you learn:
-
-| Week | Focus | Activities |
-|------|-------|------------|
-| 1-2 | Understand | Run the system, explore API docs, read code |
-| 3-4 | Modify | Edit configurations, adjust interests/courses |
-| 5-6 | Extend | Add new features, customize quiz types |
-| 7-8 | Build | Create new frontend components |
-| Ongoing | Own | Full ownership - add whatever you want! |
-
-See `docs/LEARNING_GUIDE.md` for detailed explanations.
+For component-by-component code-level explainers, see [docs/LEARNING_GUIDE.md](docs/LEARNING_GUIDE.md).
 
 ---
 
@@ -812,4 +893,4 @@ brew install node  # macOS with Homebrew
 
 ## License
 
-This project is for personal educational use.
+MIT — see [LICENSE](LICENSE). You're free to fork, modify, and run your own instance. For security reports, see [SECURITY.md](SECURITY.md).
