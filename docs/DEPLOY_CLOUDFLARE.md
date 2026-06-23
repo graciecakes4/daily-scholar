@@ -110,7 +110,7 @@ If `STORAGE_BACKEND=b2`, you can save B2 egress fees by routing PDF downloads th
 
 Presigned URLs will then point at the CF-routed hostname, and Backblaze charges $0 egress on traffic that exits via Cloudflare (per their bandwidth alliance agreement).
 
-This is optional — at praxis-scale traffic, raw B2 egress will cost cents per month anyway.
+This is optional — at single-user scale, raw B2 egress will cost cents per month anyway.
 
 ## 8. Health-check after deploy
 

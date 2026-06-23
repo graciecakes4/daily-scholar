@@ -24,7 +24,7 @@ node_modules
 # docs + dev artifacts
 *.md
 docs
-PWA_PRAXIS_MIGRATION_PLAN.md
+PWA_MIGRATION_PLAN.md
 config/_archive
 .Rhistory
 .DS_Store

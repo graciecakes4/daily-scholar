@@ -37,8 +37,11 @@ FROM python:3.13-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/opt/venv/bin:$PATH" \
-    PORT=8000
+    PATH="/opt/venv/bin:$PATH"
+# the container honors $PORT — set by Railway (and Heroku-style PaaS) at
+# runtime, by docker-compose, or defaults to 8000 here. BACKEND_PORT is a
+# local-dev / .env name only (avoids Next.js PORT collision in `make start`);
+# inside the container we stay on the Railway-canonical $PORT.
 
 # minimal runtime deps; libffi for cryptography, curl for healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \

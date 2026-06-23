@@ -1,19 +1,11 @@
-# Archived: broad ML/LLM focus from the pre-praxis interests.yaml.
-#
-# This file is intentionally placed under config/topics/_archive/ so the
-# bootstrap loader does NOT pick it up (it only globs *.yaml at the top
-# level of config/topics/). To restore the broad-ML behavior:
-#
-#   1. Move this file out of _archive/ into config/topics/
-#   2. Restart the backend, OR call POST /topics/import-yaml
-#
-# The original full-granularity interests.yaml is preserved at
-# config/_archive/interests.yaml.bak for reference / partial restoration.
+# Broad ML / LLM / NLP example topic. Disabled by default — flip
+# `active: true` (or enable it from the in-app topics editor) to use it
+# as a default paper-discovery + review stream.
 
 id: generic-ml
-name: Generic ML / LLM / NLP (broad pre-praxis focus)
-stream: archive
-active: false                                       # off by default even if moved out of _archive/
+name: Generic ML / LLM / NLP (demo)
+stream: demo
+active: false                                       # off by default
 weight: 1.0
 
 # paper discovery — keyword union of the old primary/secondary/exploratory tiers

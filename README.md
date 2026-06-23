@@ -2,9 +2,20 @@
 
 A personalized daily learning system for students. Automatically delivers:
 - **Fresh research papers** matching your interests
-- **Topic reviews** from your current courses  
+- **Topic reviews** from your current courses
 - **Interactive quizzes** with spaced repetition
 - **Supplementary resources** via web search
+
+---
+
+## Two ways to run Daily Scholar
+
+| Path | For | What you get | Where to start |
+|---|---|---|---|
+| **Run locally** (clone + `make setup` + `make start`) | beta testers and developers who want full control | SQLite + local filesystem + local frontend; nothing leaves your machine | [Run Locally](#run-locally) |
+| **Use the hosted version** | you and any invited collaborators | the production PWA at `scholar.<domain>` — install on your phone, push notifications, your data syncs across devices | [Hosted version](#hosted-version) |
+
+The same codebase powers both. The hosted version layers Postgres, Backblaze B2, Cloudflare Access, and Railway on top, but every cloud-only feature has a local-mode fallback or graceful skip.
 
 ---
 
@@ -12,13 +23,14 @@ A personalized daily learning system for students. Automatically delivers:
 
 1. [Architecture Overview](#architecture-overview)
 2. [Directory Structure](#directory-structure)
-3. [Installation Guide](#installation-guide)
-4. [Operating the Application](#operating-the-application)
-5. [API Reference](#api-reference)
-6. [Configuration](#configuration)
-7. [Tech Stack](#tech-stack)
-8. [Learning Path](#learning-path)
-9. [Troubleshooting](#troubleshooting)
+3. [Run Locally](#run-locally)
+4. [API Reference](#api-reference)
+5. [Configuration](#configuration) (see also [docs/topics.md](docs/topics.md) for the unified Topic model)
+6. [Install as a PWA](#install-as-a-pwa)
+7. [Hosted version](#hosted-version) — Railway + Cloudflare + B2 deploy
+8. [Tech Stack](#tech-stack)
+9. [Learning Path](#learning-path)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -164,218 +176,100 @@ daily-scholar/
 
 ---
 
-## Installation Guide
+## Run Locally
+
+The local-mode path is SQLite + local filesystem + local frontend. No Railway, Cloudflare, or Backblaze required. Three commands get you from a fresh clone to a running app.
 
 ### Prerequisites
 
-- **Python 3.10+** (`python3 --version`) — 3.13 recommended; 3.10 is the minimum because the codebase uses PEP 604 union syntax (`int | None`)
-- **Node.js 18+** (`node --version`)
-- **npm** (`npm --version`)
-- **Git** (`git --version`)
+- **Python 3.10+** (`python3 --version`) — 3.13 recommended; 3.10 is the floor because the codebase uses PEP 604 union syntax (`int | None`).
+- **Node.js 18+** (`node --version`) — only required if you want the frontend; `--backend-only` mode skips it.
+- **An Anthropic API key** at https://console.anthropic.com/ (free tier works for development).
 
-### Step 1: Clone the Repository
+### Quick start
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/daily-scholar.git
+git clone https://github.com/graciecakes4/daily-scholar.git
 cd daily-scholar
+make setup                           # venv, deps, .env, migrations, frontend install
+nano .env                            # paste your ANTHROPIC_API_KEY
+make start                           # backend + frontend, waits for /health, opens up
 ```
 
-### Step 2: Set Up Python Environment
+That's it. The dashboard is at http://localhost:3000.
 
-```bash
-# Create virtual environment
-python3 -m venv venv
+### What `make setup` did
 
-# Activate virtual environment
-source venv/bin/activate  # macOS/Linux
-# venv\Scripts\activate   # Windows
-
-# Install Python dependencies
-pip install -r requirements.txt
-```
-
-### Step 3: Configure Environment Variables
-
-```bash
-# Copy the example environment file
-cp .env.example .env
-
-# Edit .env with your API keys
-nano .env  # or open in your preferred editor
-```
-
-**Required API Keys:**
-
-| Key | Required | How to Get |
-|-----|----------|------------|
-| `ANTHROPIC_API_KEY` | ✅ Yes | https://console.anthropic.com/ |
-| `SEMANTIC_SCHOLAR_API_KEY` | ❌ Optional | https://www.semanticscholar.org/product/api |
-
-### Step 4: Configure Your Interests & Courses
-
-Edit the YAML configuration files:
-
-```bash
-# Edit your research interests
-nano config/interests.yaml
-
-# Edit your course materials
-nano config/courses.yaml
-```
-
-### Step 5: Set Up Course Materials Directory
-
-```bash
-# Create directories for your textbooks and notes
-mkdir -p uploads/course_materials/data-engineering/textbooks
-mkdir -p uploads/course_materials/dl-nlp/textbooks
-
-# Copy your textbooks (adjust paths as needed)
-cp /path/to/your/textbook.pdf uploads/course_materials/data-engineering/textbooks/
-```
-
-### Step 6: Initialize the Database
-
-The backend applies Alembic migrations automatically on first startup. **For most people, you don't need to run anything manually — just start the backend in Step 8 below and the DB comes up.**
-
-Two scenarios the backend handles automatically:
-
-| State | What happens |
+| Step | Effect |
 |---|---|
-| **Fresh install** (no `data/daily_scholar.db` yet) | Both migrations run, every table is created. |
-| **Pre-Alembic DB** (the app tables already exist but no `alembic_version` row) | The backend detects this, backfills any columns that the old runtime migration added, stamps the DB at `0001_baseline`, then applies `0002`. |
-| **Already-managed DB** | `alembic upgrade head` is a no-op. |
+| `python3 -m venv venv` | created the virtualenv (skipped if present) |
+| `pip install -r requirements.txt` | installed FastAPI, SQLAlchemy, Alembic, Anthropic SDK, pyjwt, etc. |
+| `cp .env.example .env` | created a local config file (skipped if present) |
+| `alembic upgrade head` | created `data/daily_scholar.db` and applied every migration |
+| `cd frontend && npm install` | installed Next.js 16, React, Tailwind, `@serwist/next` |
 
-If you want explicit control:
+Re-running `make setup` is safe — every step is idempotent.
+
+### What `make start` did
+
+`start.sh` launches `uvicorn` on `:8000` and `npm run dev` on `:3000`, then polls `http://127.0.0.1:8000/health` until the backend responds 200 (30s timeout). Once both are up, you see:
+
+```
+✅ Daily Scholar is running:
+   - App:        http://127.0.0.1:3000
+   - API:        http://127.0.0.1:8000
+   - API docs:   http://127.0.0.1:8000/docs
+   - Health:     http://127.0.0.1:8000/health
+```
+
+Press `Ctrl-C` once to stop both processes cleanly.
+
+### Make targets
+
+```
+make help        # list every target
+make setup       # one-shot setup (idempotent)
+make start       # backend + frontend with health check
+make backend     # backend only (no frontend)
+make test        # run the pytest suite
+make migrate     # apply pending alembic migrations
+make vapid       # generate VAPID keypair for Web Push (one-time)
+make clean       # kill rogue processes on :8000 / :3000
+```
+
+If `make` isn't your thing, `./setup.sh` and `./start.sh` do the same work directly. Both scripts accept `--help`.
+
+### Configure your topics
+
+The default topic set ships under `config/topics/examples/` (an astronomy-foundations topic, an ML-foundations topic, and a broad ML/LLM demo). Add your own under `config/topics/examples/` to share, or under `config/topics/private/` to keep them out of git. To switch focus or add a new stream, see [docs/topics.md](docs/topics.md). You can edit YAMLs directly OR use the in-app editor at `http://localhost:3000/topics` — both paths are documented there.
+
+### Daily usage
+
+1. Open http://localhost:3000.
+2. View today's content — paper summary, topic review, quiz.
+3. Submit quiz answers, archive papers you want to read later, mark topics complete.
+4. Explore the API at http://localhost:8000/docs.
+
+### Optional: Web Push notifications
+
+Local-mode supports Web Push for "today's paper is ready" notifications. One-time setup:
 
 ```bash
-alembic current               # inspect current revision
-alembic upgrade head          # bring DB to the latest schema
+make vapid                           # generates VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT
+# paste the three printed lines into .env, then restart with make start
 ```
 
-#### ⚠ "table seen_papers already exists" when running `alembic upgrade head`
+Then enable notifications in the app at `/settings/scope`. Regenerating the keypair invalidates every active browser subscription — treat the keys like an API secret.
 
-You hit this if you have a pre-Alembic DB and you ran `alembic upgrade head` directly. The baseline migration is trying to recreate tables you already have. Recover with **either**:
+### Troubleshooting local mode
 
-```bash
-# Option A — let the backend's smart detection do it for you (recommended):
-uvicorn backend.main:app --reload
-
-# Option B — manual recovery:
-sqlite3 data/daily_scholar.db ".schema archived_topic_reviews" | grep -E "status|completed_at"
-# If both columns appear: safe to skip ahead. Otherwise add them first:
-sqlite3 data/daily_scholar.db "ALTER TABLE archived_topic_reviews ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"
-sqlite3 data/daily_scholar.db "ALTER TABLE archived_topic_reviews ADD COLUMN completed_at DATETIME"
-# Then stamp + upgrade:
-alembic stamp 0001_baseline
-alembic upgrade head
-```
-
-The legacy `scripts/setup_db.py` still works but now routes through the same Alembic path.
-
-### Step 7: Install Frontend Dependencies
-
-```bash
-cd frontend
-npm install
-cd ..
-```
-
-This pulls Next.js 16, React, Tailwind, and the PWA stack (`@serwist/next` + `serwist` for the service worker).
-
-### Step 8: Verify Installation
-
-```bash
-# Check configuration status
-source venv/bin/activate
-uvicorn backend.main:app --reload &
-
-# Wait a few seconds, then test
-curl http://localhost:8000/health
-curl http://localhost:8000/config/status
-
-# Stop the server
-kill %1
-```
-
-You should see `{"status":"healthy"}` and a config status showing your interests and courses loaded.
-
----
-
-## Operating the Application
-
-### Starting the Application
-
-You need **two terminal windows** - one for the backend, one for the frontend.
-
-#### Terminal 1: Start Backend API
-
-```bash
-cd ~/daily-scholar
-source venv/bin/activate
-uvicorn backend.main:app --reload
-```
-
-✅ **Backend is running when you see:**
-```
-INFO:     Uvicorn running on http://127.0.0.1:8000
-INFO:     Application startup complete.
-```
-
-#### Terminal 2: Start Frontend
-
-```bash
-cd ~/daily-scholar/frontend
-npm run dev
-```
-
-✅ **Frontend is running when you see:**
-```
-✓ Ready in Xs
-```
-
-### Accessing the Application
-
-| URL | Description |
-|-----|-------------|
-| http://localhost:3000 | **Main Dashboard** - Start here! |
-| http://localhost:8000/docs | **Swagger UI** - Interactive API testing |
-| http://localhost:8000/redoc | **ReDoc** - API documentation |
-| http://localhost:8000/health | Health check |
-| http://localhost:8000/config/status | Configuration status |
-
-### Daily Usage
-
-1. **Open the dashboard** at http://localhost:3000
-2. **View today's content** - paper summaries, topic reviews, quiz questions
-3. **Take the quiz** - submit answers and get AI-powered feedback
-4. **Explore resources** - follow suggested readings and tutorials
-
-### Using the API Directly (Swagger UI)
-
-1. Go to http://localhost:8000/docs
-2. Click on any endpoint (e.g., `GET /daily`)
-3. Click **"Try it out"**
-4. Click **"Execute"**
-5. View the response below
-
-### Stopping the Application
-
-- **Backend**: Press `Ctrl+C` in Terminal 1
-- **Frontend**: Press `Ctrl+C` in Terminal 2
-
-### Restarting After Computer Restart
-
-```bash
-# Terminal 1
-cd ~/daily-scholar
-source venv/bin/activate
-uvicorn backend.main:app --reload
-
-# Terminal 2
-cd ~/daily-scholar/frontend
-npm run dev
-```
+| Symptom | Fix |
+|---|---|
+| `setup.sh` fails on `pip install` | confirm `python3 --version` is 3.10+; older versions reject the PEP 604 syntax in `requirements.txt` |
+| Backend won't start, says `ANTHROPIC_API_KEY` not set | edit `.env` to add your key |
+| `make start` times out on `/health` | check the uvicorn output above the timeout — usually a missing env value or a port-3000/8000 collision (run `make clean`) |
+| "table seen_papers already exists" on `alembic upgrade head` | you have a pre-Alembic DB; just run `make start` once and the backend's smart detection handles it |
+| Frontend builds but won't hot-reload | confirm `node --version` is 18+; older Node breaks Next.js 16's Turbopack |
 
 ---
 
@@ -441,83 +335,9 @@ curl -X PUT http://localhost:8000/user/scope \
 
 ### The unified Topic model
 
-Daily Scholar replaced the old split between `interests` (paper discovery) and `courses` (review/quiz) with a single first-class **Topic** entity. Each topic drives BOTH:
+Daily Scholar drives both paper discovery and learning content from a single first-class **Topic** entity. One YAML per topic under `config/topics/` is the bootstrap source; the DB is canonical at runtime. Edits flow either direction via `POST /topics/import-yaml` and `POST /topics/export-yaml`, and there's an in-app editor at `/topics`.
 
-- **paper discovery** — its `keywords` + `arxiv_categories` + `weight` + `min_relevance` + `recency_days` shape what papers get surfaced and how strongly they match;
-- **review + quiz generation** — its `key_concepts` + `learning_objectives` + `resources` + `quiz_difficulty` feed the LLM prompts;
-
-…all in one YAML file per topic.
-
-```yaml
-# config/topics/ml-foundations.yaml
-id: ml-foundations
-name: ML Foundations — Neural Networks, Training, Classification, Fine-tuning, Diffusion
-stream: foundations              # grouping label for the UI
-active: true                     # quick on/off without deletion
-weight: 1.5                      # boosts relevance scoring
-
-# paper-discovery side
-keywords:
-  - neural network
-  - deep learning
-  - transformer
-  # ...
-arxiv_categories: [cs.LG, cs.AI, cs.CV, cs.CL, stat.ML]
-recency_days: 180
-min_relevance: 0.18
-
-# learning-content side
-key_concepts:
-  - the structure of a feedforward neural network
-  - "the basics of training: loss, gradient descent, backprop, optimizer choice"
-  # ...
-learning_objectives:
-  - Diagram a forward pass through a small MLP and explain what backprop computes
-  # ...
-resources: []
-quiz_difficulty: easy
-prerequisites: []
-```
-
-### How topics get into the database
-
-`config/topics/*.yaml` is the bootstrap source. On every backend startup the loader scans this directory and inserts any topics that aren't yet in the DB. After the first bootstrap, **the DB is canonical** — YAML edits do NOT auto-overwrite UI-edited rows. Two explicit operations bridge YAML and DB:
-
-| Operation | When to use | Endpoint | Effect |
-|---|---|---|---|
-| **Bootstrap** | every cold start | (automatic, in lifespan) | INSERT new YAML topics; mark missing YAML files as orphaned |
-| **Import YAML → DB** | you edited a YAML file and want it to win | `POST /topics/import-yaml` | OVERWRITE every DB field with YAML values for topics present in YAML |
-| **Export DB → YAML** | you edited a topic in the UI and want the YAML to reflect it | `POST /topics/export-yaml` | Write the current DB state out as one file per topic |
-
-Both operations are also surfaced as buttons on `/topics` in the UI.
-
-### Editing topics from the UI
-
-Visit `http://localhost:3000/topics` to manage topics in the browser. From there you can:
-
-- create new topics (`+ New topic`) — written to DB only; use **Export DB → YAML** to commit them to the working tree;
-- edit any existing topic — UI edits persist across re-bootstraps until you explicitly import YAML over them;
-- soft-delete a topic by toggling **Deactivate** (`active=false` — the row stays);
-- hard-delete a topic via the **Delete** button (with confirm);
-- filter by stream, include or exclude orphaned topics (YAML missing on disk).
-
-### Switching focus (silo / multi / all)
-
-Topic **scope** controls which topics drive paper discovery, reviews, and quizzes. Set it from `http://localhost:3000/settings/scope`:
-
-- **All active topics** — every `active=true` topic contributes. The default.
-- **Multi-select** — explicit set. Useful for "this week I want to work in streams A and B."
-- **Silo** — focus deeply on a single topic.
-
-Scope persists per-user on the server. Changes take effect immediately on the next discover / review / quiz call.
-
-### Archiving + restoring the old behavior
-
-The pre-unified `config/interests.yaml` and `config/courses.yaml` are preserved at `config/_archive/*.bak` for reference. A flattened Topic version of the old broad-ML focus lives at `config/topics/_archive/generic-ml.yaml`. To restore it:
-
-1. Move the file out of `_archive/` into `config/topics/`
-2. Restart the backend (or call `POST /topics/import-yaml`)
-3. Optionally set `active: true` in the YAML to turn it on right away
+For the full reference — schema, YAML examples, the import/export round trip, scope (silo / multi / all), and a step-by-step for authoring a new stream — see **[docs/topics.md](docs/topics.md)**.
 
 ---
 
@@ -603,6 +423,10 @@ send_push_to_user(user_id, {"title": "...", "body": "...", "url": "/topics/foo"}
 ```
 
 Examples of where you might wire it next: a daily "topics due for review" digest from APScheduler, a notification when an LLM-generated quiz is ready, or a streak-reminder.
+
+## Hosted version
+
+Everything below this point is for running Daily Scholar as a public PWA on Railway + Cloudflare + Backblaze B2 — Grace's production setup. Beta testers running their own local clone can skip to [Tech Stack](#tech-stack); none of this applies in local mode.
 
 ### Migrations + dialect compatibility (CI)
 
@@ -697,7 +521,7 @@ End-to-end deploy of the production stack with a **dev + prod environment split*
 
 #### Cost guardrails
 
-- **Anthropic / Gemini** — set hard monthly caps in each console (Anthropic: https://console.anthropic.com/settings/billing). Expected praxis-scale spend is under $10/mo with the default routing.
+- **Anthropic / Gemini** — set hard monthly caps in each console (Anthropic: https://console.anthropic.com/settings/billing). Expected single-user spend is under $10/mo with the default routing.
 - **Railway** — Settings → Usage limits → set a $-per-month cap. Free Trial is generous; expect $5–10/mo for the always-on backend + frontend + 1GB Postgres.
 - **Backblaze B2** — first 10 GB free. Egress costs $0 when paired through Cloudflare via the bandwidth alliance.
 - **Cloudflare** — DNS, TLS, Access (up to 50 users), Workers (within free tier) are all $0.
