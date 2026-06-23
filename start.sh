@@ -51,14 +51,23 @@ FRONTEND_PID=""
 cleanup() {
   echo ""
   echo "→ Shutting down ..."
-  if [[ -n "$BACKEND_PID" ]]; then
-    kill "$BACKEND_PID" 2>/dev/null || true
-    wait "$BACKEND_PID" 2>/dev/null || true
-  fi
-  if [[ -n "$FRONTEND_PID" ]]; then
-    kill "$FRONTEND_PID" 2>/dev/null || true
-    wait "$FRONTEND_PID" 2>/dev/null || true
-  fi
+  # uvicorn --reload and `npm run dev` each fork a worker child; killing only
+  # the parent leaves the child as a zombie that holds the DB lock (sqlite)
+  # and the dev server port. Kill descendants first, escalate to SIGKILL if
+  # they don't exit cleanly within 5s.
+  for pid in "$BACKEND_PID" "$FRONTEND_PID"; do
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      pkill -TERM -P "$pid" 2>/dev/null || true
+      kill -TERM "$pid" 2>/dev/null || true
+      for _ in 1 2 3 4 5; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+      done
+      pkill -KILL -P "$pid" 2>/dev/null || true
+      kill -KILL "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    fi
+  done
   echo "✓ Done."
 }
 trap cleanup INT TERM EXIT
