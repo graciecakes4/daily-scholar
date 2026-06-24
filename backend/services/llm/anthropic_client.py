@@ -10,6 +10,22 @@ from ...config import get_settings
 from .interface import LLMClient
 
 
+# Models that reject the `temperature` parameter outright. Anthropic deprecated
+# `temperature` on certain newer / extended-thinking models — passing it
+# returns a 400 invalid_request_error. We drop the parameter for these
+# matches (prefix-match against the model string).
+_NO_TEMPERATURE_MODEL_PREFIXES: tuple[str, ...] = (
+    "claude-opus-4-8",
+    "claude-opus-4-1",
+    "claude-opus-4-0",
+    "claude-sonnet-4-6",
+)
+
+
+def _accepts_temperature(model: str) -> bool:
+    return not any(model.startswith(p) for p in _NO_TEMPERATURE_MODEL_PREFIXES)
+
+
 class AnthropicClient(LLMClient):
     provider = "anthropic"
 
@@ -29,9 +45,11 @@ class AnthropicClient(LLMClient):
         kwargs: dict = {
             "model": self.model,
             "max_tokens": max_tokens,
-            "temperature": temperature,
             "messages": [{"role": "user", "content": prompt}],
         }
+        # only attach temperature for models that still accept it
+        if _accepts_temperature(self.model):
+            kwargs["temperature"] = temperature
         if system:
             kwargs["system"] = system
         response = self._client.messages.create(**kwargs)
