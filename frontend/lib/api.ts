@@ -271,6 +271,11 @@ export interface TopicStatusSummary {
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
+    // include cookies cross-origin so Cloudflare Access (gating the API
+    // hostname) receives its session cookie set on the .daily-scholar.com
+    // parent domain. Without this the browser drops the cookie and Access
+    // 302s every request to its login page, which CORS then blocks.
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...options?.headers,
@@ -392,6 +397,7 @@ export async function uploadPdfToPaper(paperId: number, file: File): Promise<{ p
   
   const response = await fetch(`${API_BASE}/archive/papers/${paperId}/upload-pdf`, {
     method: 'POST',
+    credentials: 'include',
     body: formData,
   });
   
@@ -420,6 +426,7 @@ export async function uploadStandalonePdf(file: File, title?: string): Promise<{
   
   const response = await fetch(`${API_BASE}/papers/upload`, {
     method: 'POST',
+    credentials: 'include',
     body: formData,
   });
   
