@@ -39,7 +39,11 @@ function urlBase64ToUint8Array(b64: string): Uint8Array {
 }
 
 async function fetchVapidPublicKey(): Promise<string> {
-  const res = await fetch(`${API_BASE}/push/vapid-public-key`);
+  // credentials: 'include' so Cloudflare Access cookies (scoped to the
+  // parent .daily-scholar.com domain) ride along on this cross-origin call
+  const res = await fetch(`${API_BASE}/push/vapid-public-key`, {
+    credentials: "include",
+  });
   if (!res.ok) throw new Error(`VAPID key fetch failed: ${res.status}`);
   const data = await res.json();
   return data.public_key as string;
@@ -102,6 +106,7 @@ export function useWebPush() {
       const json = sub.toJSON();
       const res = await fetch(`${API_BASE}/push/subscribe`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           endpoint: json.endpoint,
@@ -131,6 +136,7 @@ export function useWebPush() {
       if (sub) {
         await fetch(`${API_BASE}/push/unsubscribe`, {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ endpoint: sub.endpoint }),
         });
@@ -150,6 +156,7 @@ export function useWebPush() {
     try {
       const res = await fetch(`${API_BASE}/push/test`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: "Daily Scholar test",
