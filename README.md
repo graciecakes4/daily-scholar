@@ -4,6 +4,10 @@ A self-hosted, personalized daily learning system. Fork the repo, point it at th
 
 - **Fresh research papers** matched to your topics (arXiv, Semantic Scholar, CORE)
 - **Topic reviews** synthesized by an LLM from your reading list
+A self-hosted, personalized daily learning system. Fork the repo, point it at the topics you care about, and every day it delivers:
+
+- **Fresh research papers** matched to your topics (arXiv, Semantic Scholar, CORE)
+- **Topic reviews** synthesized by an LLM from your reading list
 - **Interactive quizzes** with spaced repetition
 - **Supplementary resources** to deepen what you're studying
 
@@ -41,7 +45,18 @@ The local-mode path is SQLite + local filesystem + local frontend. No Railway, C
 ```bash
 # 1. Fork this repo on GitHub (top-right "Fork" button), then clone your fork:
 git clone https://github.com/<your-username>/daily-scholar.git
+# 1. Fork this repo on GitHub (top-right "Fork" button), then clone your fork:
+git clone https://github.com/<your-username>/daily-scholar.git
 cd daily-scholar
+
+# 2. Idempotent setup: venv, deps, .env, migrations, frontend install
+make setup
+
+# 3. Paste your ANTHROPIC_API_KEY into .env (any editor):
+$EDITOR .env
+
+# 4. Boot backend + frontend, wait for /health, open the app
+make start
 
 # 2. Idempotent setup: venv, deps, .env, migrations, frontend install
 make setup
@@ -147,4 +162,5 @@ Enable notifications in the app at `/settings/scope`. Regenerating the keypair i
 
 ## License
 
+MIT — see [LICENSE](LICENSE). You're free to fork, modify, and run your own instance. For security reports, see [SECURITY.md](SECURITY.md).
 MIT — see [LICENSE](LICENSE). You're free to fork, modify, and run your own instance. For security reports, see [SECURITY.md](SECURITY.md).
