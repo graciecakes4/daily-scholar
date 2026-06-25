@@ -61,11 +61,19 @@ jobs:
           fi
           if [ "${{ matrix.service }}" = "backend" ]; then
             SERVICE_VAR="RAILWAY_BACKEND_SERVICE_ID_${ENV_TAG}"
-            WORKDIR="."
           else
             SERVICE_VAR="RAILWAY_FRONTEND_SERVICE_ID_${ENV_TAG}"
-            WORKDIR="frontend"
           fi
+          # Always upload from the repo root. The Railway frontend service has
+          # `Root Directory = /frontend` set in the dashboard, which makes
+          # Railway look for a `frontend/` subdirectory INSIDE the uploaded
+          # snapshot. If we cd into frontend/ first, the snapshot IS the
+          # frontend dir (no nested frontend/), and Railway errors with
+          # "builder could not find the /frontend root directory" — diagnosed
+          # at: https://github.com/railwayapp/cli (manual upload behavior).
+          # Uploading the whole repo for both services keeps the two flows
+          # symmetric and lets Railway's per-service root_directory do its job.
+          WORKDIR="."
           echo "env_tag=${ENV_TAG}" >> "$GITHUB_OUTPUT"
           echo "service_var=${SERVICE_VAR}" >> "$GITHUB_OUTPUT"
           echo "workdir=${WORKDIR}" >> "$GITHUB_OUTPUT"
