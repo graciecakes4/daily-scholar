@@ -1,5 +1,75 @@
 # Changelog
 
+## [v2.1] — 2026-06-25
+
+Mobile-navigation release. One PR (#35) replaces the overflowing six-item horizontal top nav with a mobile-only bottom tab bar (Home / Papers / Topics / Quiz / More), makes the dashboard rows (stats band, section tabs, paper / topic-review / quiz action bars) responsive so they stop laying out wider than the viewport, and adds an `html, body { overflow-x: hidden }` safety net so any future stray-width child can't reintroduce horizontal pan. Frontend-only release. Desktop layout (≥ `md`) byte-equivalent to v2.0. 5 files changed, +262 / −45. No migrations; no new env vars; no new dependencies.
+
+### Added
+
+#### Mobile bottom tab bar component (PR #35)
+
+- New `frontend/components/MobileTabBar.tsx` — `'use client'` component. Renders a five-tab bar fixed to the bottom of the viewport at `md:hidden`: Home (`/`), Papers (`/papers`), Topics (`/topics`), Quiz (`/quiz`), and More. Each tab is a Next.js `<Link>` with `aria-current="page"` set when active; the active tab gets a `text-blue-600` color plus a 6×0.5px indicator pill positioned at `top-1.5`.
+- Active-tab resolution uses `usePathname()` + a per-tab `match(pathname)` predicate (Home matches `pathname === '/'`, the others match their `startsWith(prefix)`). Routes not claimed by a tab (`/settings/*`) light up "More" as active via `activeTabIdx === -1`.
+- Tapping "More" opens a bottom sheet (`role="dialog" aria-modal="true" aria-label="More menu"`) anchored to `bottom: 0`. Sheet contains two links — Settings → `/settings/scope`, and API Docs → `${API_BASE}/docs` (external, `target="_blank" rel="noopener noreferrer"`). A drag-handle div, an `<h2>More` header, and a close-button are included for affordance.
+- Sheet lifecycle:
+  - Opens on More-tab tap (`setMoreOpen(true)`).
+  - Closes on route change (`useEffect` on `pathname` → `setMoreOpen(false)`).
+  - Closes on `Escape` keypress (`useEffect` adds a window keydown listener while open, removes on cleanup).
+  - Closes on scrim tap (scrim is a full-screen `<button aria-label="Close menu">` over the page at `z-50`, behind the sheet).
+- iOS PWA respect: the bottom bar's `paddingBottom` style is `env(safe-area-inset-bottom)`; the sheet's `paddingBottom` is `calc(env(safe-area-inset-bottom) + 1.25rem)`. Both clear the iOS home indicator when the PWA is installed to the home screen.
+
+#### Local cowork workspace folder excluded from git (PR #35)
+
+- `.gitignore` gains a `daily scholar/` entry (note the space — that's the actual folder name the cowork agent mounts inside the repo when this user runs sessions in the daily-scholar working directory). Mirrors the existing pattern for `pr-scripts/`, `PUBLIC_REPO_AUDIT.md`, and `PWA_MIGRATION_PLAN.md` — kept on disk for reference but never committed. Design explorations (the four-option mobile-nav mockup HTML from this PR) live there.
+
+### Changed
+
+#### `frontend/app/layout.tsx` — split nav by viewport (PR #35)
+
+- The existing horizontal nav-links row inside the `<nav>` block (Dashboard, Papers, Topics, Quizzes, Settings, API Docs) is now `hidden md:flex` instead of `flex`. On mobile the top bar collapses to just the logo (`📚 Daily Scholar`); the six links go away.
+- `<MobileTabBar />` is mounted globally at the body level (between `<footer>` and `<AuthBoundary />`). It self-hides at `md:hidden`, so desktop never renders it.
+- `<main>` gets `pb-24 md:pb-8` (previously `py-8`). The `pb-24` reserves 96px of clearance for the fixed bottom bar (64px bar + safe-area + breathing room); desktop falls back to the normal py-8.
+- `<footer>` gets `hidden md:block` (previously `block`). The textual footer would otherwise be obscured by the fixed bar on mobile and is redundant given the tab bar's persistent presence.
+- New `import MobileTabBar from "@/components/MobileTabBar"`.
+
+#### `frontend/app/page.tsx` — responsive dashboard rows (PR #35)
+
+- **Stats band** (the streak / papers seen / archived / quiz accuracy row at the top of the dashboard): inner wrapper changed from `<div className="flex items-center justify-between flex-wrap gap-4">` with a nested `<div className="flex items-center gap-6">` over the four stat blocks → `<div className="grid grid-cols-2 gap-3 md:flex md:items-center md:justify-between md:flex-wrap md:gap-4">`. Each stat block gets `min-w-0 truncate` so a long localized label can't push the band wide. "Best: N days" gets `col-span-2 md:col-auto` so it spans both mobile columns and aligns right on desktop.
+- **Section tabs (Today's Paper / Topic Review / Quiz)**: wrapper changed from `<div className="flex gap-2 border-b border-slate-200 pb-2">` → `<div className="grid grid-cols-3 gap-1 md:flex md:gap-2 border-b border-slate-200 pb-2">`. Each button gets `flex items-center justify-center gap-1.5 px-2 py-2 md:px-4 ... text-sm md:text-base ... min-w-0`. Button labels are abbreviated on mobile via responsive spans — `<span className="hidden md:inline">Today's </span>Paper`, `<span className="hidden md:inline">Topic </span>Review`. The label `<span>` is `truncate`; the badge / dot gets `flex-shrink-0` so it never pushes the label off the button.
+- **Paper action bar** (the `border-t` footer of the paper card holding Open + PDF on the left and New paper + Save to Archive on the right): wrapper changed from `flex items-center justify-between` → `flex flex-col gap-2 md:flex-row md:items-center md:justify-between`. Right-side action group gains `flex-wrap` so a long button label can wrap to two lines instead of overflowing.
+- **Topic review header** (course badge + topic name on the left; New + Save buttons on the right): wrapper changed from `flex items-center justify-between mb-4` → `flex flex-col gap-3 mb-4 md:flex-row md:items-start md:justify-between`. Title block gets `min-w-0`; the topic-name `<h2>` gets `break-words`; the action group gains `flex-wrap`.
+- **Quiz header** (Knowledge Check metadata + Save Results + New Quiz): wrapper changed from `flex items-center justify-between` → `flex flex-col gap-3 md:flex-row md:items-center md:justify-between`. Action group gains `flex-wrap`.
+
+#### `frontend/app/globals.css` — horizontal-scroll safety net (PR #35)
+
+- Added a four-line rule after the existing `body { font-family: ... }` block: `html, body { overflow-x: hidden; max-width: 100vw; }`. Annotated with a comment explaining the dual motivation — clip rogue stray-width children, and remove the failure mode where an accidental horizontal swipe near the bottom of the screen lands on the fixed tab bar's "More" tab.
+
+### Decisions
+
+#### Bottom tab bar over four other patterns considered
+
+The mobile-nav exploration produced four phone-frame mockups (Dashboard + dropdown / bottom tab bar / hamburger drawer / icon rail). Bottom tab bar was chosen because primary destinations sit at thumb reach with one tap each, it matches user expectation for an installed PWA on iOS, and it absorbs the overflow problem without requiring abbreviated copy on desktop. The mockup HTML lives under the cowork session workspace folder (gitignored as of this release); keep it locally if you want to revisit the alternates.
+
+#### Horizontal-scroll clipping over revealing
+
+`html, body { overflow-x: hidden }` will clip any genuinely-overflowing content instead of revealing it on horizontal scroll. The tradeoff is intentional — a fixed bottom tab bar plus a horizontal scroll surface is a UX trap where every horizontal swipe risks firing a stray tab, and clipping pushes the bug fix upstream (whoever introduces the wide child will see clipping in dev and fix it). If a future dashboard needs a wide-table layout, wrap the table in its own `overflow-x-auto` container — the rule on `body` doesn't propagate through nested scroll containers.
+
+### Operations
+
+- **No env-var changes.** Carrying forward the v2.0 matrix: `NEXT_PUBLIC_API_URL` (frontend build arg, hard-fails at build time if missing), `CORS_ALLOWED_ORIGINS` (backend CORS allowlist), `CF_ACCESS_VERIFY_JWT` family (optional, off by default), `LLM_TASK_*` routing knobs.
+- **No new GitHub Actions secrets.** The Railway token + service-ID matrix is unchanged.
+- **No deploy choreography.** Frontend rebuilds and ships; backend is untouched. Cloudflare Access topology unchanged (still requires the single-Access-app-per-environment bundling from v2.0).
+- **Tag + GitHub Release after merge.** `git tag -a v2.1 -m "v2.1 — mobile bottom tab bar"`; `git push origin v2.1`; copy `docs/releases/v2.1.md` (or the highlights paragraph) into a new GitHub Release tied to the tag.
+
+### Followups captured during the phase
+
+- **Physical iPhone verification still pending.** Mobile changes were verified in a desktop browser at narrow widths (375 × 720) and pass `npx tsc --noEmit` clean, but `env(safe-area-inset-bottom)` behavior under the home indicator hasn't been observed on hardware yet. Worth a quick check on an installed PWA before promoting to the broader beta cohort.
+- **Other pages may still overflow.** Only `app/page.tsx` (dashboard) got per-row responsive fixes. `/papers`, `/topics`, `/quiz`, and `/settings/scope` may still have `justify-between` rows that lay out wider than the viewport on mobile. The `globals.css` safety net keeps them usable (anything that would have overflowed gets clipped), but each page should get the same row-by-row treatment as the dashboard. Low priority — the safety net buys time.
+- **Badges on the bottom tab bar.** The in-page section tabs already render small dot / count badges for new content (e.g., topic-review count, quiz question count). The bottom tab bar doesn't yet — would be a useful affordance for surfacing unread daily content. Requires `getDailyContent` to be callable from a layout-level component (it's currently called from the dashboard page).
+- **Settings depth.** "More → Settings" lands on `/settings/scope`. As `/settings/notifications`, `/settings/topics`, `/settings/push-debug`, `/settings/account` etc. land, the "More" sheet should grow into a proper grouped menu instead of two flat rows. Not urgent — revisit at ~4 entries.
+
+---
+
 ## [v2.0] — 2026-06-25
 
 Setup-audit release. Three PRs (#30 README split, #32 setup audit, #33 CI workflow fix) close out everything that was making prod deployment fragile. **Multi-origin CORS** replaces the single-`FRONTEND_URL` trap; **frontend Dockerfile hard-fails** when `NEXT_PUBLIC_API_URL` is empty at build time (so the silent localhost fallback can't bake into a prod bundle); **LLM-failure cache-poisoning defense** stops a swallowed Gemini exception from locking the Topic Review tab on an empty card for 24h; **CI deploy workflow** uploads the repo root for both services (was `cd`'ing into `frontend/` and conflicting with the Railway service's `Root Directory=/frontend` dashboard setting); **README split** pulls 818 lines of monolith into four focused docs under `docs/`. No migrations. Schema unchanged from v1.1's `0003_auth_ready_user_id`.

@@ -82,5 +82,9 @@ pr-scripts/
 PUBLIC_REPO_AUDIT.md
 PWA_MIGRATION_PLAN.md
 
+# cowork session workspace folder — design explorations and scratch outputs
+# that aren't part of the shipped app
+daily scholar/
+
 # user-private topic configs (not shipped with the public repo)
 config/topics/private/
