@@ -249,27 +249,26 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      {/* Stats Bar */}
+      {/* Stats Bar — 2x2 grid on mobile, single row on md+ to keep four stats
+          on screen without overflowing narrow viewports */}
       {userStats && (
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-4 text-white">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <FireIcon />
-                <span className="font-bold text-lg">{userStats.streaks.current}</span>
-                <span className="text-blue-100 text-sm">day streak</span>
-              </div>
-              <div className="text-blue-100 text-sm">
-                <span className="text-white font-semibold">{userStats.lifetime.papers_seen}</span> papers seen
-              </div>
-              <div className="text-blue-100 text-sm">
-                <span className="text-white font-semibold">{userStats.lifetime.papers_archived}</span> archived
-              </div>
-              <div className="text-blue-100 text-sm">
-                <span className="text-white font-semibold">{userStats.lifetime.quiz_accuracy}%</span> quiz accuracy
-              </div>
+          <div className="grid grid-cols-2 gap-3 md:flex md:items-center md:justify-between md:flex-wrap md:gap-4">
+            <div className="flex items-center gap-2 min-w-0">
+              <FireIcon />
+              <span className="font-bold text-lg">{userStats.streaks.current}</span>
+              <span className="text-blue-100 text-sm truncate">day streak</span>
             </div>
-            <div className="text-sm text-blue-100">
+            <div className="text-blue-100 text-sm min-w-0 truncate">
+              <span className="text-white font-semibold">{userStats.lifetime.papers_seen}</span> papers seen
+            </div>
+            <div className="text-blue-100 text-sm min-w-0 truncate">
+              <span className="text-white font-semibold">{userStats.lifetime.papers_archived}</span> archived
+            </div>
+            <div className="text-blue-100 text-sm min-w-0 truncate">
+              <span className="text-white font-semibold">{userStats.lifetime.quiz_accuracy}%</span> quiz accuracy
+            </div>
+            <div className="col-span-2 text-sm text-blue-100 md:col-auto">
               Best: {userStats.streaks.longest} days
             </div>
           </div>
@@ -284,41 +283,43 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="flex gap-2 border-b border-slate-200 pb-2">
+      {/* Section Navigation — equal 3-col grid on mobile so the buttons share
+          width and never overflow; flex with natural widths on md+. Labels are
+          abbreviated on mobile ("Paper" instead of "Today's Paper") */}
+      <div className="grid grid-cols-3 gap-1 md:flex md:gap-2 border-b border-slate-200 pb-2">
         <button
           onClick={() => setActiveSection('paper')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+          className={`flex items-center justify-center gap-1.5 px-2 py-2 md:px-4 rounded-lg font-medium text-sm md:text-base transition-all min-w-0 ${
             activeSection === 'paper' ? 'bg-blue-100 text-blue-700' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <BookIcon />
-          Today's Paper
-          {dailyContent?.paper && <span className="w-2 h-2 rounded-full bg-blue-500" />}
+          <span className="truncate"><span className="hidden md:inline">Today's </span>Paper</span>
+          {dailyContent?.paper && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />}
         </button>
         <button
           onClick={() => setActiveSection('review')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+          className={`flex items-center justify-center gap-1.5 px-2 py-2 md:px-4 rounded-lg font-medium text-sm md:text-base transition-all min-w-0 ${
             activeSection === 'review' ? 'bg-emerald-100 text-emerald-700' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <BrainIcon />
-          Topic Review
+          <span className="truncate"><span className="hidden md:inline">Topic </span>Review</span>
           {dailyContent?.topic_reviews && (
-            <span className="px-2 py-0.5 bg-emerald-200 text-emerald-800 text-xs rounded-full">
+            <span className="px-2 py-0.5 bg-emerald-200 text-emerald-800 text-xs rounded-full flex-shrink-0">
               {dailyContent.topic_reviews.length}
             </span>
           )}
         </button>
         <button
           onClick={() => setActiveSection('quiz')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+          className={`flex items-center justify-center gap-1.5 px-2 py-2 md:px-4 rounded-lg font-medium text-sm md:text-base transition-all min-w-0 ${
             activeSection === 'quiz' ? 'bg-purple-100 text-purple-700' : 'text-slate-600 hover:bg-slate-100'
           }`}
         >
           <QuizIcon />
-          Quiz
-          <span className="px-2 py-0.5 bg-purple-200 text-purple-800 text-xs rounded-full">
+          <span className="truncate">Quiz</span>
+          <span className="px-2 py-0.5 bg-purple-200 text-purple-800 text-xs rounded-full flex-shrink-0">
             {quizQuestions.length}
           </span>
         </button>
@@ -371,7 +372,7 @@ export default function DashboardPage() {
                       </div>
                     )}
                   </div>
-                  <div className="border-t border-slate-100 p-4 bg-slate-50 flex items-center justify-between">
+                  <div className="border-t border-slate-100 p-4 bg-slate-50 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div className="flex gap-2">
                       <a href={dailyContent.paper.url} target="_blank" rel="noopener noreferrer"
                          className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm hover:bg-slate-50">
@@ -384,7 +385,7 @@ export default function DashboardPage() {
                         </a>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <button
                         onClick={handleNewPaper}
                         disabled={refreshingPaper}
@@ -431,14 +432,14 @@ export default function DashboardPage() {
           {activeSection === 'review' && dailyContent?.topic_reviews?.map((tr, index) => (
             <div key={index} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
               <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
+                <div className="flex flex-col gap-3 mb-4 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0">
                     <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded">
                       {tr.topic.course_name}
                     </span>
-                    <h2 className="text-xl font-bold text-slate-900 mt-2">{tr.topic.name}</h2>
+                    <h2 className="text-xl font-bold text-slate-900 mt-2 break-words">{tr.topic.name}</h2>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {index === 0 && (
                       <button
                         onClick={handleNewReview}
@@ -499,12 +500,12 @@ export default function DashboardPage() {
           {/* Quiz Section */}
           {activeSection === 'quiz' && (
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                <div>
+              <div className="p-4 border-b border-slate-100 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0">
                   <h2 className="text-lg font-bold text-slate-900">Knowledge Check</h2>
                   <p className="text-sm text-slate-500">{quizQuestions.length} questions • {quizTotalPoints} points</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {Object.keys(quizResults).length > 0 && !quizArchived && (
                     <button onClick={handleArchiveQuiz} disabled={archivingQuiz}
                             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50">

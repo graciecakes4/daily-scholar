@@ -4,6 +4,7 @@ import "./globals.css";
 import Link from "next/link";
 import InstallPrompt from "@/components/InstallPrompt";
 import AuthBoundary from "@/components/AuthBoundary";
+import MobileTabBar from "@/components/MobileTabBar";
 import { API_BASE } from "@/lib/api";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -60,9 +61,10 @@ export default function RootLayout({
                 <span className="font-bold text-xl text-slate-900">Daily Scholar</span>
               </Link>
 
-              {/* Navigation Links */}
-              <div className="flex items-center gap-1">
-                <Link 
+              {/* Desktop navigation links — collapsed to the MobileTabBar at the
+                  bottom of the screen on phones (see <MobileTabBar /> below) */}
+              <div className="hidden md:flex items-center gap-1">
+                <Link
                   href="/"
                   className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all"
                 >
@@ -118,17 +120,21 @@ export default function RootLayout({
           </div>
         </nav>
 
-        {/* Main Content */}
-        <main className="max-w-6xl mx-auto px-4 py-8">
+        {/* Main Content — pb-24 reserves room for the fixed MobileTabBar on
+            phones; desktop falls back to normal py-8 spacing */}
+        <main className="max-w-6xl mx-auto px-4 py-8 pb-24 md:pb-8">
           {children}
         </main>
 
-        {/* Footer */}
-        <footer className="border-t border-slate-200 mt-auto py-6">
+        {/* Footer — hidden on mobile because the bottom tab bar would overlap it */}
+        <footer className="hidden md:block border-t border-slate-200 mt-auto py-6">
           <div className="max-w-6xl mx-auto px-4 text-center text-sm text-slate-500">
             Daily Scholar — Learn something new every day 🎓
           </div>
         </footer>
+
+        {/* Mobile-only fixed bottom tab bar with Settings/API Docs in a sheet */}
+        <MobileTabBar />
 
         {/* Global 401 banner — only fires once CF Access JWT verification is on */}
         <AuthBoundary />
