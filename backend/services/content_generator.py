@@ -14,6 +14,7 @@ heavy tasks like quiz construction.
 """
 
 import json
+import traceback
 from datetime import date
 from typing import Optional
 import httpx
@@ -85,9 +86,14 @@ Format as JSON:
                 )
             return result
         except Exception as e:
-            print(f"Error generating paper summary: {e}")
+            # log with traceback + exception class so silent failures are visible
+            # in container output. Mark the payload so daily_content.py can refuse
+            # to cache it (cache-poisoning prevention).
+            print(f"[content_generator] paper summary failed: {type(e).__name__}: {e}")
+            traceback.print_exc()
             return {"summary": "", "key_findings": [], "relevance_explanation": "",
-                    "reading_approach": {}, "connections": []}
+                    "reading_approach": {}, "connections": [],
+                    "__generation_failed__": f"{type(e).__name__}: {e}"}
     
     async def generate_topic_review(self, topic: dict, course: dict, 
                                      previous_performance: Optional[dict] = None) -> dict:
@@ -134,9 +140,14 @@ Format as JSON:
                 )
             return result
         except Exception as e:
-            print(f"Error generating topic review: {e}")
+            # log with traceback + exception class so silent failures are visible
+            # in container output. Mark the payload so daily_content.py can refuse
+            # to cache it (cache-poisoning prevention).
+            print(f"[content_generator] topic review failed: {type(e).__name__}: {e}")
+            traceback.print_exc()
             return {"review_content": "", "key_points": [], "connections": [],
-                    "practice_suggestions": []}
+                    "practice_suggestions": [],
+                    "__generation_failed__": f"{type(e).__name__}: {e}"}
     
     async def generate_quiz_questions(self, topic: dict, course: dict, count: int = 5,
                                        question_types: list[str] = None, 
@@ -207,7 +218,11 @@ Format as JSON array:
             
             return questions
         except Exception as e:
-            print(f"Error generating quiz questions: {e}")
+            # log with traceback + exception class so silent failures are visible
+            # in container output. Returning [] is the existing contract — the
+            # caller treats an empty list as "no quiz this round".
+            print(f"[content_generator] quiz questions failed: {type(e).__name__}: {e}")
+            traceback.print_exc()
             return []
     
     async def evaluate_answer(self, question: dict, user_answer: str) -> dict:

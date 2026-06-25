@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)
     frontend_url: str = Field(default="http://localhost:3000")
+
+    # Comma-separated list of additional CORS origins. When set, REPLACES the
+    # frontend_url-derived allowlist; otherwise frontend_url + localhost
+    # variants are used. Match scheme + host exactly, no trailing slash —
+    # `credentials: 'include'` requires byte-for-byte match.
+    cors_allowed_origins: Optional[str] = Field(default=None)
     
     # Content Generation — Anthropic (default provider)
     claude_model: str = Field(default="claude-sonnet-4-5")

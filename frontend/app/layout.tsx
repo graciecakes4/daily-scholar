@@ -4,6 +4,7 @@ import "./globals.css";
 import Link from "next/link";
 import InstallPrompt from "@/components/InstallPrompt";
 import AuthBoundary from "@/components/AuthBoundary";
+import { API_BASE } from "@/lib/api";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -104,8 +105,8 @@ export default function RootLayout({
                   </svg>
                   Settings
                 </Link>
-                <a 
-                  href="http://localhost:8000/docs"
+                <a
+                  href={`${API_BASE}/docs`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="ml-2 px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 border border-slate-200 hover:border-slate-300 rounded-lg transition-all"

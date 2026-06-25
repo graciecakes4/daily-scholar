@@ -151,9 +151,36 @@ app = FastAPI(
 )
 
 settings = get_settings()
+
+
+def _resolve_cors_origins() -> list[str]:
+    """
+    Build the CORS allowlist from settings.
+
+    Precedence:
+      1. CORS_ALLOWED_ORIGINS (comma-separated) — explicit override; wins outright.
+      2. FRONTEND_URL + the two localhost variants — back-compat default.
+
+    Origins are stripped of surrounding whitespace and trailing slashes so
+    `credentials: 'include'` matches byte-for-byte. Empty entries dropped.
+    """
+    if settings.cors_allowed_origins:
+        raw = settings.cors_allowed_origins.split(",")
+    else:
+        raw = [settings.frontend_url, "http://localhost:3000", "http://127.0.0.1:3000"]
+    seen: set[str] = set()
+    origins: list[str] = []
+    for o in raw:
+        o = o.strip().rstrip("/")
+        if o and o not in seen:
+            seen.add(o)
+            origins.append(o)
+    return origins
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, "http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=_resolve_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

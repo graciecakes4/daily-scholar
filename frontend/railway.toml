@@ -3,6 +3,15 @@
 # Mounted as a separate Railway service inside the same project as the backend.
 # Builds from frontend/Dockerfile (multi-stage; build via webpack so @serwist
 # can hook the bundler; final image is just `node server.js` on Alpine).
+#
+# REQUIRED service Variables (set in Railway UI → Service → Variables):
+#   NEXT_PUBLIC_API_URL = https://api.daily-scholar.com
+#     Inlined into the client JS bundle at `next build` time via the
+#     Dockerfile's `ARG NEXT_PUBLIC_API_URL`. The Dockerfile now hard-fails
+#     the build when this is empty, so a misconfigured deploy errors at
+#     image-build time instead of silently serving a broken frontend that
+#     fetches `http://localhost:8000`. Railway automatically forwards all
+#     service variables as --build-arg when the Dockerfile declares the ARG.
 
 [build]
 builder = "DOCKERFILE"
