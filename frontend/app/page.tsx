@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
+import {
   getDailyContent, checkHealth, regenerateQuiz, getUserStats,
-  archivePaper, archiveTopicReview, archiveQuiz,
-  type DailyContent, type QuizQuestion, type UserStats 
+  archivePaper, archiveTopicReview, archiveQuiz, submitAnswer,
+  type DailyContent, type QuizQuestion, type UserStats
 } from '@/lib/api';
 
 // Icons
@@ -195,11 +195,10 @@ export default function DashboardPage() {
     const answer = quizAnswers[questionId];
     if (!answer) return;
     try {
-      const response = await fetch(
-        `http://localhost:8000/quiz/answer?question_id=${questionId}&answer=${encodeURIComponent(answer)}`,
-        { method: 'POST' }
-      );
-      const result = await response.json();
+      // use the shared client so we get API_BASE + credentials: 'include' +
+      // 401 handling — the previous hardcoded fetch broke in prod because it
+      // pointed at localhost and skipped the CF Access cookie.
+      const result = await submitAnswer(questionId, answer);
       setQuizResults(prev => ({
         ...prev,
         [questionId]: { correct: result.is_correct, feedback: result.feedback }

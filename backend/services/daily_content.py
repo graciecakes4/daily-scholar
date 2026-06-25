@@ -244,11 +244,23 @@ async def generate_daily_content(
                 topic_dict = _topic_to_dict(selected)
                 course_dict = _topic_pseudo_course(selected)
                 review = await generator.generate_topic_review(topic_dict, course_dict)
-                topic_reviews.append({"topic": topic_dict, "review": review})
-                questions = await generator.generate_quiz_questions(
-                    topic_dict, course_dict, count=2, difficulty="medium"
-                )
-                quiz_questions.extend(questions)
+                # cache-poisoning defense: if the LLM call failed, the generator
+                # returns a sentinel-marked empty payload. Skip the append so
+                # topic_reviews stays empty — daily_content's existing
+                # `len(cached_topic_reviews) == 0` check then forces a retry
+                # on the next request instead of locking the user in an
+                # empty-card state until tomorrow's regen.
+                if review.get("__generation_failed__"):
+                    print(
+                        f"[daily_content] skipping cache for failed topic review "
+                        f"on {selected.id!r}: {review['__generation_failed__']}"
+                    )
+                else:
+                    topic_reviews.append({"topic": topic_dict, "review": review})
+                    questions = await generator.generate_quiz_questions(
+                        topic_dict, course_dict, count=2, difficulty="medium"
+                    )
+                    quiz_questions.extend(questions)
 
             questions_display = [
                 {
