@@ -4,7 +4,10 @@
  * and topic completion/rotation.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// exported so other modules (e.g., layout's external API Docs link) point at
+// the same backend URL without re-implementing the fallback. NEXT_PUBLIC_API_URL
+// is inlined at build time; the localhost fallback is for local dev only.
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 /**
  * Thrown by fetchAPI on a 401 response. Distinct subclass so the AuthBoundary
