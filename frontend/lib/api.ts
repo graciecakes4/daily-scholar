@@ -917,6 +917,8 @@ export interface AuthUser {
   status: UserStatus;
   /** Phase E: false until the wizard runs (or is skipped). */
   onboarded: boolean;
+  /** Highest dashboard-tour version this user has seen. 0 = never. */
+  tour_version_seen: number;
   created_at: string;
   last_login_at: string | null;
 }
@@ -985,6 +987,19 @@ export async function changeMyUsername(
     method: 'PUT',
     body: JSON.stringify({ current_password, new_user_id }),
   });
+}
+
+export async function markTourCompleted(
+  version: number,
+): Promise<{ ok: boolean; tour_version_seen: number; updated: boolean }> {
+  return fetchAPI('/auth/tour-completed', {
+    method: 'PUT',
+    body: JSON.stringify({ version }),
+  });
+}
+
+export async function resetTour(): Promise<{ ok: boolean; tour_version_seen: number }> {
+  return fetchAPI('/auth/tour-reset', { method: 'PUT' });
 }
 
 // -----------------------------------------------------------------------------

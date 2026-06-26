@@ -161,6 +161,9 @@ class UserProfile(BaseModel):
     # Phase E: false until the wizard runs (or is skipped). The layout
     # uses this to redirect unonboarded users to /onboarding.
     onboarded: bool = True
+    # Versioned tour state — frontend gates the dashboard tour on this
+    # vs its hardcoded TOUR_VERSION. 0 = never seen any tour version.
+    tour_version_seen: int = 0
     created_at: datetime
     last_login_at: Optional[datetime] = None
 
@@ -172,6 +175,7 @@ def _profile(user: User) -> UserProfile:
         role=user.role,
         status=user.status,
         onboarded=getattr(user, "onboarded", True),
+        tour_version_seen=int(getattr(user, "tour_version_seen", 0) or 0),
         created_at=user.created_at,
         last_login_at=user.last_login_at,
     )
@@ -477,3 +481,65 @@ def change_my_username(
         raise HTTPException(status_code=400, detail=str(e))
 
     return {"ok": True, "changed": True, "new_user_id": new_uid, "rows_moved": counts}
+
+
+# ---------------------------------------------------------------------------
+# Versioned dashboard tour state
+# ---------------------------------------------------------------------------
+
+
+class TourCompletedBody(BaseModel):
+    """Body for PUT /auth/tour-completed — what version did the user see?"""
+    version: int = Field(ge=1, description="The TOUR_VERSION the frontend just showed.")
+
+
+@auth_router.put("/tour-completed")
+def mark_tour_completed(
+    body: TourCompletedBody,
+    ds_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+) -> dict:
+    """
+    Bump `users.tour_version_seen` to `max(current, body.version)`.
+
+    Why max() and not overwrite: protects against a stale tour callback
+    (e.g., user has version 2 on disk because they opened a fresh tab
+    that loaded a new frontend bundle while an older tab is still
+    running version 1 and calls this endpoint with `version=1`). We
+    never regress the seen-version.
+    """
+    user = _require_authed_user(ds_session)
+    session = get_session()
+    try:
+        row = session.query(User).filter(User.id == user.id).first()
+        if row is None:
+            raise HTTPException(status_code=404, detail="user not found")
+        current = int(row.tour_version_seen or 0)
+        if body.version > current:
+            row.tour_version_seen = body.version
+            session.commit()
+            return {"ok": True, "tour_version_seen": body.version, "updated": True}
+        return {"ok": True, "tour_version_seen": current, "updated": False}
+    finally:
+        session.close()
+
+
+@auth_router.put("/tour-reset")
+def reset_tour(
+    ds_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+) -> dict:
+    """
+    Zero out `users.tour_version_seen` so the tour fires again on the
+    next dashboard visit. Powers the "Show me around again" button on
+    /settings/account.
+    """
+    user = _require_authed_user(ds_session)
+    session = get_session()
+    try:
+        row = session.query(User).filter(User.id == user.id).first()
+        if row is None:
+            raise HTTPException(status_code=404, detail="user not found")
+        row.tour_version_seen = 0
+        session.commit()
+        return {"ok": True, "tour_version_seen": 0}
+    finally:
+        session.close()

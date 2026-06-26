@@ -4,6 +4,7 @@ import "./globals.css";
 import Link from "next/link";
 import InstallPrompt from "@/components/InstallPrompt";
 import AuthBoundary from "@/components/AuthBoundary";
+import DashboardTour from "@/components/DashboardTour";
 import MobileTabBar from "@/components/MobileTabBar";
 import OnboardingGuard from "@/components/OnboardingGuard";
 import UserMenu from "@/components/UserMenu";
@@ -100,6 +101,7 @@ export default function RootLayout({
                   Quizzes
                 </Link>
                 <Link
+                  data-tour="settings"
                   href="/settings/scope"
                   className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all flex items-center gap-1"
                 >
@@ -144,6 +146,10 @@ export default function RootLayout({
 
         {/* Phase E: redirect logged-in unonboarded users to /onboarding */}
         <OnboardingGuard />
+
+        {/* Phase E follow-up: guided product tour on first dashboard visit.
+            Self-gates on user.onboarded + path === '/' + localStorage flag */}
+        <DashboardTour />
 
         {/* PWA install prompt (shows on capable browsers / iOS Safari) */}
         <InstallPrompt />
