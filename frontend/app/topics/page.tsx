@@ -16,8 +16,10 @@ import Link from 'next/link';
 import {
   listTopics, listStreams, deleteTopic, updateTopic,
   importTopicsFromYaml, exportTopicsToYaml,
+  unsubscribeTopic,
   type Topic,
 } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 
 function streamDisplayName(stream: string): string {
   return stream
@@ -26,6 +28,8 @@ function streamDisplayName(stream: string): string {
 }
 
 export default function TopicCatalogPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +37,29 @@ export default function TopicCatalogPage() {
   const [streamFilter, setStreamFilter] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+  // ownership check: caller can edit/delete iff admin or the row's owner.
+  // `is_subscribed` from the API tells us when a non-system, non-our-own
+  // topic is in our scope only because we subscribed to it — those we
+  // can't edit (the owner can), but we CAN unsubscribe.
+  function canEdit(t: Topic): boolean {
+    if (isAdmin) return true;
+    if (t.owner_user_id === null) return false;  // system → admin only
+    if (t.is_subscribed) return false;           // subscribed-from-other → unsubscribe, don't edit
+    return true;
+  }
+
+  async function handleUnsubscribe(topic: Topic) {
+    setBusy(true);
+    try {
+      await unsubscribeTopic(topic.id);
+      await fetchTopics();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     void fetchTopics();
@@ -133,6 +160,12 @@ export default function TopicCatalogPage() {
             + New topic
           </Link>
           <Link
+            href="/topics/discover"
+            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-all"
+          >
+            Discover
+          </Link>
+          <Link
             href="/topics/archive"
             className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-all"
           >
@@ -217,8 +250,10 @@ export default function TopicCatalogPage() {
                     key={topic.id}
                     topic={topic}
                     busy={busy}
+                    canEdit={canEdit(topic)}
                     onToggleActive={() => toggleActive(topic)}
                     onHardDelete={() => handleHardDelete(topic)}
+                    onUnsubscribe={() => handleUnsubscribe(topic)}
                   />
                 ))}
               </div>
@@ -231,23 +266,45 @@ export default function TopicCatalogPage() {
 }
 
 function TopicRow({
-  topic, busy, onToggleActive, onHardDelete,
+  topic, busy, canEdit, onToggleActive, onHardDelete, onUnsubscribe,
 }: {
   topic: Topic;
   busy: boolean;
+  canEdit: boolean;
   onToggleActive: () => void;
   onHardDelete: () => void;
+  onUnsubscribe: () => void;
 }) {
+  // Phase C/D ownership badge — system / your topic / subscribed
+  const ownerBadge =
+    topic.owner_user_id === null
+      ? { label: 'System', cls: 'bg-slate-100 text-slate-700', title: 'Shared by the app' }
+      : topic.is_subscribed
+        ? { label: 'Subscribed', cls: 'bg-emerald-100 text-emerald-800', title: 'You subscribed to this topic via Discover' }
+        : canEdit
+          ? { label: 'Yours', cls: 'bg-sky-100 text-sky-800', title: 'You own this topic' }
+          : { label: 'Shared', cls: 'bg-violet-100 text-violet-700', title: 'Public topic owned by another user' };
+
   return (
     <div className="p-4 flex items-start gap-4">
       <div className="flex-grow min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <Link
-            href={`/topics/${encodeURIComponent(topic.id)}/edit`}
-            className="font-semibold text-slate-900 hover:underline"
-          >
-            {topic.name}
-          </Link>
+          {canEdit ? (
+            <Link
+              href={`/topics/${encodeURIComponent(topic.id)}/edit`}
+              className="font-semibold text-slate-900 hover:underline"
+            >
+              {topic.name}
+            </Link>
+          ) : (
+            <span className="font-semibold text-slate-900">{topic.name}</span>
+          )}
+          <span className={`text-xs px-2 py-0.5 rounded ${ownerBadge.cls}`} title={ownerBadge.title}>
+            {ownerBadge.label}
+          </span>
+          {topic.visibility === 'private' && topic.owner_user_id !== null && (
+            <span className="text-xs px-2 py-0.5 bg-slate-200 text-slate-700 rounded" title="Only you can see this topic">private</span>
+          )}
           {!topic.active && (
             <span className="text-xs px-2 py-0.5 bg-slate-200 text-slate-600 rounded">inactive</span>
           )}
@@ -265,30 +322,44 @@ function TopicRow({
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <button
-          onClick={onToggleActive}
-          disabled={busy}
-          className={`text-xs px-3 py-1.5 rounded border disabled:opacity-50 ${
-            topic.active
-              ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-              : 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
-          }`}
-        >
-          {topic.active ? 'Deactivate' : 'Activate'}
-        </button>
-        <Link
-          href={`/topics/${encodeURIComponent(topic.id)}/edit`}
-          className="text-xs px-3 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
-        >
-          Edit
-        </Link>
-        <button
-          onClick={onHardDelete}
-          disabled={busy}
-          className="text-xs px-3 py-1.5 rounded bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-        >
-          Delete
-        </button>
+        {topic.is_subscribed && (
+          <button
+            onClick={onUnsubscribe}
+            disabled={busy}
+            className="text-xs px-3 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 disabled:opacity-50"
+            title="Stop following this topic; the owner keeps it"
+          >
+            Unsubscribe
+          </button>
+        )}
+        {canEdit && (
+          <>
+            <button
+              onClick={onToggleActive}
+              disabled={busy}
+              className={`text-xs px-3 py-1.5 rounded border disabled:opacity-50 ${
+                topic.active
+                  ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                  : 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+              }`}
+            >
+              {topic.active ? 'Deactivate' : 'Activate'}
+            </button>
+            <Link
+              href={`/topics/${encodeURIComponent(topic.id)}/edit`}
+              className="text-xs px-3 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
+            >
+              Edit
+            </Link>
+            <button
+              onClick={onHardDelete}
+              disabled={busy}
+              className="text-xs px-3 py-1.5 rounded bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+            >
+              Delete
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

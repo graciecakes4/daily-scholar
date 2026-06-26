@@ -32,12 +32,25 @@ export class AuthError extends Error {
 // because Next renders this file on the server first.
 const AUTH_EVENT = 'daily-scholar:auth-error';
 
-function emitAuthError(detail: { status: number; message: string }) {
+function emitAuthError(detail: { status: number; message: string; redirect?: string }) {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(AUTH_EVENT, { detail }));
 }
 
 export const AUTH_ERROR_EVENT = AUTH_EVENT;
+
+// fired after a successful login or logout so any useAuth() instance —
+// even one mounted in the persistent layout above the page tree — can
+// re-fetch /auth/me and update its UI. Without this, the layout-level
+// UserMenu shows its boot-time "logged out" state forever.
+const AUTH_CHANGED = 'daily-scholar:auth-changed';
+
+function emitAuthChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(AUTH_CHANGED));
+}
+
+export const AUTH_CHANGED_EVENT = AUTH_CHANGED;
 
 // =============================================================================
 // TYPES
@@ -112,6 +125,14 @@ export interface Topic {
   prerequisites: string[];
   created_via: string;
   source_yaml_present: boolean;
+  // Phase C ownership fields:
+  //   owner_user_id === null  → system topic (visible to all, admin-only edit)
+  //   owner_user_id === number → owned by users.id
+  owner_user_id: number | null;
+  visibility: 'private' | 'public';
+  // Phase D: true when the caller has subscribed to this topic (only
+  // populated on list endpoints; single-row GET returns false).
+  is_subscribed: boolean;
   created_at: string;
   updated_at: string;
 
@@ -123,7 +144,8 @@ export interface Topic {
 }
 
 export interface TopicCreate {
-  id: string;
+  /** Admin-only override; server auto-generates for regular users. */
+  id?: string;
   name: string;
   stream?: string;
   active?: boolean;
@@ -137,6 +159,10 @@ export interface TopicCreate {
   resources?: string[];
   quiz_difficulty?: string;
   prerequisites?: string[];
+  /** Admin-only override; defaults to caller's id (or null for admins). */
+  owner_user_id?: number | null;
+  /** private (default for user topics) | public (default for system). */
+  visibility?: 'private' | 'public';
 }
 
 export type TopicUpdate = Partial<Omit<TopicCreate, 'id'>>;
@@ -288,12 +314,22 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
     // 401 gets its own subclass + a global event so the AuthBoundary can
-    // surface a "please re-authenticate" banner without each call site
-    // having to special-case it.
+    // redirect to /login from anywhere in the tree.
     if (response.status === 401) {
       const message = error.detail || 'Authentication required';
       emitAuthError({ status: 401, message });
       throw new AuthError(message);
+    }
+    // 403 with one of the auth-status reasons routes to the matching
+    // placeholder page. Same event channel, different status, so the
+    // AuthBoundary can branch on it.
+    if (response.status === 403) {
+      const detail = String(error.detail || '');
+      if (/pending approval/i.test(detail)) {
+        emitAuthError({ status: 403, message: detail, redirect: '/account/pending' });
+      } else if (/suspended/i.test(detail)) {
+        emitAuthError({ status: 403, message: detail, redirect: '/account/suspended' });
+      }
     }
     throw new Error(error.detail || `API error: ${response.status}`);
   }
@@ -677,6 +713,58 @@ export async function exportTopicsToYaml(): Promise<{ exported: number; director
 }
 
 // -----------------------------------------------------------------------------
+// Topic discovery + subscriptions (Phase D)
+// -----------------------------------------------------------------------------
+
+export async function searchTopics(q: string, limit = 50): Promise<Topic[]> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  return fetchAPI(`/topics/search?${params.toString()}`);
+}
+
+export async function subscribeTopic(
+  topicId: string,
+): Promise<{ ok: boolean; topic_id: string; subscribed_at: string }> {
+  return fetchAPI(`/topics/${encodeURIComponent(topicId)}/subscribe`, { method: 'POST' });
+}
+
+export async function unsubscribeTopic(
+  topicId: string,
+): Promise<{ ok: boolean; removed: boolean }> {
+  return fetchAPI(`/topics/${encodeURIComponent(topicId)}/subscribe`, { method: 'DELETE' });
+}
+
+// -----------------------------------------------------------------------------
+// Onboarding wizard (Phase E)
+// -----------------------------------------------------------------------------
+
+export interface TopicDraft {
+  name: string;
+  keywords: string[];
+  arxiv_categories: string[];
+  key_concepts: string[];
+}
+
+export async function generateTopicDraft(interests: string): Promise<TopicDraft> {
+  return fetchAPI('/onboarding/generate-topic', {
+    method: 'POST',
+    body: JSON.stringify({ interests }),
+  });
+}
+
+export async function completeOnboarding(
+  draft: TopicDraft & { visibility?: 'private' | 'public' },
+): Promise<{ ok: boolean; topic_id: string; name: string; onboarded: boolean }> {
+  return fetchAPI('/onboarding/complete', {
+    method: 'POST',
+    body: JSON.stringify(draft),
+  });
+}
+
+export async function skipOnboarding(): Promise<{ ok: boolean; onboarded: boolean }> {
+  return fetchAPI('/onboarding/skip', { method: 'POST' });
+}
+
+// -----------------------------------------------------------------------------
 // Scope (silo / multi / all topic selector)
 // -----------------------------------------------------------------------------
 
@@ -761,4 +849,173 @@ export async function listNotificationJobs(): Promise<{
   jobs: NotificationJob[];
 }> {
   return fetchAPI('/notifications/jobs');
+}
+
+// -----------------------------------------------------------------------------
+// In-app auth (Phase A)
+// -----------------------------------------------------------------------------
+
+export type UserStatus = 'pending' | 'active' | 'suspended';
+export type UserRole = 'user' | 'admin';
+
+export interface AuthUser {
+  email: string;
+  user_id: string;
+  role: UserRole;
+  status: UserStatus;
+  /** Phase E: false until the wizard runs (or is skipped). */
+  onboarded: boolean;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+export interface SignupBody {
+  email: string;
+  password: string;
+  /** Optional custom handle. Omit to default to the email. */
+  user_id?: string;
+  /** Required unless the server is running with OPEN_SIGNUP=1 (local dev). */
+  invite_code?: string;
+}
+
+export interface LoginBody {
+  email: string;
+  password: string;
+}
+
+export async function signup(body: SignupBody): Promise<{ profile: AuthUser; message: string }> {
+  return fetchAPI('/auth/signup', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function login(body: LoginBody): Promise<{ profile: AuthUser; pending: boolean }> {
+  const result = await fetchAPI<{ profile: AuthUser; pending: boolean }>(
+    '/auth/login',
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+  // notify other useAuth() instances (e.g., the layout's UserMenu) so they
+  // re-fetch /auth/me and reflect the new logged-in state
+  emitAuthChanged();
+  return result;
+}
+
+export async function logout(): Promise<{ ok: boolean; revoked: boolean }> {
+  const result = await fetchAPI<{ ok: boolean; revoked: boolean }>(
+    '/auth/logout',
+    { method: 'POST' },
+  );
+  emitAuthChanged();
+  return result;
+}
+
+export async function getMe(): Promise<{ profile: AuthUser }> {
+  return fetchAPI('/auth/me');
+}
+
+// -----------------------------------------------------------------------------
+// Admin: invite codes (Phase B)
+// -----------------------------------------------------------------------------
+
+export type InviteState = 'available' | 'exhausted' | 'expired' | 'revoked';
+
+export interface InviteSummary {
+  id: number;
+  code: string;
+  created_at: string;
+  expires_at: string | null;
+  max_uses: number;
+  uses: number;
+  redeemed_at: string | null;
+  revoked_at: string | null;
+  state: InviteState;
+}
+
+export interface CreateInviteBody {
+  /** 1-365 days from now; omit for a non-expiring code. */
+  expires_in_days?: number;
+  /** Default 1 (single-use). */
+  max_uses?: number;
+}
+
+export async function listInvites(includeRevoked = true): Promise<{ invites: InviteSummary[] }> {
+  const qs = includeRevoked ? '' : '?include_revoked=false';
+  return fetchAPI(`/admin/invites${qs}`);
+}
+
+export async function createInvite(body: CreateInviteBody): Promise<{ invite: InviteSummary }> {
+  return fetchAPI('/admin/invites', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function revokeInvite(id: number): Promise<{ ok: boolean; revoked: boolean }> {
+  return fetchAPI(`/admin/invites/${id}`, { method: 'DELETE' });
+}
+
+// -----------------------------------------------------------------------------
+// Admin: approval queue (Phase B)
+// -----------------------------------------------------------------------------
+
+export interface PendingUserSummary {
+  id: number;
+  email: string;
+  user_id: string;
+  created_at: string;
+  waiting_seconds: number;
+}
+
+export async function listPendingApprovals(): Promise<{ pending: PendingUserSummary[]; count: number }> {
+  return fetchAPI('/admin/approvals');
+}
+
+export async function approveUser(pendingUserId: number): Promise<{
+  ok: boolean; user_id?: string; email?: string; approved_at?: string; message?: string;
+}> {
+  return fetchAPI(`/admin/approvals/${pendingUserId}/approve`, { method: 'POST' });
+}
+
+export async function rejectUser(pendingUserId: number): Promise<{ ok: boolean; deleted_user_id?: string }> {
+  return fetchAPI(`/admin/approvals/${pendingUserId}/reject`, { method: 'POST' });
+}
+
+// -----------------------------------------------------------------------------
+// Admin: accounts management (Phase F)
+// -----------------------------------------------------------------------------
+
+export interface AccountSummary {
+  id: number;
+  email: string;
+  user_id: string;
+  role: UserRole;
+  status: UserStatus;
+  onboarded: boolean;
+  created_at: string;
+  approved_at: string | null;
+  approved_by_user_id: number | null;
+  last_login_at: string | null;
+}
+
+export async function listAccounts(filters?: {
+  status?: UserStatus;
+  role?: UserRole;
+}): Promise<AccountSummary[]> {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set('status', filters.status);
+  if (filters?.role) params.set('role', filters.role);
+  const qs = params.toString();
+  return fetchAPI(`/admin/accounts${qs ? `?${qs}` : ''}`);
+}
+
+export async function changeAccountRole(userId: string, role: UserRole): Promise<AccountSummary> {
+  return fetchAPI(`/admin/accounts/${encodeURIComponent(userId)}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  });
+}
+
+export async function changeAccountStatus(
+  userId: string,
+  status: 'active' | 'suspended',
+): Promise<AccountSummary> {
+  return fetchAPI(`/admin/accounts/${encodeURIComponent(userId)}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
 }

@@ -1,20 +1,18 @@
 """
 Admin cross-user endpoints.
 
-These are the read-only views that let a Cloudflare-Access-authenticated
-admin inspect any user's data — useful for supporting beta testers
-("alice's stats look wrong, can you check?") without granting raw DB
-access.
+These are the read-only views that let an admin inspect any user's data
+— useful for supporting beta testers ("alice's stats look wrong, can
+you check?") without granting raw DB access.
 
-Auth model: every endpoint here requires `require_cloudflare_access`,
-which 401s in solo mode and when there's no CF Access identity at all.
-There is no in-app admin role yet; access is gated entirely at the
-Cloudflare Access policy layer (typically by adding an "admins" email
-group to a separate Access Application that protects /admin/*).
+Auth model: every endpoint here requires `require_admin` (Phase B):
 
-Group-based admin enforcement (e.g., only emails in `cf_access_admin_emails`
-can hit /admin) is deferred until there are enough beta testers to warrant
-it. Today the assumption is: if you got past Access, you're trusted.
+  * Solo dev (`__local__`) → admin, so local development keeps working.
+  * Real users (CF Access header or in-app session) → must have a User
+    row with role='admin'. Non-admins get 403.
+
+Use `python scripts/create_admin.py --email <you>` to seed an admin row.
+This closes the deferred CF-Access-only protection model from Phase 4.
 """
 
 from __future__ import annotations
@@ -24,7 +22,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 
-from ..auth import require_cloudflare_access
+from ..auth import require_admin
 from ..database import (
     ArchivedPaper,
     ArchivedQuiz,
@@ -39,8 +37,8 @@ from ..database import (
 admin_router = APIRouter(
     prefix="/admin",
     tags=["Admin"],
-    # every route inherits the strict CF Access requirement
-    dependencies=[Depends(require_cloudflare_access)],
+    # every route inherits the in-app role gate
+    dependencies=[Depends(require_admin)],
 )
 
 
@@ -205,7 +203,7 @@ def get_user_papers(
 
 
 @admin_router.get("/whoami")
-def whoami(user_id: str = Depends(require_cloudflare_access)):
+def whoami(user_id: str = Depends(require_admin)):
     """
     Debug endpoint — echoes back the identity the auth layer resolved for
     this request. Useful for verifying Cloudflare Access is wired correctly

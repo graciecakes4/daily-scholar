@@ -14,6 +14,7 @@ import {
   getScope, updateScope, listTopics,
   type Scope, type ScopeMode, type Topic,
 } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import { useWebPush } from '@/hooks/useWebPush';
 
 function streamDisplayName(stream: string): string {
@@ -21,6 +22,7 @@ function streamDisplayName(stream: string): string {
 }
 
 export default function ScopeSettingsPage() {
+  const { user } = useAuth();
   const [scope, setScope] = useState<Scope | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [mode, setMode] = useState<ScopeMode>('all');
@@ -112,10 +114,15 @@ export default function ScopeSettingsPage() {
             Choose which topics drive paper discovery, reviews, and quiz generation.
           </p>
         </div>
-        <nav className="text-sm">
+        <nav className="text-sm flex gap-4">
           <Link href="/settings/notifications" className="text-sky-700 hover:underline">
             Notifications →
           </Link>
+          {user?.role === 'admin' && (
+            <Link href="/settings/admin" className="text-sky-700 hover:underline">
+              Admin →
+            </Link>
+          )}
         </nav>
       </header>
 

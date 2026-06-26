@@ -230,10 +230,14 @@ async def generate_daily_content(
 
         # ---- topic review + quiz ----
         if need_review:
-            scope_topics = get_topics_for_scope()
-            completed_ids = get_completed_topic_ids()
-            recently_reviewed_ids = get_recently_reviewed_topic_ids(days=3)
-            review_later_ids = get_review_later_topic_ids()
+            # pass user_id through so the topic ownership filter (Phase C)
+            # and the per-user completed/review tracking (Phase 4) both
+            # see the right caller. Previously these defaulted to
+            # __local__ which silently swapped scopes mid-pipeline.
+            scope_topics = get_topics_for_scope(user_id=user_id)
+            completed_ids = get_completed_topic_ids(user_id=user_id)
+            recently_reviewed_ids = get_recently_reviewed_topic_ids(user_id=user_id, days=3)
+            review_later_ids = get_review_later_topic_ids(user_id=user_id)
 
             topic_reviews: list[dict[str, Any]] = []
             quiz_questions: list[dict[str, Any]] = []

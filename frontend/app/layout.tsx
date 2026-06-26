@@ -5,6 +5,8 @@ import Link from "next/link";
 import InstallPrompt from "@/components/InstallPrompt";
 import AuthBoundary from "@/components/AuthBoundary";
 import MobileTabBar from "@/components/MobileTabBar";
+import OnboardingGuard from "@/components/OnboardingGuard";
+import UserMenu from "@/components/UserMenu";
 import { API_BASE } from "@/lib/api";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -115,6 +117,7 @@ export default function RootLayout({
                 >
                   API Docs
                 </a>
+                <UserMenu />
               </div>
             </div>
           </div>
@@ -138,6 +141,9 @@ export default function RootLayout({
 
         {/* Global 401 banner — only fires once CF Access JWT verification is on */}
         <AuthBoundary />
+
+        {/* Phase E: redirect logged-in unonboarded users to /onboarding */}
+        <OnboardingGuard />
 
         {/* PWA install prompt (shows on capable browsers / iOS Safari) */}
         <InstallPrompt />

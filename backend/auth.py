@@ -11,9 +11,17 @@ FastAPI dependency:
     def list_things(user_id: str = Depends(get_current_user_id)):
         ...
 
-Two layers, both off by default for solo mode:
+Resolution chain, top to bottom — the first one to match wins:
 
-  1. Identity header (always-on when present).
+  0. In-app session cookie (`ds_session`).
+     Phase A in-app auth. If the cookie is present and resolves to a non-
+     suspended User, that user's `user_id` (the custom handle, defaults to
+     email) is returned. Pending / suspended users get a 403 with a status-
+     specific message instead of silently falling through. An invalid /
+     expired cookie is *ignored* and we fall through to the next layer so
+     CF-Access-only deployments still work after a cookie expires.
+
+  1. Cloudflare Access identity (header always-on when present).
      `Cf-Access-Authenticated-User-Email` — set by Cloudflare Access when the
      request comes through a Zero-Trust-protected origin. Trusted iff the
      origin is locked to CF traffic (firewall allowlist / Cloudflare Tunnel).
@@ -22,13 +30,13 @@ Two layers, both off by default for solo mode:
        - a Cloudflare Tunnel from cloudflared on the origin, OR
        - the JWT verification layer below (cryptographic proof, layer 2).
 
-  2. JWT verification (optional, env-gated by CF_ACCESS_VERIFY_JWT).
-     When enabled, every request must also carry `Cf-Access-Jwt-Assertion`
-     signed by Cloudflare's team JWKS. The JWT is validated against the
-     team's public keys (cached), the configured AUD tag, and standard
-     iss/exp claims. If the JWT and email header are both present, the JWT
-     `email` claim must match the header — mismatched requests are 401.
-     With the flag off, the JWT (if present) is ignored.
+  2. CF Access JWT verification (optional, env-gated by CF_ACCESS_VERIFY_JWT).
+     When enabled, every request that gets to this layer must also carry
+     `Cf-Access-Jwt-Assertion` signed by Cloudflare's team JWKS. The JWT is
+     validated against the team's public keys (cached), the configured AUD
+     tag, and standard iss/exp claims. If the JWT and email header are both
+     present, the JWT `email` claim must match the header — mismatched
+     requests are 401. With the flag off, the JWT (if present) is ignored.
 
 Fallback (always available, even with JWT verification on): the local dev
 escape hatch `X-User-Id` (only used when no CF headers are present), then
@@ -44,10 +52,18 @@ from __future__ import annotations
 import time
 from typing import Any, Optional
 
-from fastapi import Header, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, status
 
 from .config import get_settings
-from .database import DEFAULT_USER_ID
+from .database import (
+    DEFAULT_USER_ID,
+    USER_ROLE_ADMIN,
+    USER_STATUS_ACTIVE,
+    USER_STATUS_PENDING,
+    USER_STATUS_SUSPENDED,
+    User,
+    get_session,
+)
 
 
 # how long (seconds) to cache the team JWKS before refetching
@@ -148,25 +164,76 @@ def _identity_from_jwt_claims(claims: dict) -> Optional[str]:
     return None
 
 
+def _resolve_session_user_id(ds_session: Optional[str]) -> Optional[str]:
+    """
+    Try the session-cookie layer.
+
+    Returns the user's `user_id` string if the cookie resolves to an
+    *active* user. Returns None (= fall through to the next layer) when
+    the cookie is missing or invalid/expired. Raises 403 for pending /
+    suspended users since those need to see a specific message rather
+    than being silently treated as anonymous.
+
+    Imported lazily so this module stays usable in tests / CLI contexts
+    that haven't initialized the sessions table.
+    """
+    if not ds_session:
+        return None
+    # local import: avoids a circular dependency at module-load (auth_sessions
+    # → database → nothing → auth, fine) but keeps the surface area clear
+    from .services.auth_sessions import lookup_session_user
+
+    user = lookup_session_user(ds_session)
+    if user is None:
+        # expired / revoked / unknown — ignore the cookie, let CF Access
+        # take over. This keeps deployments that mix both auth styles
+        # working smoothly.
+        return None
+    if user.status == USER_STATUS_SUSPENDED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account suspended",
+        )
+    if user.status == USER_STATUS_PENDING:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account pending approval",
+        )
+    if user.status != USER_STATUS_ACTIVE:
+        # unknown future status — fail closed
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Account status '{user.status}' is not allowed",
+        )
+    return user.user_id
+
+
 def _resolve_identity(
     cf_access_email: Optional[str],
     cf_access_jwt: Optional[str],
     x_user_id: Optional[str],
+    ds_session: Optional[str],
     *,
     require_cf: bool,
 ) -> str:
     """
     Shared resolution used by both get_current_user_id and require_cloudflare_access.
 
-    - If CF_ACCESS_VERIFY_JWT is on:
-        * the JWT is required (401 if missing), validated, and its identity wins.
-        * if the email header is also present it must match the JWT email.
-    - Otherwise:
-        * the email header (if present) wins.
-        * x_user_id is the local-dev escape hatch.
-        * DEFAULT_USER_ID is the solo-mode fallback (unless require_cf=True,
-          which 401s instead).
+    Order:
+      0. Session cookie (Phase A in-app auth). Wins outright when active.
+         Raises 403 for pending/suspended without falling through, so the
+         user sees a clear message instead of being silently anonymized
+         into `__local__`.
+      1. CF Access JWT verification (if CF_ACCESS_VERIFY_JWT=1) — required.
+      2. CF Access email header (when JWT verification is off).
+      3. X-User-Id local-dev escape hatch.
+      4. DEFAULT_USER_ID sentinel — solo mode (unless require_cf=True, 401).
     """
+    # Layer 0: in-app session cookie (Phase A)
+    session_uid = _resolve_session_user_id(ds_session)
+    if session_uid is not None:
+        return session_uid
+
     settings = get_settings()
 
     if settings.cf_access_verify_jwt:
@@ -208,27 +275,82 @@ def get_current_user_id(
     cf_access_email: Optional[str] = Header(default=None, alias="Cf-Access-Authenticated-User-Email"),
     cf_access_jwt: Optional[str] = Header(default=None, alias="Cf-Access-Jwt-Assertion"),
     x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    ds_session: Optional[str] = Cookie(default=None, alias="ds_session"),
 ) -> str:
     """
-    Resolve the current user. Returns the local sentinel when no auth headers
-    are present and CF_ACCESS_VERIFY_JWT is off, so existing endpoints behave
+    Resolve the current user. Returns the local sentinel when no auth signal
+    is present and CF_ACCESS_VERIFY_JWT is off, so existing endpoints behave
     identically in solo mode.
     """
     return _resolve_identity(
-        cf_access_email, cf_access_jwt, x_user_id, require_cf=False,
+        cf_access_email, cf_access_jwt, x_user_id, ds_session, require_cf=False,
     )
 
 
 def require_cloudflare_access(
     cf_access_email: Optional[str] = Header(default=None, alias="Cf-Access-Authenticated-User-Email"),
     cf_access_jwt: Optional[str] = Header(default=None, alias="Cf-Access-Jwt-Assertion"),
+    ds_session: Optional[str] = Cookie(default=None, alias="ds_session"),
 ) -> str:
     """
-    Stricter dependency: rejects requests without a Cloudflare Access identity
-    (email header or, when CF_ACCESS_VERIFY_JWT is on, a valid JWT). Use on
-    endpoints that must NEVER be reachable from local / unauthenticated
-    traffic — e.g., admin actions, future cross-user reads.
+    Stricter dependency: rejects requests without a CF Access identity OR
+    an in-app session. Use on endpoints that must NEVER be reachable from
+    local / unauthenticated traffic — admin actions, cross-user reads.
+
+    Honors the session cookie too so admin endpoints work once we've
+    transitioned off CF Access entirely.
     """
     return _resolve_identity(
-        cf_access_email, cf_access_jwt, x_user_id=None, require_cf=True,
+        cf_access_email, cf_access_jwt, x_user_id=None,
+        ds_session=ds_session, require_cf=True,
     )
+
+
+def lookup_user_by_user_id(user_id: str) -> Optional[User]:
+    """
+    Resolve a `user_id` string (the value stored in seen_papers.user_id
+    etc.) to the corresponding User row, or None when no real row exists
+    (solo sentinel, or a CF Access email that hasn't signed up in-app yet).
+
+    Detaches the User from the DB session so callers can read fields
+    after the session closes.
+    """
+    if not user_id or user_id == DEFAULT_USER_ID:
+        return None
+    session = get_session()
+    try:
+        user = (
+            session.query(User)
+            .filter(User.user_id == user_id)
+            .first()
+        )
+        if user is not None:
+            session.expunge(user)
+        return user
+    finally:
+        session.close()
+
+
+def require_admin(user_id: str = Depends(get_current_user_id)) -> str:
+    """
+    Allow only admin callers. Returns the caller's `user_id` string (same
+    shape as get_current_user_id) so endpoints can keep using it for
+    filtering / audit fields.
+
+    Solo dev (`__local__`) is treated as admin: in solo mode there is
+    exactly one user and it's the operator. Real users (CF Access or
+    in-app session) must have a User row with role='admin'.
+
+    This is the in-app role gate that replaces the deferred CF-Access-only
+    /admin/* protection from Phase 4.
+    """
+    if user_id == DEFAULT_USER_ID:
+        return user_id
+
+    user = lookup_user_by_user_id(user_id)
+    if user is None or user.role != USER_ROLE_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required",
+        )
+    return user_id
