@@ -147,6 +147,9 @@ class UserProfile(BaseModel):
     user_id: str
     role: str
     status: str
+    # Phase E: false until the wizard runs (or is skipped). The layout
+    # uses this to redirect unonboarded users to /onboarding.
+    onboarded: bool = True
     created_at: datetime
     last_login_at: Optional[datetime] = None
 
@@ -157,6 +160,7 @@ def _profile(user: User) -> UserProfile:
         user_id=user.user_id,
         role=user.role,
         status=user.status,
+        onboarded=getattr(user, "onboarded", True),
         created_at=user.created_at,
         last_login_at=user.last_login_at,
     )

@@ -506,6 +506,10 @@ class User(Base):
     approved_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     last_login_at = Column(DateTime, nullable=True)
 
+    # Phase E: false until the user has completed (or skipped) the
+    # onboarding wizard. Layout redirects to /onboarding when false.
+    onboarded = Column(Boolean, default=False, nullable=False)
+
 
 class InviteCode(Base):
     """

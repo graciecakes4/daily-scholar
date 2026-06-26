@@ -734,6 +734,37 @@ export async function unsubscribeTopic(
 }
 
 // -----------------------------------------------------------------------------
+// Onboarding wizard (Phase E)
+// -----------------------------------------------------------------------------
+
+export interface TopicDraft {
+  name: string;
+  keywords: string[];
+  arxiv_categories: string[];
+  key_concepts: string[];
+}
+
+export async function generateTopicDraft(interests: string): Promise<TopicDraft> {
+  return fetchAPI('/onboarding/generate-topic', {
+    method: 'POST',
+    body: JSON.stringify({ interests }),
+  });
+}
+
+export async function completeOnboarding(
+  draft: TopicDraft & { visibility?: 'private' | 'public' },
+): Promise<{ ok: boolean; topic_id: string; name: string; onboarded: boolean }> {
+  return fetchAPI('/onboarding/complete', {
+    method: 'POST',
+    body: JSON.stringify(draft),
+  });
+}
+
+export async function skipOnboarding(): Promise<{ ok: boolean; onboarded: boolean }> {
+  return fetchAPI('/onboarding/skip', { method: 'POST' });
+}
+
+// -----------------------------------------------------------------------------
 // Scope (silo / multi / all topic selector)
 // -----------------------------------------------------------------------------
 
@@ -832,6 +863,8 @@ export interface AuthUser {
   user_id: string;
   role: UserRole;
   status: UserStatus;
+  /** Phase E: false until the wizard runs (or is skipped). */
+  onboarded: boolean;
   created_at: string;
   last_login_at: string | null;
 }
