@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user_id, lookup_user_by_user_id
+# rate limiting is now in backend/middleware/rate_limit.py as middleware
 from ..database import (
     DEFAULT_USER_ID,
     Topic,

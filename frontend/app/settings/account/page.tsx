@@ -22,6 +22,7 @@ import {
   changeMyUsername,
 } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
+import PasswordStrength from '@/components/PasswordStrength';
 
 // must mirror backend/services/auth_security.py:USER_ID_REGEX
 const USER_ID_REGEX = /^[a-z0-9._-]{3,30}$/;
@@ -139,6 +140,7 @@ function ChangePasswordCard({ onSaved }: { onSaved: () => Promise<void> }) {
             tooShort ? 'border-rose-400 focus:border-rose-600' : 'border-slate-300 focus:border-slate-900'
           }`}
         />
+        <PasswordStrength password={next} />
       </Field>
 
       <Field label="Confirm new password" htmlFor="cp-confirm">

@@ -297,7 +297,40 @@ export interface TopicStatusSummary {
 // API FUNCTIONS
 // =============================================================================
 
-async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
+// Methods that need a CSRF token (mutating; mirrors backend CSRFMiddleware)
+const CSRF_PROTECTED_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const CSRF_COOKIE_NAME = 'ds_csrf';
+const CSRF_HEADER_NAME = 'X-CSRF-Token';
+
+/** Read a cookie value by name from document.cookie. SSR-safe (returns null). */
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const prefix = `${name}=`;
+  for (const part of document.cookie.split(';')) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(prefix)) {
+      return decodeURIComponent(trimmed.slice(prefix.length));
+    }
+  }
+  return null;
+}
+
+async function fetchAPI<T>(endpoint: string, options?: RequestInit, _retried = false): Promise<T> {
+  const method = (options?.method || 'GET').toUpperCase();
+
+  // double-submit CSRF: read the ds_csrf cookie, send it back in
+  // X-CSRF-Token on every mutating request. Skip on GETs (server
+  // doesn't check them) and on the first request before the cookie
+  // has been set — the backend's middleware will set it on response,
+  // so a single retry handles that warmup case below.
+  const extraHeaders: Record<string, string> = {};
+  if (CSRF_PROTECTED_METHODS.has(method)) {
+    const csrf = readCookie(CSRF_COOKIE_NAME);
+    if (csrf) {
+      extraHeaders[CSRF_HEADER_NAME] = csrf;
+    }
+  }
+
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     // include cookies cross-origin so Cloudflare Access (gating the API
@@ -307,9 +340,28 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...extraHeaders,
       ...options?.headers,
     },
   });
+
+  // CSRF cookie warmup: on the very first request from a fresh tab the
+  // ds_csrf cookie may not be set yet; we 403'd, the response just set
+  // it, retry once. After that, a 403 with CSRF detail is a real failure.
+  if (
+    response.status === 403
+    && !_retried
+    && CSRF_PROTECTED_METHODS.has(method)
+    && readCookie(CSRF_COOKIE_NAME)
+  ) {
+    const clone = response.clone();
+    try {
+      const data = await clone.json();
+      if (typeof data?.detail === 'string' && /csrf/i.test(data.detail)) {
+        return fetchAPI<T>(endpoint, options, true);
+      }
+    } catch { /* not JSON — fall through to error handling below */ }
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));

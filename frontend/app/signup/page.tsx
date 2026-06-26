@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { signup } from '@/lib/api';
 import { AuthShell, Field } from '@/components/AuthShell';
+import PasswordStrength from '@/components/PasswordStrength';
 
 // must mirror backend/services/auth_security.py:USER_ID_REGEX
 const USER_ID_REGEX = /^[a-z0-9._-]{3,30}$/;
@@ -135,6 +136,7 @@ export default function SignupPage() {
               passwordTooShort ? 'border-rose-400 focus:border-rose-600' : 'border-slate-300 focus:border-slate-900'
             }`}
           />
+          <PasswordStrength password={password} />
         </Field>
 
         <Field label="Confirm password" htmlFor="su-confirm">

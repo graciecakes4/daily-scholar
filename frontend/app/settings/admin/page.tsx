@@ -14,6 +14,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import PasswordStrength from '@/components/PasswordStrength';
 import {
   adminResetPassword,
   approveUser,
@@ -679,6 +680,7 @@ function ResetPasswordModal({
             }`}
             placeholder="at least 8 chars"
           />
+          <PasswordStrength password={pw} />
           <p className="text-xs text-slate-500">
             Showing in plaintext so you can share it. Make it long + memorable;
             tell the user to change it on first login.
