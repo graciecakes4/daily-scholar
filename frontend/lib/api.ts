@@ -917,6 +917,12 @@ export interface AuthUser {
   status: UserStatus;
   /** Phase E: false until the wizard runs (or is skipped). */
   onboarded: boolean;
+  /**
+   * Per-tour version state. Map of tour_id → highest TOUR_VERSION seen.
+   * Backend backfills all known tour ids to 0 so consumers don't have
+   * to optional-chain (`user.tour_state.dashboard` is always defined).
+   */
+  tour_state: Record<string, number>;
   created_at: string;
   last_login_at: string | null;
 }
@@ -985,6 +991,20 @@ export async function changeMyUsername(
     method: 'PUT',
     body: JSON.stringify({ current_password, new_user_id }),
   });
+}
+
+export async function markTourCompleted(
+  tour_id: string,
+  version: number,
+): Promise<{ ok: boolean; tour_id: string; version: number; updated: boolean }> {
+  return fetchAPI('/auth/tour-completed', {
+    method: 'PUT',
+    body: JSON.stringify({ tour_id, version }),
+  });
+}
+
+export async function resetTour(): Promise<{ ok: boolean; tour_state: Record<string, number> }> {
+  return fetchAPI('/auth/tour-reset', { method: 'PUT' });
 }
 
 // -----------------------------------------------------------------------------

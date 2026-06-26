@@ -16,10 +16,12 @@
  */
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import {
   changeMyPassword,
   changeMyUsername,
+  resetTour,
 } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import PasswordStrength from '@/components/PasswordStrength';
@@ -63,7 +65,59 @@ export default function AccountSettingsPage() {
 
       <ChangePasswordCard onSaved={refresh} />
       <ChangeUsernameCard currentUserId={user.user_id} onSaved={refresh} />
+      <TourReplayCard onReset={refresh} />
     </div>
+  );
+}
+
+// ---------- replay tour ----------
+
+function TourReplayCard({ onReset }: { onReset: () => Promise<void> }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function replay() {
+    setBusy(true);
+    setError(null);
+    try {
+      // server-side: zero users.tour_version_seen so the gate re-opens
+      await resetTour();
+      // refresh /auth/me so the in-memory auth state matches the new
+      // server value BEFORE we route — otherwise DashboardTour might
+      // gate on the stale (already-seen) value and skip
+      await onReset();
+      router.push('/');
+    } catch (e: any) {
+      setError(e?.message || 'Could not reset the tour');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
+      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+        Tutorials
+      </h2>
+      <p className="text-sm text-slate-600">
+        Replay every product tutorial — dashboard, topic scope, and the topics catalog.
+        Each one fires the next time you visit its page. Synced across every device you log in from.
+      </p>
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>
+      )}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={replay}
+          disabled={busy}
+          className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+        >
+          {busy ? 'Resetting…' : 'Show all tutorials again'}
+        </button>
+      </div>
+    </section>
   );
 }
 

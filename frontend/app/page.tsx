@@ -288,6 +288,7 @@ export default function DashboardPage() {
           abbreviated on mobile ("Paper" instead of "Today's Paper") */}
       <div className="grid grid-cols-3 gap-1 md:flex md:gap-2 border-b border-slate-200 pb-2">
         <button
+          data-tour="paper"
           onClick={() => setActiveSection('paper')}
           className={`flex items-center justify-center gap-1.5 px-2 py-2 md:px-4 rounded-lg font-medium text-sm md:text-base transition-all min-w-0 ${
             activeSection === 'paper' ? 'bg-blue-100 text-blue-700' : 'text-slate-600 hover:bg-slate-100'
@@ -298,6 +299,7 @@ export default function DashboardPage() {
           {dailyContent?.paper && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />}
         </button>
         <button
+          data-tour="review"
           onClick={() => setActiveSection('review')}
           className={`flex items-center justify-center gap-1.5 px-2 py-2 md:px-4 rounded-lg font-medium text-sm md:text-base transition-all min-w-0 ${
             activeSection === 'review' ? 'bg-emerald-100 text-emerald-700' : 'text-slate-600 hover:bg-slate-100'
@@ -312,6 +314,7 @@ export default function DashboardPage() {
           )}
         </button>
         <button
+          data-tour="quiz"
           onClick={() => setActiveSection('quiz')}
           className={`flex items-center justify-center gap-1.5 px-2 py-2 md:px-4 rounded-lg font-medium text-sm md:text-base transition-all min-w-0 ${
             activeSection === 'quiz' ? 'bg-purple-100 text-purple-700' : 'text-slate-600 hover:bg-slate-100'

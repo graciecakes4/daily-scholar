@@ -133,7 +133,7 @@ export default function ScopeSettingsPage() {
       {success && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-2 text-sm">{success}</div>}
 
       {/* mode selector */}
-      <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
+      <section data-tour="scope-mode" className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
         <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Mode</h2>
         <ModeOption
           checked={mode === 'all'}
@@ -215,6 +215,7 @@ export default function ScopeSettingsPage() {
           )}
         </div>
         <button
+          data-tour="scope-save"
           onClick={save}
           disabled={saveDisabled}
           className="px-5 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
