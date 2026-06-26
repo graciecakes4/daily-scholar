@@ -13,7 +13,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { signup } from '@/lib/api';
-import { AuthShell, Field } from '../login/page';
+import { AuthShell, Field } from '@/components/AuthShell';
 
 // must mirror backend/services/auth_security.py:USER_ID_REGEX
 const USER_ID_REGEX = /^[a-z0-9._-]{3,30}$/;

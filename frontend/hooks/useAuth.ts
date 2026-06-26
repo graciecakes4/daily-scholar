@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
+  AUTH_CHANGED_EVENT,
   getMe,
   login as apiLogin,
   logout as apiLogout,
@@ -57,6 +58,15 @@ export function useAuth(): UseAuthResult {
 
   useEffect(() => {
     refresh();
+  }, [refresh]);
+
+  // re-fetch /auth/me whenever any other useAuth() instance reports a
+  // login or logout. Keeps the layout-level UserMenu in sync with form
+  // submissions from the page tree below it.
+  useEffect(() => {
+    const handler = () => { refresh(); };
+    window.addEventListener(AUTH_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(AUTH_CHANGED_EVENT, handler);
   }, [refresh]);
 
   const login = useCallback(async (body: LoginBody) => {

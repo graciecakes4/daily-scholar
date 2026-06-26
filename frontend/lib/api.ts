@@ -39,6 +39,19 @@ function emitAuthError(detail: { status: number; message: string; redirect?: str
 
 export const AUTH_ERROR_EVENT = AUTH_EVENT;
 
+// fired after a successful login or logout so any useAuth() instance —
+// even one mounted in the persistent layout above the page tree — can
+// re-fetch /auth/me and update its UI. Without this, the layout-level
+// UserMenu shows its boot-time "logged out" state forever.
+const AUTH_CHANGED = 'daily-scholar:auth-changed';
+
+function emitAuthChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(AUTH_CHANGED));
+}
+
+export const AUTH_CHANGED_EVENT = AUTH_CHANGED;
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -806,11 +819,23 @@ export async function signup(body: SignupBody): Promise<{ profile: AuthUser; mes
 }
 
 export async function login(body: LoginBody): Promise<{ profile: AuthUser; pending: boolean }> {
-  return fetchAPI('/auth/login', { method: 'POST', body: JSON.stringify(body) });
+  const result = await fetchAPI<{ profile: AuthUser; pending: boolean }>(
+    '/auth/login',
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+  // notify other useAuth() instances (e.g., the layout's UserMenu) so they
+  // re-fetch /auth/me and reflect the new logged-in state
+  emitAuthChanged();
+  return result;
 }
 
 export async function logout(): Promise<{ ok: boolean; revoked: boolean }> {
-  return fetchAPI('/auth/logout', { method: 'POST' });
+  const result = await fetchAPI<{ ok: boolean; revoked: boolean }>(
+    '/auth/logout',
+    { method: 'POST' },
+  );
+  emitAuthChanged();
+  return result;
 }
 
 export async function getMe(): Promise<{ profile: AuthUser }> {
