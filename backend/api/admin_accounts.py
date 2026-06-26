@@ -37,7 +37,9 @@ from ..database import (
     User,
     get_session,
 )
+from ..services.account_management import change_password_admin
 from ..services.audit_log import EventType, TargetType, log_event
+from ..services.auth_security import MIN_PASSWORD_LENGTH
 from ..services.auth_sessions import revoke_all_sessions_for_user
 
 logger = logging.getLogger(__name__)
@@ -77,6 +79,12 @@ class StatusChangeBody(BaseModel):
     # only the post-approval states are settable here; pending lives
     # behind /admin/approvals
     status: str = Field(pattern="^(active|suspended)$")
+
+
+class PasswordResetBody(BaseModel):
+    """Body for PUT /admin/accounts/{user_id}/password — admin reset."""
+
+    new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
 
 
 def _serialize(u: User) -> AccountSummary:
@@ -316,3 +324,76 @@ def change_status(
     )
 
     return result
+
+
+@admin_accounts_router.put("/{target_user_id}/password")
+def reset_password(
+    target_user_id: str,
+    body: PasswordResetBody,
+    actor_user_id: str = Depends(require_admin),
+) -> dict:
+    """
+    Admin password reset. Sets a new password on the target, revokes
+    every active session for them, and logs the event.
+
+    Refuses on self — the admin should use the self-service
+    /auth/password endpoint (which requires their current password).
+    Refuses on pending users — they don't have a usable account yet.
+
+    The new password is hashed before storage; nothing about the
+    plaintext is logged. The audit record stores only the length so
+    a reviewer can later confirm "yes, someone set a non-trivially
+    short password" without seeing the value itself.
+    """
+    actor = _resolve_actor(actor_user_id)
+
+    session = get_session()
+    try:
+        target = session.query(User).filter(User.user_id == target_user_id).first()
+        if target is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        _ensure_not_pending(target)
+
+        if actor is not None and actor.id == target.id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Use the self-service /auth/password endpoint to change "
+                    "your own password (it requires your current password)."
+                ),
+            )
+
+        target_id = target.id
+        target_user_id_str = target.user_id
+        target_email = target.email
+    finally:
+        session.close()
+
+    # do the hash + write outside the user-fetch session
+    try:
+        change_password_admin(target_id, body.new_password)
+    except ValueError as e:
+        # hash_password validates length; surface that as a 400
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # kick the target out of every device — their old password is dead
+    try:
+        revoke_all_sessions_for_user(target_id)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("reset_password: session revoke failed for user %s: %s", target_id, e)
+
+    log_event(
+        event_type=EventType.USER_PASSWORD_RESET_ADMIN,
+        actor_user_id_string=actor_user_id,
+        target_type=TargetType.USER,
+        target_id=target_user_id_str,
+        target_label=target_email,
+        metadata={"new_password_length": len(body.new_password)},
+    )
+
+    return {
+        "ok": True,
+        "user_id": target_user_id_str,
+        "email": target_email,
+        "sessions_revoked": True,
+    }

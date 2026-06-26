@@ -15,6 +15,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  adminResetPassword,
   approveUser,
   changeAccountRole,
   changeAccountStatus,
@@ -407,6 +408,7 @@ function UsersTab({ currentUserId }: { currentUserId: string | null }) {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resetTarget, setResetTarget] = useState<AccountSummary | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -552,6 +554,15 @@ function UsersTab({ currentUserId }: { currentUserId: string | null }) {
                           Demote
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => setResetTarget(u)}
+                        disabled={busyId !== null || isSelf}
+                        title={isSelf ? 'Use Settings → Account to change your own password' : 'Set a new temporary password'}
+                        className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded text-xs hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white"
+                      >
+                        Reset password
+                      </button>
                       {u.status === 'active' ? (
                         <button
                           type="button"
@@ -580,7 +591,138 @@ function UsersTab({ currentUserId }: { currentUserId: string | null }) {
           })}
         </ul>
       )}
+
+      {resetTarget && (
+        <ResetPasswordModal
+          target={resetTarget}
+          onClose={() => setResetTarget(null)}
+          onDone={() => {
+            setResetTarget(null);
+            // no list reload needed — password change doesn't affect the
+            // visible row fields, just kicks the user out of their sessions
+          }}
+          onError={msg => setError(msg)}
+        />
+      )}
     </section>
+  );
+}
+
+function ResetPasswordModal({
+  target, onClose, onDone, onError,
+}: {
+  target: AccountSummary;
+  onClose: () => void;
+  onDone: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [pw, setPw] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const tooShort = pw.length > 0 && pw.length < 8;
+  const mismatch = confirm.length > 0 && pw !== confirm;
+  const disabled = busy || pw.length < 8 || pw !== confirm;
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await adminResetPassword(target.user_id, pw);
+      // give the admin a chance to copy the password before the modal closes
+      // (we don't generate it, the admin types it, so they likely have it
+      // somewhere already — but the copy button is here for convenience)
+      try {
+        await navigator.clipboard.writeText(pw);
+        setCopied(true);
+      } catch { /* clipboard not available; admin still has it in the field */ }
+      setTimeout(() => {
+        onDone();
+      }, copied ? 800 : 0);
+    } catch (e: any) {
+      onError(e?.message || 'Reset failed');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <form
+        onSubmit={onSubmit}
+        onClick={e => e.stopPropagation()}
+        className="bg-white rounded-lg shadow-xl max-w-md w-full p-5 space-y-4"
+      >
+        <header>
+          <h2 className="text-lg font-semibold text-slate-900">Reset password</h2>
+          <p className="text-sm text-slate-600 mt-1">
+            Set a new temporary password for <strong>{target.email}</strong>.
+            They'll be signed out of every device and need to log in with this password.
+          </p>
+        </header>
+
+        <div className="space-y-1">
+          <label htmlFor="rp-pw" className="text-sm font-medium text-slate-700">New password</label>
+          <input
+            id="rp-pw"
+            type="text"
+            autoComplete="off"
+            required
+            minLength={8}
+            value={pw}
+            onChange={e => setPw(e.target.value)}
+            className={`w-full px-3 py-2 border rounded text-sm font-mono focus:outline-none ${
+              tooShort ? 'border-rose-400 focus:border-rose-600' : 'border-slate-300 focus:border-slate-900'
+            }`}
+            placeholder="at least 8 chars"
+          />
+          <p className="text-xs text-slate-500">
+            Showing in plaintext so you can share it. Make it long + memorable;
+            tell the user to change it on first login.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <label htmlFor="rp-conf" className="text-sm font-medium text-slate-700">Confirm</label>
+          <input
+            id="rp-conf"
+            type="text"
+            autoComplete="off"
+            required
+            value={confirm}
+            onChange={e => setConfirm(e.target.value)}
+            className={`w-full px-3 py-2 border rounded text-sm font-mono focus:outline-none ${
+              mismatch ? 'border-rose-400 focus:border-rose-600' : 'border-slate-300 focus:border-slate-900'
+            }`}
+          />
+          {mismatch && <p className="text-xs text-rose-700">Doesn't match.</p>}
+        </div>
+
+        {copied && (
+          <p className="text-xs text-emerald-700">Copied to clipboard. Share it out-of-band.</p>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={disabled}
+            className="px-4 py-2 bg-rose-600 text-white rounded text-sm font-medium hover:bg-rose-700 disabled:opacity-50"
+          >
+            {busy ? 'Resetting…' : 'Reset + log them out'}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 

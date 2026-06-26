@@ -115,6 +115,9 @@ export default function ScopeSettingsPage() {
           </p>
         </div>
         <nav className="text-sm flex gap-4">
+          <Link href="/settings/account" className="text-sky-700 hover:underline">
+            Account →
+          </Link>
           <Link href="/settings/notifications" className="text-sky-700 hover:underline">
             Notifications →
           </Link>

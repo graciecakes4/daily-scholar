@@ -912,6 +912,30 @@ export async function getMe(): Promise<{ profile: AuthUser }> {
 }
 
 // -----------------------------------------------------------------------------
+// Self-service account management (Phase F+2)
+// -----------------------------------------------------------------------------
+
+export async function changeMyPassword(
+  current_password: string,
+  new_password: string,
+): Promise<{ ok: boolean; other_sessions_revoked: number }> {
+  return fetchAPI('/auth/password', {
+    method: 'PUT',
+    body: JSON.stringify({ current_password, new_password }),
+  });
+}
+
+export async function changeMyUsername(
+  current_password: string,
+  new_user_id: string,
+): Promise<{ ok: boolean; changed: boolean; new_user_id: string; rows_moved?: Record<string, number> }> {
+  return fetchAPI('/auth/username', {
+    method: 'PUT',
+    body: JSON.stringify({ current_password, new_user_id }),
+  });
+}
+
+// -----------------------------------------------------------------------------
 // Admin: invite codes (Phase B)
 // -----------------------------------------------------------------------------
 
@@ -1017,6 +1041,16 @@ export async function changeAccountStatus(
   return fetchAPI(`/admin/accounts/${encodeURIComponent(userId)}/status`, {
     method: 'PUT',
     body: JSON.stringify({ status }),
+  });
+}
+
+export async function adminResetPassword(
+  userId: string,
+  new_password: string,
+): Promise<{ ok: boolean; user_id: string; email: string; sessions_revoked: boolean }> {
+  return fetchAPI(`/admin/accounts/${encodeURIComponent(userId)}/password`, {
+    method: 'PUT',
+    body: JSON.stringify({ new_password }),
   });
 }
 
