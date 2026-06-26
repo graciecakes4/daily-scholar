@@ -67,6 +67,8 @@ from ..services.account_management import (
     change_password,
     change_username,
 )
+# rate limiting lives in backend/middleware/rate_limit.py as middleware now;
+# no per-endpoint decorator needed.
 
 logger = logging.getLogger(__name__)
 

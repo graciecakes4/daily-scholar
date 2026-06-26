@@ -186,6 +186,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ---------------------------------------------------------------------------
+# Beta hardening middleware: rate limit + CSRF.
+#
+# Rate limiting is custom (backend/middleware/rate_limit.py) rather than
+# slowapi because slowapi's decorator approach broke FastAPI's body
+# introspection. The middleware sits in front of all routes and matches
+# on (method, path) per DEFAULT_POLICIES.
+#
+# CSRF uses the double-submit-cookie pattern. Both middlewares no-op
+# when their respective env flags are set (RATE_LIMIT_DISABLED=1 /
+# CSRF_DISABLED=1) — defaults in conftest for tests.
+# ---------------------------------------------------------------------------
+
+from .middleware.csrf import CSRFMiddleware
+from .middleware.rate_limit import RateLimitMiddleware
+
+app.add_middleware(CSRFMiddleware)
+app.add_middleware(RateLimitMiddleware)
+
 # topics_router and scope_router are mounted at the END of main.py so the
 # specific @app.get paths (/topics/status-summary, /topics/random-review,
 # /topics/{id}/review) take precedence over the router's catch-all /topics/{id}.
