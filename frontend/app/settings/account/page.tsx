@@ -98,11 +98,11 @@ function TourReplayCard({ onReset }: { onReset: () => Promise<void> }) {
   return (
     <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
       <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
-        Product tour
+        Tutorials
       </h2>
       <p className="text-sm text-slate-600">
-        Replay the 4-step walkthrough that ran on your first login. Useful if you skipped it
-        too fast or want a refresher on where things live. Synced across every device you log in from.
+        Replay every product tutorial — dashboard, topic scope, and the topics catalog.
+        Each one fires the next time you visit its page. Synced across every device you log in from.
       </p>
       {error && (
         <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>
@@ -114,7 +114,7 @@ function TourReplayCard({ onReset }: { onReset: () => Promise<void> }) {
           disabled={busy}
           className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
         >
-          {busy ? 'Resetting…' : 'Show me around again'}
+          {busy ? 'Resetting…' : 'Show all tutorials again'}
         </button>
       </div>
     </section>

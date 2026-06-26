@@ -510,11 +510,13 @@ class User(Base):
     # onboarding wizard. Layout redirects to /onboarding when false.
     onboarded = Column(Boolean, default=False, nullable=False)
 
-    # Versioned dashboard tour: highest TOUR_VERSION the user has seen.
-    # Frontend hardcodes a current TOUR_VERSION; when this is < that,
-    # the tour fires. Bumping TOUR_VERSION re-triggers the tour for
-    # everyone. Server-side (not localStorage) for cross-device sync.
-    tour_version_seen = Column(Integer, default=0, nullable=False)
+    # Per-tour version state. JSON map of {tour_id: highest_version_seen},
+    # e.g. {"dashboard": 1, "scope": 1, "topics": 1}. Frontend has a
+    # hardcoded TOUR_VERSION per tour; a tour fires when its stored
+    # value is below the current version. Missing keys are treated as 0.
+    # Server-side (not localStorage) for cross-device sync; JSON (not
+    # one column per tour) so adding a new tour is just a new key.
+    tour_state = Column(JSON, default=dict, nullable=False)
 
 
 class InviteCode(Base):

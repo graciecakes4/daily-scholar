@@ -151,6 +151,18 @@ class LoginRequest(BaseModel):
     password: str
 
 
+# Tour ids the backend knows about. Adding a new tour:
+#   1. Append the id here
+#   2. Bump migration / not needed — JSON column accepts new keys
+#   3. Frontend ships a component that calls markTourCompleted(id, version)
+# Anything else gets rejected by /auth/tour-completed as a typo.
+KNOWN_TOUR_IDS: frozenset[str] = frozenset({
+    "dashboard",
+    "scope",
+    "topics",
+})
+
+
 class UserProfile(BaseModel):
     """Shape returned by /auth/me and signup/login responses."""
 
@@ -161,21 +173,31 @@ class UserProfile(BaseModel):
     # Phase E: false until the wizard runs (or is skipped). The layout
     # uses this to redirect unonboarded users to /onboarding.
     onboarded: bool = True
-    # Versioned tour state — frontend gates the dashboard tour on this
-    # vs its hardcoded TOUR_VERSION. 0 = never seen any tour version.
-    tour_version_seen: int = 0
+    # Per-tour version state. Map of tour_id → highest TOUR_VERSION the
+    # user has seen. Every KNOWN_TOUR_IDS key is present in the response
+    # (filled to 0 if missing) so the frontend doesn't need to
+    # null-check on each tour.
+    tour_state: dict[str, int] = {}
     created_at: datetime
     last_login_at: Optional[datetime] = None
 
 
 def _profile(user: User) -> UserProfile:
+    # Backfill known tour ids to 0 so the frontend can read
+    # `user.tour_state.dashboard` without an optional-chain dance.
+    raw_state = getattr(user, "tour_state", None) or {}
+    state: dict[str, int] = {tid: 0 for tid in KNOWN_TOUR_IDS}
+    if isinstance(raw_state, dict):
+        for k, v in raw_state.items():
+            if isinstance(k, str) and isinstance(v, (int, float)):
+                state[k] = int(v)
     return UserProfile(
         email=user.email,
         user_id=user.user_id,
         role=user.role,
         status=user.status,
         onboarded=getattr(user, "onboarded", True),
-        tour_version_seen=int(getattr(user, "tour_version_seen", 0) or 0),
+        tour_state=state,
         created_at=user.created_at,
         last_login_at=user.last_login_at,
     )
@@ -489,7 +511,11 @@ def change_my_username(
 
 
 class TourCompletedBody(BaseModel):
-    """Body for PUT /auth/tour-completed — what version did the user see?"""
+    """Body for PUT /auth/tour-completed — which tour at which version?"""
+
+    tour_id: str = Field(
+        description="One of the KNOWN_TOUR_IDS values (dashboard / scope / topics).",
+    )
     version: int = Field(ge=1, description="The TOUR_VERSION the frontend just showed.")
 
 
@@ -499,26 +525,40 @@ def mark_tour_completed(
     ds_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
 ) -> dict:
     """
-    Bump `users.tour_version_seen` to `max(current, body.version)`.
+    Set `users.tour_state[tour_id] = max(current, body.version)`.
 
     Why max() and not overwrite: protects against a stale tour callback
     (e.g., user has version 2 on disk because they opened a fresh tab
     that loaded a new frontend bundle while an older tab is still
     running version 1 and calls this endpoint with `version=1`). We
-    never regress the seen-version.
+    never regress the seen-version per tour.
+
+    `tour_id` must be in KNOWN_TOUR_IDS — typos return 400 so a
+    misnamed tour doesn't quietly add a useless JSON key.
     """
+    if body.tour_id not in KNOWN_TOUR_IDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown tour_id {body.tour_id!r}; valid ids: {sorted(KNOWN_TOUR_IDS)}",
+        )
+
     user = _require_authed_user(ds_session)
     session = get_session()
     try:
         row = session.query(User).filter(User.id == user.id).first()
         if row is None:
             raise HTTPException(status_code=404, detail="user not found")
-        current = int(row.tour_version_seen or 0)
+        state = dict(row.tour_state or {})
+        current = int(state.get(body.tour_id, 0))
         if body.version > current:
-            row.tour_version_seen = body.version
+            state[body.tour_id] = body.version
+            # JSON column needs the value reassigned wholesale for the
+            # ORM to detect the change (in-place dict mutation isn't
+            # auto-detected unless we use MutableDict, which we don't).
+            row.tour_state = state
             session.commit()
-            return {"ok": True, "tour_version_seen": body.version, "updated": True}
-        return {"ok": True, "tour_version_seen": current, "updated": False}
+            return {"ok": True, "tour_id": body.tour_id, "version": body.version, "updated": True}
+        return {"ok": True, "tour_id": body.tour_id, "version": current, "updated": False}
     finally:
         session.close()
 
@@ -528,9 +568,12 @@ def reset_tour(
     ds_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
 ) -> dict:
     """
-    Zero out `users.tour_version_seen` so the tour fires again on the
-    next dashboard visit. Powers the "Show me around again" button on
-    /settings/account.
+    Clear every tour state key so all tours fire again on next visit
+    to their respective pages. Powers the "Show all tutorials again"
+    button on /settings/account.
+
+    Future enhancement (not in this phase): accept an optional
+    `tour_id` query param to reset just one tour.
     """
     user = _require_authed_user(ds_session)
     session = get_session()
@@ -538,8 +581,8 @@ def reset_tour(
         row = session.query(User).filter(User.id == user.id).first()
         if row is None:
             raise HTTPException(status_code=404, detail="user not found")
-        row.tour_version_seen = 0
+        row.tour_state = {}
         session.commit()
-        return {"ok": True, "tour_version_seen": 0}
+        return {"ok": True, "tour_state": {}}
     finally:
         session.close()

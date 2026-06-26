@@ -1,19 +1,17 @@
 """
-Tests for server-side versioned tour state (users.tour_version_seen).
+Tests for server-side versioned tour state (users.tour_state JSON map).
 
 Coverage:
-  * tour_version_seen exposed in /auth/me, defaults to 0 for new users
-  * PUT /auth/tour-completed sets value when the incoming version is
-    higher than the stored one (the common case)
-  * PUT /auth/tour-completed takes max() — a stale callback with a
-    lower version doesn't regress a higher stored value
-  * PUT /auth/tour-completed is idempotent on no-op (same version,
-    returns updated=False)
-  * PUT /auth/tour-reset zeroes it
-  * Both endpoints require an active in-app session: no cookie → 401,
-    suspended → 403, pending → 403
-  * Solo `__local__` has no session cookie so both endpoints 401 cleanly
-    (matches the rest of the self-service auth endpoints)
+  * tour_state exposed in /auth/me, all KNOWN_TOUR_IDS backfilled to 0
+    when the column is empty
+  * PUT /auth/tour-completed sets the right key when version is higher
+  * PUT /auth/tour-completed takes max() per tour_id — a stale callback
+    with a lower version doesn't regress a higher stored value
+  * PUT /auth/tour-completed is idempotent on no-op (returns updated=False)
+  * Unknown tour_id is rejected with 400
+  * PUT /auth/tour-reset clears every key
+  * Both endpoints require an active in-app session (401/403)
+  * Bumping one tour doesn't affect the others (independent)
 """
 
 from __future__ import annotations
@@ -23,11 +21,11 @@ from datetime import datetime
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.api.auth import KNOWN_TOUR_IDS
 from backend.database import (
     USER_ROLE_USER,
     USER_STATUS_ACTIVE,
     USER_STATUS_PENDING,
-    USER_STATUS_SUSPENDED,
     User,
     get_session,
 )
@@ -46,7 +44,7 @@ def _seed_user(
     *,
     password: str = "supersecret123",
     status: str = USER_STATUS_ACTIVE,
-    tour_version_seen: int = 0,
+    tour_state: dict | None = None,
 ) -> User:
     session = get_session()
     try:
@@ -58,7 +56,7 @@ def _seed_user(
             role=USER_ROLE_USER,
             created_at=datetime.utcnow(),
             approved_at=datetime.utcnow() if status == USER_STATUS_ACTIVE else None,
-            tour_version_seen=tour_version_seen,
+            tour_state=tour_state if tour_state is not None else {},
         )
         session.add(u)
         session.commit()
@@ -75,25 +73,37 @@ def _login(client: TestClient, email: str, password: str = "supersecret123") -> 
 
 
 # ---------------------------------------------------------------------------
-# /auth/me exposes the field
+# /auth/me exposes the tour_state map
 # ---------------------------------------------------------------------------
 
 
-class TestAuthMeExposesTourVersionSeen:
+class TestAuthMeExposesTourState:
 
-    def test_fresh_user_defaults_to_zero(self, client: TestClient):
-        u = _seed_user("ame-fresh-tour@example.com")
+    def test_fresh_user_backfills_all_known_ids_to_zero(self, client: TestClient):
+        u = _seed_user("ame-fresh@example.com")
         _login(client, u.email)
         r = client.get("/auth/me")
         assert r.status_code == 200
-        assert r.json()["profile"]["tour_version_seen"] == 0
+        state = r.json()["profile"]["tour_state"]
+        # every known tour id present even though the DB row is empty
+        for tid in KNOWN_TOUR_IDS:
+            assert state[tid] == 0
         client.cookies.clear()
 
-    def test_existing_value_returned(self, client: TestClient):
-        u = _seed_user("ame-seen-tour@example.com", tour_version_seen=3)
+    def test_existing_value_returned_and_unknown_keys_in_db_preserved(self, client: TestClient):
+        u = _seed_user(
+            "ame-mixed@example.com",
+            tour_state={"dashboard": 2, "future_tour": 5},
+        )
         _login(client, u.email)
-        r = client.get("/auth/me")
-        assert r.json()["profile"]["tour_version_seen"] == 3
+        state = client.get("/auth/me").json()["profile"]["tour_state"]
+        # the known dashboard value comes through
+        assert state["dashboard"] == 2
+        # other known ids are backfilled
+        assert state["scope"] == 0
+        assert state["topics"] == 0
+        # unknown keys in the DB don't crash; they're just included
+        assert state.get("future_tour") == 5
         client.cookies.clear()
 
 
@@ -104,67 +114,79 @@ class TestAuthMeExposesTourVersionSeen:
 
 class TestTourCompletedEndpoint:
 
-    def test_bumps_when_higher(self, client: TestClient):
-        u = _seed_user("tc-bump@example.com", tour_version_seen=0)
+    def test_bumps_per_tour_independently(self, client: TestClient):
+        u = _seed_user("tc-indep@example.com")
         _login(client, u.email)
-        r = client.put("/auth/tour-completed", json={"version": 2})
-        assert r.status_code == 200
-        body = r.json()
-        assert body["tour_version_seen"] == 2
-        assert body["updated"] is True
 
-        # confirm /auth/me agrees
-        r2 = client.get("/auth/me")
-        assert r2.json()["profile"]["tour_version_seen"] == 2
+        # bump dashboard
+        r = client.put("/auth/tour-completed", json={"tour_id": "dashboard", "version": 2})
+        assert r.status_code == 200
+        assert r.json()["tour_id"] == "dashboard"
+        assert r.json()["version"] == 2
+        assert r.json()["updated"] is True
+
+        # bump topics — dashboard stays put
+        r = client.put("/auth/tour-completed", json={"tour_id": "topics", "version": 3})
+        assert r.status_code == 200
+
+        state = client.get("/auth/me").json()["profile"]["tour_state"]
+        assert state["dashboard"] == 2
+        assert state["topics"] == 3
+        assert state["scope"] == 0     # untouched
         client.cookies.clear()
 
     def test_idempotent_on_same_version(self, client: TestClient):
-        u = _seed_user("tc-same@example.com", tour_version_seen=2)
+        u = _seed_user("tc-same@example.com", tour_state={"scope": 2})
         _login(client, u.email)
-        r = client.put("/auth/tour-completed", json={"version": 2})
+        r = client.put("/auth/tour-completed", json={"tour_id": "scope", "version": 2})
         assert r.status_code == 200
-        assert r.json()["tour_version_seen"] == 2
         assert r.json()["updated"] is False
         client.cookies.clear()
 
     def test_does_not_regress_with_lower_version(self, client: TestClient):
         """
-        A stale callback from an older frontend bundle (e.g., an open tab
-        with TOUR_VERSION=1 while a newer tab is on version 2) must not
-        regress the stored value.
+        Stale callback from an older tab (TOUR_VERSION=1) shouldn't undo
+        the newer tab's commit (TOUR_VERSION=2).
         """
-        u = _seed_user("tc-stale@example.com", tour_version_seen=2)
+        u = _seed_user("tc-stale@example.com", tour_state={"dashboard": 2})
         _login(client, u.email)
-        r = client.put("/auth/tour-completed", json={"version": 1})
+        r = client.put("/auth/tour-completed", json={"tour_id": "dashboard", "version": 1})
         assert r.status_code == 200
-        assert r.json()["tour_version_seen"] == 2     # unchanged
+        assert r.json()["version"] == 2
         assert r.json()["updated"] is False
         # DB also unchanged
         session = get_session()
         try:
             row = session.query(User).filter(User.id == u.id).first()
-            assert row.tour_version_seen == 2
+            assert row.tour_state["dashboard"] == 2
         finally:
             session.close()
+        client.cookies.clear()
+
+    def test_unknown_tour_id_400(self, client: TestClient):
+        u = _seed_user("tc-unknown@example.com")
+        _login(client, u.email)
+        r = client.put("/auth/tour-completed", json={"tour_id": "bogus", "version": 1})
+        assert r.status_code == 400
+        assert "unknown tour_id" in r.json()["detail"].lower()
         client.cookies.clear()
 
     def test_version_must_be_positive(self, client: TestClient):
         u = _seed_user("tc-zero@example.com")
         _login(client, u.email)
         # pydantic ge=1 → 422
-        r = client.put("/auth/tour-completed", json={"version": 0})
+        r = client.put("/auth/tour-completed", json={"tour_id": "dashboard", "version": 0})
         assert r.status_code == 422
         client.cookies.clear()
 
     def test_no_cookie_401(self, client: TestClient):
-        r = client.put("/auth/tour-completed", json={"version": 1})
+        r = client.put("/auth/tour-completed", json={"tour_id": "dashboard", "version": 1})
         assert r.status_code == 401
 
     def test_pending_user_403(self, client: TestClient):
         u = _seed_user("tc-pending@example.com", status=USER_STATUS_PENDING)
         _login(client, u.email)
-        r = client.put("/auth/tour-completed", json={"version": 1})
-        # _require_authed_user 403s on non-active status
+        r = client.put("/auth/tour-completed", json={"tour_id": "dashboard", "version": 1})
         assert r.status_code == 403
         client.cookies.clear()
 
@@ -176,23 +198,30 @@ class TestTourCompletedEndpoint:
 
 class TestTourResetEndpoint:
 
-    def test_zeroes_value(self, client: TestClient):
-        u = _seed_user("tr-zero@example.com", tour_version_seen=5)
+    def test_clears_every_key(self, client: TestClient):
+        u = _seed_user(
+            "tr-clear@example.com",
+            tour_state={"dashboard": 5, "scope": 3, "topics": 2, "future": 9},
+        )
         _login(client, u.email)
         r = client.put("/auth/tour-reset")
         assert r.status_code == 200
-        assert r.json()["tour_version_seen"] == 0
+        assert r.json()["tour_state"] == {}
 
-        r2 = client.get("/auth/me")
-        assert r2.json()["profile"]["tour_version_seen"] == 0
+        # /auth/me re-backfills known ids to 0 from the empty dict
+        state = client.get("/auth/me").json()["profile"]["tour_state"]
+        for tid in KNOWN_TOUR_IDS:
+            assert state[tid] == 0
+        # the "future" key is gone too (full clear)
+        assert "future" not in state
         client.cookies.clear()
 
-    def test_idempotent_when_already_zero(self, client: TestClient):
-        u = _seed_user("tr-already@example.com", tour_version_seen=0)
+    def test_idempotent_when_already_empty(self, client: TestClient):
+        u = _seed_user("tr-empty@example.com")
         _login(client, u.email)
         r = client.put("/auth/tour-reset")
         assert r.status_code == 200
-        assert r.json()["tour_version_seen"] == 0
+        assert r.json()["tour_state"] == {}
         client.cookies.clear()
 
     def test_no_cookie_401(self, client: TestClient):

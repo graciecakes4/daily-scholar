@@ -154,12 +154,14 @@ export default function TopicCatalogPage() {
         </div>
         <div className="flex items-center gap-2">
           <Link
+            data-tour="topics-new"
             href="/topics/new"
             className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 transition-all"
           >
             + New topic
           </Link>
           <Link
+            data-tour="topics-discover"
             href="/topics/discover"
             className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-all"
           >
@@ -175,7 +177,7 @@ export default function TopicCatalogPage() {
       </header>
 
       {/* controls */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-center gap-3">
+      <div data-tour="topics-filter" className="bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <label className="text-sm font-medium text-slate-600">Stream:</label>
           <select

@@ -1,15 +1,24 @@
-"""add users.tour_version_seen for versioned dashboard tour
+"""add users.tour_state for per-tour versioned UI tours
 
-Tracks the highest tour version the user has seen so we can re-trigger
-the tour when we bump the frontend's TOUR_VERSION constant (added/
-rewritten steps). Cross-device sync — replaces the localStorage flag
-we shipped with the original tour.
+JSON column holding `{tour_id: highest_version_seen}`. Frontend hardcodes
+a TOUR_VERSION per tour and gates "show me" on `stored < current`.
+Adding a new tour later is just a new key — no migration.
 
-Backfill: existing rows default to 0 so they see the current tour
-version once on next dashboard visit (consistent with the
-localStorage-unset behavior we already had). If you'd rather backfill
-to the current TOUR_VERSION post-deploy, run:
-    UPDATE users SET tour_version_seen = 1;
+Tour ids in use as of this migration:
+  - "dashboard"  (frontend/components/DashboardTour.tsx)
+  - "scope"      (frontend/components/ScopeTour.tsx)
+  - "topics"     (frontend/components/TopicsTour.tsx)
+
+Backfill: existing rows default to '{}' so every user sees the current
+version of every tour once on next visit to the respective page.
+If you'd rather suppress the post-deploy replay, run:
+    UPDATE users SET tour_state = '{"dashboard": 1, "scope": 1, "topics": 1}';
+
+Note on filename vs purpose: this file's name says `tour_version_seen`
+for git-history reasons (the original draft used an INT column called
+`tour_version_seen`; reworked to JSON before the migration was ever
+applied anywhere). The revision id stays `0011_tour_version_seen` so
+the alembic linear history doesn't need editing.
 
 Idempotent guard so re-running on a half-applied DB is safe.
 
@@ -37,19 +46,19 @@ def _has_column(table: str, column: str) -> bool:
 
 
 def upgrade() -> None:
-    if _has_column("users", "tour_version_seen"):
+    if _has_column("users", "tour_state"):
         return
     op.add_column(
         "users",
         sa.Column(
-            "tour_version_seen",
-            sa.Integer(),
+            "tour_state",
+            sa.JSON(),
             nullable=False,
-            server_default="0",
+            server_default=sa.text("'{}'"),
         ),
     )
 
 
 def downgrade() -> None:
-    if _has_column("users", "tour_version_seen"):
-        op.drop_column("users", "tour_version_seen")
+    if _has_column("users", "tour_state"):
+        op.drop_column("users", "tour_state")

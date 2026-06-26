@@ -7,6 +7,8 @@ import AuthBoundary from "@/components/AuthBoundary";
 import DashboardTour from "@/components/DashboardTour";
 import MobileTabBar from "@/components/MobileTabBar";
 import OnboardingGuard from "@/components/OnboardingGuard";
+import ScopeTour from "@/components/ScopeTour";
+import TopicsTour from "@/components/TopicsTour";
 import UserMenu from "@/components/UserMenu";
 import { API_BASE } from "@/lib/api";
 
@@ -147,9 +149,12 @@ export default function RootLayout({
         {/* Phase E: redirect logged-in unonboarded users to /onboarding */}
         <OnboardingGuard />
 
-        {/* Phase E follow-up: guided product tour on first dashboard visit.
-            Self-gates on user.onboarded + path === '/' + localStorage flag */}
+        {/* Phase E follow-up: per-page guided product tours.
+            Each component self-gates on user.onboarded + pathname + server-side
+            user.tour_state[tour_id] < component's TOUR_VERSION. */}
         <DashboardTour />
+        <ScopeTour />
+        <TopicsTour />
 
         {/* PWA install prompt (shows on capable browsers / iOS Safari) */}
         <InstallPrompt />
