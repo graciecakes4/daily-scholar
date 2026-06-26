@@ -8,6 +8,7 @@
  * server (today, a single sentinel user).
  */
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
   getScope, updateScope, listTopics,
@@ -104,11 +105,18 @@ export default function ScopeSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-3xl font-bold text-slate-900">Topic scope</h1>
-        <p className="text-slate-600 mt-1">
-          Choose which topics drive paper discovery, reviews, and quiz generation.
-        </p>
+      <header className="flex items-baseline justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Topic scope</h1>
+          <p className="text-slate-600 mt-1">
+            Choose which topics drive paper discovery, reviews, and quiz generation.
+          </p>
+        </div>
+        <nav className="text-sm">
+          <Link href="/settings/notifications" className="text-sky-700 hover:underline">
+            Notifications →
+          </Link>
+        </nav>
       </header>
 
       {error && <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">{error}</div>}

@@ -1588,10 +1588,12 @@ async def get_daily_content(
 from .api.topics import topics_router, scope_router
 from .api.push import push_router
 from .api.admin import admin_router
+from .api.notifications import notifications_router
 app.include_router(topics_router)
 app.include_router(scope_router)
 app.include_router(push_router)
 app.include_router(admin_router)
+app.include_router(notifications_router)
 
 
 # =============================================================================

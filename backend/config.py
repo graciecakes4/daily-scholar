@@ -123,6 +123,10 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,  # Environment variables are case-insensitive
+        # ignore unknown env vars (e.g., BACKEND_PORT, NEXT_PUBLIC_*) so the
+        # shared .env can carry frontend / deploy-only keys without forcing
+        # us to mirror every one of them in this Settings model.
+        extra="ignore",
     )
 
 
