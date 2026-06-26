@@ -37,6 +37,15 @@ from ..services.topic_ownership import (
     generate_user_topic_id,
     resolve_caller,
 )
+from ..services.topic_subscriptions import (
+    AlreadySubscribed,
+    TopicNotFound,
+    TopicNotSubscribable,
+    cleanup_subscriptions_for_topic,
+    list_subscribed_topic_ids,
+    subscribe as subscribe_topic_service,
+    unsubscribe as unsubscribe_topic_service,
+)
 
 
 # =============================================================================
@@ -67,11 +76,15 @@ class TopicResponse(BaseModel):
     # owner badges and visibility toggles
     owner_user_id: Optional[int]
     visibility: str
+    # Phase D: marks topics the caller follows (vs owns / system).
+    # False on POST/PUT/GET-one responses where subscription state
+    # isn't computed; explicitly populated by GET /topics + /search.
+    is_subscribed: bool = False
     created_at: datetime
     updated_at: datetime
 
     @classmethod
-    def from_model(cls, t: Topic) -> "TopicResponse":
+    def from_model(cls, t: Topic, *, is_subscribed: bool = False) -> "TopicResponse":
         return cls(
             id=t.id,
             name=t.name,
@@ -91,6 +104,7 @@ class TopicResponse(BaseModel):
             source_yaml_present=t.source_yaml_present,
             owner_user_id=t.owner_user_id,
             visibility=t.visibility,
+            is_subscribed=is_subscribed,
             created_at=t.created_at,
             updated_at=t.updated_at,
         )
@@ -196,14 +210,19 @@ def list_topics(
     user_id: str = Depends(get_current_user_id),
 ):
     """
-    List topics the caller is allowed to see, ordered by descending weight
-    then name. Ownership rules:
-      - system topics (owner IS NULL) → visible to everyone
-      - admins (incl. solo __local__) → see everything
-      - regular users → see system + their own + other users' public topics
-    Phase D will add subscription filtering on top of this.
+    List topics the caller is allowed to see in their scope:
+      - system topics (owner IS NULL) — visible to everyone
+      - admins (incl. solo __local__) — see everything
+      - regular users — system + their own + topics they subscribed to
+        via /topics/discover (Phase D)
+
+    Other users' public topics that the caller HASN'T subscribed to are
+    NOT in this list — they live behind GET /topics/search so users opt
+    in explicitly.
     """
-    caller, is_admin = resolve_caller(user_id)
+    from ..database import _apply_visibility_filter
+
+    sub_ids = list_subscribed_topic_ids(user_id)
 
     session = get_session()
     try:
@@ -215,18 +234,16 @@ def list_topics(
         if not include_orphaned:
             q = q.filter(Topic.source_yaml_present.is_(True))
 
-        # ownership filter — admins skip it, everyone else gets
-        # system + own + public-from-others
-        if not is_admin:
-            from sqlalchemy import or_
-            clauses = [Topic.owner_user_id.is_(None), Topic.visibility == "public"]
-            if caller is not None:
-                clauses.append(Topic.owner_user_id == caller.id)
-            q = q.filter(or_(*clauses))
+        # shared filter — kept in database.py so /topics, scope queries,
+        # paper discovery, and daily content can't drift apart
+        q = _apply_visibility_filter(q, user_id)
 
         q = q.order_by(Topic.weight.desc(), Topic.name.asc())
         rows = q.all()
-        return [TopicResponse.from_model(t) for t in rows]
+        return [
+            TopicResponse.from_model(t, is_subscribed=(t.id in sub_ids))
+            for t in rows
+        ]
     finally:
         session.close()
 
@@ -252,6 +269,106 @@ def import_yaml():
 def export_yaml():
     """Write the current DB state out to config/topics/*.yaml files. Admin-only."""
     return export_topics_to_yaml()
+
+
+# ---------------------------------------------------------------------------
+# Phase D: discovery + subscriptions
+#
+# Routes must precede /{topic_id} so FastAPI doesn't try to treat
+# "search" as a literal topic id.
+# ---------------------------------------------------------------------------
+
+
+@topics_router.get("/search", response_model=list[TopicResponse])
+def search_topics(
+    q: str = Query(min_length=1, max_length=100, description="Case-insensitive name match"),
+    limit: int = Query(default=50, ge=1, le=200),
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Browse public topics owned by *other* users that the caller hasn't
+    already subscribed to. Powers the Discover page.
+
+    Filters out:
+      * system topics (already in scope)
+      * the caller's own topics
+      * private topics (any owner)
+      * topics the caller already subscribed to
+      * inactive topics
+    """
+    caller, _is_admin = resolve_caller(user_id)
+    needle = q.strip().lower()
+    if not needle:
+        return []
+
+    sub_ids = list_subscribed_topic_ids(user_id)
+
+    session = get_session()
+    try:
+        # case-insensitive name LIKE — keywords/concept search is a
+        # follow-up (Postgres-specific JSON ops vs SQLite portability)
+        q_query = (
+            session.query(Topic)
+            .filter(
+                Topic.owner_user_id.isnot(None),       # exclude system
+                Topic.visibility == "public",
+                Topic.active.is_(True),
+            )
+        )
+        if caller is not None:
+            q_query = q_query.filter(Topic.owner_user_id != caller.id)
+        if sub_ids:
+            q_query = q_query.filter(~Topic.id.in_(sub_ids))
+
+        # SQLite's LIKE is already case-insensitive for ASCII; Postgres
+        # needs explicit lower() to ignore case
+        from sqlalchemy import func
+        q_query = q_query.filter(func.lower(Topic.name).like(f"%{needle}%"))
+
+        rows = (
+            q_query.order_by(Topic.weight.desc(), Topic.name.asc())
+            .limit(limit)
+            .all()
+        )
+        return [TopicResponse.from_model(t, is_subscribed=False) for t in rows]
+    finally:
+        session.close()
+
+
+@topics_router.post("/{topic_id}/subscribe", status_code=201)
+def subscribe_to_topic(
+    topic_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Subscribe to a public topic owned by another user. Maps typed
+    `SubscriptionError` reasons to specific status codes so the UI can
+    surface them.
+    """
+    try:
+        row = subscribe_topic_service(user_id, topic_id)
+    except TopicNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except TopicNotSubscribable as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except AlreadySubscribed as e:
+        # idempotent-ish: tell the UI it's already done rather than 500ing
+        raise HTTPException(status_code=409, detail=str(e))
+    return {
+        "ok": True,
+        "topic_id": row.topic_id,
+        "subscribed_at": row.subscribed_at.isoformat(),
+    }
+
+
+@topics_router.delete("/{topic_id}/subscribe")
+def unsubscribe_from_topic(
+    topic_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Drop a subscription. Idempotent — returns 200 even if there was nothing to drop."""
+    removed = unsubscribe_topic_service(user_id, topic_id)
+    return {"ok": True, "removed": removed}
 
 
 @topics_router.get("/{topic_id}", response_model=TopicResponse)
@@ -422,6 +539,10 @@ def delete_topic(
             raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
 
         if hard:
+            # clean up subscriptions BEFORE dropping the parent topic.
+            # SQLite ignores FK CASCADE by default and Postgres would
+            # cascade, but being explicit keeps behavior portable.
+            cleanup_subscriptions_for_topic(topic_id)
             session.delete(topic)
             session.commit()
             return {"deleted": topic_id, "mode": "hard"}

@@ -130,6 +130,9 @@ export interface Topic {
   //   owner_user_id === number → owned by users.id
   owner_user_id: number | null;
   visibility: 'private' | 'public';
+  // Phase D: true when the caller has subscribed to this topic (only
+  // populated on list endpoints; single-row GET returns false).
+  is_subscribed: boolean;
   created_at: string;
   updated_at: string;
 
@@ -707,6 +710,27 @@ export async function importTopicsFromYaml(): Promise<{ upserted: number; insert
 
 export async function exportTopicsToYaml(): Promise<{ exported: number; directory: string }> {
   return fetchAPI('/topics/export-yaml', { method: 'POST' });
+}
+
+// -----------------------------------------------------------------------------
+// Topic discovery + subscriptions (Phase D)
+// -----------------------------------------------------------------------------
+
+export async function searchTopics(q: string, limit = 50): Promise<Topic[]> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  return fetchAPI(`/topics/search?${params.toString()}`);
+}
+
+export async function subscribeTopic(
+  topicId: string,
+): Promise<{ ok: boolean; topic_id: string; subscribed_at: string }> {
+  return fetchAPI(`/topics/${encodeURIComponent(topicId)}/subscribe`, { method: 'POST' });
+}
+
+export async function unsubscribeTopic(
+  topicId: string,
+): Promise<{ ok: boolean; removed: boolean }> {
+  return fetchAPI(`/topics/${encodeURIComponent(topicId)}/subscribe`, { method: 'DELETE' });
 }
 
 // -----------------------------------------------------------------------------

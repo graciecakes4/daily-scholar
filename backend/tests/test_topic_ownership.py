@@ -369,7 +369,12 @@ class TestTopicEditDelete:
 
 class TestTopicListing:
 
-    def test_user_sees_system_own_and_others_public(self, client: TestClient):
+    def test_user_sees_system_and_own_but_not_unsubscribed_public(self, client: TestClient):
+        """
+        Phase D: GET /topics now returns system + own + SUBSCRIBED only.
+        Other users' public topics that the caller hasn't subscribed to
+        live behind GET /topics/search (Discover) instead.
+        """
         me = _seed_user("ls-me@example.com")
         other = _seed_user("ls-other@example.com")
         sys = _seed_topic("ls-sys", owner_user_id=None, visibility="public")
@@ -381,7 +386,8 @@ class TestTopicListing:
         ids = {t["id"] for t in r.json()}
         assert sys.id in ids
         assert mine.id in ids
-        assert their_public.id in ids
+        # Phase D: their_public NOT in scope until me subscribes
+        assert their_public.id not in ids
         assert their_private.id not in ids
 
     def test_admin_sees_everything(self, client: TestClient):
@@ -414,16 +420,18 @@ class TestTopicListing:
 class TestScopeHelper:
 
     def test_scope_respects_ownership(self):
+        """
+        Phase D: unsubscribed public topics are NOT in scope. (Subscribed
+        ones are tested in test_topic_subscriptions.)
+        """
         me = _seed_user("sc-me@example.com")
         other = _seed_user("sc-other@example.com")
-        # add a private topic owned by `other` — should NOT appear in me's scope
         priv = _seed_topic("sc-other-priv", owner_user_id=other.id, visibility="private")
-        # add a public topic owned by `other` — SHOULD appear in me's scope
         pub = _seed_topic("sc-other-pub", owner_user_id=other.id, visibility="public")
 
         ids = {t.id for t in get_topics_for_scope(user_id=me.user_id)}
         assert priv.id not in ids
-        assert pub.id in ids
+        assert pub.id not in ids       # not subscribed → not in scope
 
     def test_get_active_topics_user_filter(self):
         me = _seed_user("ga-me@example.com")

@@ -14,6 +14,7 @@ from typing import Optional
 from sqlalchemy import (
     Column, Integer, String, Text, Float, Boolean,
     DateTime, Date, ForeignKey, JSON, create_engine, Index, UniqueConstraint,
+    and_ as sa_and,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, Session
@@ -547,6 +548,37 @@ class InviteCode(Base):
     revoked_at = Column(DateTime, nullable=True)
 
 
+class TopicSubscription(Base):
+    """
+    A user's subscription to another user's public topic (Phase D).
+
+    Subscriptions are "live" — when the owner edits the topic (keywords,
+    name, etc.) the subscriber's paper discovery picks up the changes on
+    the next query. The subscription row itself is just a (user, topic)
+    pair; the FK reference does the heavy lifting.
+
+    If the owner flips the topic from public → private, subscriptions
+    persist but the topic disappears from subscribers' scope (the
+    visibility filter rejects it). If they flip back to public, the
+    subscription comes back to life. Hard-deleting the topic cleans up
+    subscriptions explicitly (see topic_subscriptions.cleanup_subscriptions_for_topic).
+    """
+    __tablename__ = "topic_subscriptions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # subscriber identity — string user_id (email or custom handle), matches
+    # the pattern used in the 9 other user-scoped tables
+    user_id = Column(String(100), nullable=False, index=True)
+    # which topic they subscribed to
+    topic_id = Column(String(100), ForeignKey("topics.id"), nullable=False, index=True)
+    subscribed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "topic_id", name="uq_topic_subscriptions_user_topic"),
+        Index("idx_topic_subscriptions_user", "user_id"),
+    )
+
+
 class Session(Base):
     """
     Server-side opaque session token. The cookie carries `token`; we look
@@ -920,28 +952,46 @@ def get_or_create_user_settings(user_id: str = DEFAULT_USER_ID) -> UserSettings:
 
 def _apply_visibility_filter(query, user_id: str):
     """
-    Limit a Topic query to rows the caller can see, per Phase C ownership
-    rules. Imported lazily inside the function to avoid a circular
-    auth → database → auth dependency at module load.
+    Limit a Topic query to rows the caller can see in *scope* — i.e.,
+    topics that should drive paper discovery, daily content, and quiz.
+    Phase D changed the third bucket from "any public" to "public AND
+    subscribed", so users explicitly opt in to following other people's
+    topics via the Discover page.
 
-    Rules (matches services/topic_ownership.can_view_topic):
+    Rules (mirrors services/topic_ownership.can_view_topic for the
+    scope-vs-browse split):
       * solo `__local__` (admin sentinel) → no filter applied
       * admin user → no filter applied
-      * regular user → system (NULL owner) OR own OR public
+      * regular user → system (NULL owner) OR own OR (public AND subscribed)
+
+    Imports are lazy to dodge the circular auth → database → auth and
+    topic_subscriptions → database → topic_subscriptions cycles at
+    module load.
     """
     if user_id == DEFAULT_USER_ID:
         return query
     # local imports to dodge circular load order
     from sqlalchemy import or_
     from .auth import lookup_user_by_user_id
+    from .services.topic_subscriptions import list_subscribed_topic_ids
 
     user = lookup_user_by_user_id(user_id)
     if user is not None and user.role == "admin":
         return query
 
-    clauses = [Topic.owner_user_id.is_(None), Topic.visibility == "public"]
+    clauses = [Topic.owner_user_id.is_(None)]
     if user is not None:
         clauses.append(Topic.owner_user_id == user.id)
+
+    # subscribed-and-still-public topics. If the owner flipped their
+    # topic private after the subscription, we keep the subscription row
+    # but filter it out here — owner control wins over follower history.
+    sub_ids = list_subscribed_topic_ids(user_id)
+    if sub_ids:
+        clauses.append(
+            sa_and(Topic.id.in_(sub_ids), Topic.visibility == "public")
+        )
+
     return query.filter(or_(*clauses))
 
 

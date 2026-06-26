@@ -16,6 +16,7 @@ import Link from 'next/link';
 import {
   listTopics, listStreams, deleteTopic, updateTopic,
   importTopicsFromYaml, exportTopicsToYaml,
+  unsubscribeTopic,
   type Topic,
 } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
@@ -38,17 +39,26 @@ export default function TopicCatalogPage() {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   // ownership check: caller can edit/delete iff admin or the row's owner.
-  // No client user_id is exposed today (the api uses cookies); we infer
-  // ownership from the response shape — if you got the topic back via
-  // /topics, you can view it, but you can only edit yours or (if admin)
-  // anything. We rely on the backend to 403 stale assumptions; this
-  // function just suppresses UI noise.
+  // `is_subscribed` from the API tells us when a non-system, non-our-own
+  // topic is in our scope only because we subscribed to it — those we
+  // can't edit (the owner can), but we CAN unsubscribe.
   function canEdit(t: Topic): boolean {
     if (isAdmin) return true;
     if (t.owner_user_id === null) return false;  // system → admin only
-    // we don't know our int user.id client-side, so assume "non-system
-    // topic returned to us" = ours. Backend enforces the real rule.
+    if (t.is_subscribed) return false;           // subscribed-from-other → unsubscribe, don't edit
     return true;
+  }
+
+  async function handleUnsubscribe(topic: Topic) {
+    setBusy(true);
+    try {
+      await unsubscribeTopic(topic.id);
+      await fetchTopics();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -150,6 +160,12 @@ export default function TopicCatalogPage() {
             + New topic
           </Link>
           <Link
+            href="/topics/discover"
+            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-all"
+          >
+            Discover
+          </Link>
+          <Link
             href="/topics/archive"
             className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-all"
           >
@@ -237,6 +253,7 @@ export default function TopicCatalogPage() {
                     canEdit={canEdit(topic)}
                     onToggleActive={() => toggleActive(topic)}
                     onHardDelete={() => handleHardDelete(topic)}
+                    onUnsubscribe={() => handleUnsubscribe(topic)}
                   />
                 ))}
               </div>
@@ -249,22 +266,24 @@ export default function TopicCatalogPage() {
 }
 
 function TopicRow({
-  topic, busy, canEdit, onToggleActive, onHardDelete,
+  topic, busy, canEdit, onToggleActive, onHardDelete, onUnsubscribe,
 }: {
   topic: Topic;
   busy: boolean;
   canEdit: boolean;
   onToggleActive: () => void;
   onHardDelete: () => void;
+  onUnsubscribe: () => void;
 }) {
-  // Phase C ownership badge — system / your topic / shared (other user's
-  // public topic that you can see but not edit)
+  // Phase C/D ownership badge — system / your topic / subscribed
   const ownerBadge =
     topic.owner_user_id === null
       ? { label: 'System', cls: 'bg-slate-100 text-slate-700', title: 'Shared by the app' }
-      : canEdit
-        ? { label: 'Yours', cls: 'bg-sky-100 text-sky-800', title: 'You own this topic' }
-        : { label: 'Shared', cls: 'bg-violet-100 text-violet-700', title: 'Public topic owned by another user' };
+      : topic.is_subscribed
+        ? { label: 'Subscribed', cls: 'bg-emerald-100 text-emerald-800', title: 'You subscribed to this topic via Discover' }
+        : canEdit
+          ? { label: 'Yours', cls: 'bg-sky-100 text-sky-800', title: 'You own this topic' }
+          : { label: 'Shared', cls: 'bg-violet-100 text-violet-700', title: 'Public topic owned by another user' };
 
   return (
     <div className="p-4 flex items-start gap-4">
@@ -303,6 +322,16 @@ function TopicRow({
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
+        {topic.is_subscribed && (
+          <button
+            onClick={onUnsubscribe}
+            disabled={busy}
+            className="text-xs px-3 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 disabled:opacity-50"
+            title="Stop following this topic; the owner keeps it"
+          >
+            Unsubscribe
+          </button>
+        )}
         {canEdit && (
           <>
             <button
