@@ -1019,3 +1019,57 @@ export async function changeAccountStatus(
     body: JSON.stringify({ status }),
   });
 }
+
+// -----------------------------------------------------------------------------
+// Admin: audit log
+// -----------------------------------------------------------------------------
+
+export type AuditEventType =
+  | 'user.approve'
+  | 'user.reject'
+  | 'user.role_change'
+  | 'user.suspend'
+  | 'user.reactivate'
+  | 'invite.create'
+  | 'invite.revoke';
+
+export interface AuditEvent {
+  id: number;
+  event_type: AuditEventType;
+  actor_user_id: number | null;
+  actor_user_id_string: string;
+  target_type: 'user' | 'invite';
+  target_id: string | null;
+  target_label: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AuditFilters {
+  event_type?: AuditEventType;
+  actor?: string;
+  target_id?: string;
+  /** ISO datetime string */
+  since?: string;
+  /** ISO datetime string */
+  until?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listAuditEvents(
+  filters: AuditFilters = {},
+): Promise<{ events: AuditEvent[]; total: number; limit: number; offset: number }> {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) {
+    if (v !== undefined && v !== null && v !== '') {
+      params.set(k, String(v));
+    }
+  }
+  const qs = params.toString();
+  return fetchAPI(`/admin/audit${qs ? `?${qs}` : ''}`);
+}
+
+export async function listAuditEventTypes(): Promise<{ event_types: AuditEventType[] }> {
+  return fetchAPI('/admin/audit/event-types');
+}

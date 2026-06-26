@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import lookup_user_by_user_id, require_admin
 from ..database import DEFAULT_USER_ID
+from ..services.audit_log import EventType, TargetType, log_event
 from ..services.invite_codes import (
     generate_invite_code,
     list_invite_codes,
@@ -151,17 +152,57 @@ def create_invite(
         expires_at=expires_at,
         max_uses=body.max_uses,
     )
+
+    log_event(
+        event_type=EventType.INVITE_CREATE,
+        actor_user_id_string=user_id,
+        target_type=TargetType.INVITE,
+        target_id=row.code,
+        target_label=row.code,
+        metadata={
+            "max_uses": row.max_uses,
+            "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+        },
+    )
+
     return {"invite": _summarize(row).model_dump()}
 
 
 @admin_invites_router.delete("/{invite_id}")
-def revoke_invite(invite_id: int, _: str = Depends(require_admin)) -> dict:
+def revoke_invite(
+    invite_id: int,
+    actor_user_id: str = Depends(require_admin),
+) -> dict:
     """
     Mark an invite code revoked. Idempotent.
     """
+    # capture code BEFORE revoke so we can log the label even if the row
+    # is later read back differently. revoke_invite_code only touches the
+    # revoked_at column so the code string is stable, but be explicit.
+    from ..database import InviteCode, get_session
+    code_label: Optional[str] = None
+    session = get_session()
+    try:
+        row = session.query(InviteCode).filter(InviteCode.id == invite_id).first()
+        if row is not None:
+            code_label = row.code
+    finally:
+        session.close()
+
     revoked = revoke_invite_code(invite_id)
-    if not revoked:
-        # could be already-revoked or unknown id — return same shape either
-        # way so the UI can refresh without branching
-        return {"ok": True, "revoked": False}
-    return {"ok": True, "revoked": True}
+
+    # only log when we actually flipped state — second revoke / unknown
+    # id shouldn't produce a noisy audit entry
+    if revoked:
+        log_event(
+            event_type=EventType.INVITE_REVOKE,
+            actor_user_id_string=actor_user_id,
+            target_type=TargetType.INVITE,
+            target_id=code_label,
+            target_label=code_label,
+            metadata={"invite_id": invite_id},
+        )
+        return {"ok": True, "revoked": True}
+
+    # already-revoked or unknown id — return same shape either way
+    return {"ok": True, "revoked": False}
