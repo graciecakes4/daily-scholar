@@ -5,6 +5,7 @@ import Link from "next/link";
 import InstallPrompt from "@/components/InstallPrompt";
 import AuthBoundary from "@/components/AuthBoundary";
 import MobileTabBar from "@/components/MobileTabBar";
+import UserMenu from "@/components/UserMenu";
 import { API_BASE } from "@/lib/api";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -115,6 +116,7 @@ export default function RootLayout({
                 >
                   API Docs
                 </a>
+                <UserMenu />
               </div>
             </div>
           </div>

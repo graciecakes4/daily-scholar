@@ -61,6 +61,11 @@ cryptography>=42,<46
 # Pulls cryptography for RS256/ES256 signature checks — already pinned above.
 pyjwt>=2.8,<3
 
+# Password hashing (Phase A in-app auth). passlib provides the bcrypt
+# adapter; bcrypt is a binary wheel so no compiler needed.
+passlib[bcrypt]>=1.7.4,<2
+bcrypt>=4.0,<5
+
 # Date/Time utilities
 python-dateutil>=2.8.2,<3
 

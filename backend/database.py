@@ -439,6 +439,88 @@ class PushSubscription(Base):
 
 
 # =============================================================================
+# AUTH — Users and sessions (Phase A in-app auth foundation)
+# =============================================================================
+
+
+# Status / role enums kept as plain string columns so adding new values
+# later is a no-op migration. Validation lives in the API layer.
+USER_STATUS_PENDING = "pending"
+USER_STATUS_ACTIVE = "active"
+USER_STATUS_SUSPENDED = "suspended"
+VALID_USER_STATUSES = {USER_STATUS_PENDING, USER_STATUS_ACTIVE, USER_STATUS_SUSPENDED}
+
+USER_ROLE_USER = "user"
+USER_ROLE_ADMIN = "admin"
+VALID_USER_ROLES = {USER_ROLE_USER, USER_ROLE_ADMIN}
+
+
+class User(Base):
+    """
+    A real human (or service) account.
+
+    Two string identifiers, both unique:
+      - `email`  : login credential. Always lowercased on write.
+      - `user_id`: foreign-keyable identity string used in all the existing
+                   user-scoped tables (seen_papers.user_id, etc.). Defaults
+                   to email at signup; users can pick a custom handle as
+                   long as it matches the format rules in
+                   `auth_security.validate_user_id`. Locked at signup —
+                   changing it later requires `scripts/reassign_user_id.py`
+                   to migrate row ownership across the 9 user-scoped tables.
+
+    The split lets users pick a privacy-preserving handle without us
+    refactoring every existing `user_id VARCHAR(100)` column.
+    """
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(200), unique=True, nullable=False, index=True)
+    user_id = Column(String(100), unique=True, nullable=False, index=True)
+
+    password_hash = Column(String(200), nullable=False)
+
+    # "pending" → signed up but not approved (Phase B admin gate)
+    # "active"  → can log in and use the app
+    # "suspended" → can't log in; data preserved
+    status = Column(String(20), nullable=False, default=USER_STATUS_PENDING)
+    role = Column(String(20), nullable=False, default=USER_ROLE_USER)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    approved_at = Column(DateTime, nullable=True)
+    # self-referential FK so we know which admin approved which user.
+    # Nullable because the bootstrap admin has nobody to approve them.
+    approved_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    last_login_at = Column(DateTime, nullable=True)
+
+
+class Session(Base):
+    """
+    Server-side opaque session token. The cookie carries `token`; we look
+    up the row, verify it isn't expired/revoked, and resolve to a user.
+
+    Server-side (not JWT) so we can revoke instantly on logout / suspend
+    without a denylist. The per-request DB lookup is cheap (indexed unique
+    key) and worth the simplicity.
+    """
+    __tablename__ = "sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # urlsafe random; 64 chars = ~48 bytes of entropy. Indexed unique for
+    # the per-request lookup.
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+
+    # captured at login for the session-list UI in a follow-up phase
+    user_agent = Column(String(500), nullable=True)
+    ip = Column(String(64), nullable=True)
+
+
+# =============================================================================
 # DATABASE SETUP
 # =============================================================================
 

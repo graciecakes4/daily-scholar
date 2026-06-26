@@ -32,7 +32,7 @@ export class AuthError extends Error {
 // because Next renders this file on the server first.
 const AUTH_EVENT = 'daily-scholar:auth-error';
 
-function emitAuthError(detail: { status: number; message: string }) {
+function emitAuthError(detail: { status: number; message: string; redirect?: string }) {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(AUTH_EVENT, { detail }));
 }
@@ -288,12 +288,22 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
     // 401 gets its own subclass + a global event so the AuthBoundary can
-    // surface a "please re-authenticate" banner without each call site
-    // having to special-case it.
+    // redirect to /login from anywhere in the tree.
     if (response.status === 401) {
       const message = error.detail || 'Authentication required';
       emitAuthError({ status: 401, message });
       throw new AuthError(message);
+    }
+    // 403 with one of the auth-status reasons routes to the matching
+    // placeholder page. Same event channel, different status, so the
+    // AuthBoundary can branch on it.
+    if (response.status === 403) {
+      const detail = String(error.detail || '');
+      if (/pending approval/i.test(detail)) {
+        emitAuthError({ status: 403, message: detail, redirect: '/account/pending' });
+      } else if (/suspended/i.test(detail)) {
+        emitAuthError({ status: 403, message: detail, redirect: '/account/suspended' });
+      }
     }
     throw new Error(error.detail || `API error: ${response.status}`);
   }
@@ -761,4 +771,48 @@ export async function listNotificationJobs(): Promise<{
   jobs: NotificationJob[];
 }> {
   return fetchAPI('/notifications/jobs');
+}
+
+// -----------------------------------------------------------------------------
+// In-app auth (Phase A)
+// -----------------------------------------------------------------------------
+
+export type UserStatus = 'pending' | 'active' | 'suspended';
+export type UserRole = 'user' | 'admin';
+
+export interface AuthUser {
+  email: string;
+  user_id: string;
+  role: UserRole;
+  status: UserStatus;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+export interface SignupBody {
+  email: string;
+  password: string;
+  /** Optional custom handle. Omit to default to the email. */
+  user_id?: string;
+}
+
+export interface LoginBody {
+  email: string;
+  password: string;
+}
+
+export async function signup(body: SignupBody): Promise<{ profile: AuthUser; message: string }> {
+  return fetchAPI('/auth/signup', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function login(body: LoginBody): Promise<{ profile: AuthUser; pending: boolean }> {
+  return fetchAPI('/auth/login', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function logout(): Promise<{ ok: boolean; revoked: boolean }> {
+  return fetchAPI('/auth/logout', { method: 'POST' });
+}
+
+export async function getMe(): Promise<{ profile: AuthUser }> {
+  return fetchAPI('/auth/me');
 }
