@@ -356,11 +356,23 @@ class Topic(Base):
     # (so UI-only topics aren't blown away when YAML files come and go)
     source_yaml_present = Column(Boolean, default=True, nullable=False)
 
+    # ownership (Phase C of auth foundation):
+    #   - NULL          → system topic; visible to everyone; only admins edit
+    #   - users.id      → user-owned topic; visible per `visibility` rules
+    # Existing yaml-bootstrapped topics get owner_user_id=NULL on backfill.
+    owner_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    # "private" → only the owner (and admins) see this topic
+    # "public"  → searchable + subscribable by other users (Phase D)
+    # System topics default to "public" so the legacy global behavior is preserved.
+    visibility = Column(String(20), default="private", nullable=False, index=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     __table_args__ = (
         Index('idx_topic_active_stream', 'active', 'stream'),
+        Index('idx_topic_owner_visibility', 'owner_user_id', 'visibility'),
     )
 
 
@@ -906,17 +918,54 @@ def get_or_create_user_settings(user_id: str = DEFAULT_USER_ID) -> UserSettings:
         session.close()
 
 
-def get_active_topics(session: Optional[Session] = None) -> list[Topic]:
-    """All active topics, ordered by descending weight then name."""
+def _apply_visibility_filter(query, user_id: str):
+    """
+    Limit a Topic query to rows the caller can see, per Phase C ownership
+    rules. Imported lazily inside the function to avoid a circular
+    auth → database → auth dependency at module load.
+
+    Rules (matches services/topic_ownership.can_view_topic):
+      * solo `__local__` (admin sentinel) → no filter applied
+      * admin user → no filter applied
+      * regular user → system (NULL owner) OR own OR public
+    """
+    if user_id == DEFAULT_USER_ID:
+        return query
+    # local imports to dodge circular load order
+    from sqlalchemy import or_
+    from .auth import lookup_user_by_user_id
+
+    user = lookup_user_by_user_id(user_id)
+    if user is not None and user.role == "admin":
+        return query
+
+    clauses = [Topic.owner_user_id.is_(None), Topic.visibility == "public"]
+    if user is not None:
+        clauses.append(Topic.owner_user_id == user.id)
+    return query.filter(or_(*clauses))
+
+
+def get_active_topics(
+    session: Optional[Session] = None,
+    *,
+    user_id: str = DEFAULT_USER_ID,
+) -> list[Topic]:
+    """
+    All active topics the caller is allowed to see, ordered by descending
+    weight then name.
+
+    The `user_id` parameter applies the same ownership filter that the
+    /topics endpoints use, so paper discovery / review / quiz only see
+    topics this user actually has rights to.
+    """
     own_session = session is None
     if own_session:
         session = get_session()
     try:
+        q = session.query(Topic).filter(Topic.active.is_(True))
+        q = _apply_visibility_filter(q, user_id)
         return (
-            session.query(Topic)
-            .filter(Topic.active.is_(True))
-            .order_by(Topic.weight.desc(), Topic.name.asc())
-            .all()
+            q.order_by(Topic.weight.desc(), Topic.name.asc()).all()
         )
     finally:
         if own_session:
@@ -932,36 +981,31 @@ def get_topics_for_scope(user_id: str = DEFAULT_USER_ID) -> list[Topic]:
       - 'silo'  : the single topic id in scope_topic_ids[0], if active
       - 'multi' : every topic in scope_topic_ids whose row is active
       - 'all'   : every active topic (default)
+    All branches also apply the Phase C ownership filter — a user can't
+    scope to a topic they can't see.
     Falls back to 'all' if a silo/multi scope resolves to zero topics.
     """
     settings = get_or_create_user_settings(user_id)
     session = get_session()
     try:
         if settings.scope_mode == "silo" and settings.scope_topic_ids:
-            topics = (
-                session.query(Topic)
-                .filter(
-                    Topic.id == settings.scope_topic_ids[0],
-                    Topic.active.is_(True),
-                )
-                .all()
+            q = session.query(Topic).filter(
+                Topic.id == settings.scope_topic_ids[0],
+                Topic.active.is_(True),
             )
+            topics = _apply_visibility_filter(q, user_id).all()
         elif settings.scope_mode == "multi" and settings.scope_topic_ids:
-            topics = (
-                session.query(Topic)
-                .filter(
-                    Topic.id.in_(settings.scope_topic_ids),
-                    Topic.active.is_(True),
-                )
-                .order_by(Topic.weight.desc(), Topic.name.asc())
-                .all()
-            )
+            q = session.query(Topic).filter(
+                Topic.id.in_(settings.scope_topic_ids),
+                Topic.active.is_(True),
+            ).order_by(Topic.weight.desc(), Topic.name.asc())
+            topics = _apply_visibility_filter(q, user_id).all()
         else:
-            topics = get_active_topics(session=session)
+            topics = get_active_topics(session=session, user_id=user_id)
 
         # fallback: never return an empty list — discovery/review needs *something*
         if not topics:
-            topics = get_active_topics(session=session)
+            topics = get_active_topics(session=session, user_id=user_id)
         return topics
     finally:
         session.close()

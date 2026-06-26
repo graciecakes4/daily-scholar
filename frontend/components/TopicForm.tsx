@@ -12,6 +12,7 @@ import {
   createTopic, updateTopic,
   type Topic, type TopicCreate,
 } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 
 const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
 
@@ -37,6 +38,7 @@ interface FormState {
   resources: string;
   quiz_difficulty: string;
   prerequisites: string;
+  visibility: 'private' | 'public';
 }
 
 function toLines(items: string[]): string {
@@ -66,11 +68,14 @@ function initialFromTopic(topic?: Topic): FormState {
     resources: toLines(topic?.resources ?? []),
     quiz_difficulty: topic?.quiz_difficulty ?? 'medium',
     prerequisites: toLines(topic?.prerequisites ?? []),
+    visibility: topic?.visibility ?? 'private',
   };
 }
 
 export default function TopicForm({ mode, initial }: Props) {
   const router = useRouter();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [form, setForm] = useState<FormState>(initialFromTopic(initial));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +86,9 @@ export default function TopicForm({ mode, initial }: Props) {
 
   function buildPayload(): TopicCreate {
     return {
-      id: form.id.trim(),
+      // admins may supply an explicit slug; regular users let the server
+      // auto-generate (server ignores client-supplied id for non-admins)
+      id: isAdmin && form.id.trim() ? form.id.trim() : undefined,
       name: form.name.trim(),
       stream: form.stream.trim() || 'uncategorized',
       active: form.active,
@@ -95,6 +102,7 @@ export default function TopicForm({ mode, initial }: Props) {
       resources: fromLines(form.resources),
       quiz_difficulty: form.quiz_difficulty,
       prerequisites: fromLines(form.prerequisites),
+      visibility: form.visibility,
     };
   }
 
@@ -105,7 +113,9 @@ export default function TopicForm({ mode, initial }: Props) {
     try {
       const payload = buildPayload();
       if (mode === 'create') {
-        if (!/^[a-z0-9][a-z0-9-]*$/.test(payload.id)) {
+        // only validate the slug format when an admin actually typed one;
+        // regular users get a server-generated opaque id
+        if (payload.id && !/^[a-z0-9][a-z0-9-]*$/.test(payload.id)) {
           throw new Error('id must be a lowercase slug (a-z, 0-9, -)');
         }
         await createTopic(payload);
@@ -134,17 +144,28 @@ export default function TopicForm({ mode, initial }: Props) {
       {/* identity */}
       <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
         <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Identity</h2>
-        <Field label="ID (slug)" hint="lowercase, dashes only. immutable after create.">
-          <input
-            type="text"
-            value={form.id}
-            disabled={mode === 'edit'}
-            onChange={e => patch('id', e.target.value)}
-            placeholder="my-new-topic"
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono disabled:bg-slate-100 disabled:text-slate-500"
-            required
-          />
-        </Field>
+        {/* slug field: only admins see it on create (regular users get a
+            server-generated opaque id); shown read-only on edit so admins
+            can see the slug, but it's immutable */}
+        {(isAdmin || mode === 'edit') && (
+          <Field
+            label={mode === 'edit' ? 'ID (slug)' : 'ID (slug, admin override)'}
+            hint={
+              mode === 'edit'
+                ? 'immutable after create'
+                : 'optional — leave blank to auto-generate. lowercase, dashes only.'
+            }
+          >
+            <input
+              type="text"
+              value={form.id}
+              disabled={mode === 'edit'}
+              onChange={e => patch('id', e.target.value)}
+              placeholder={isAdmin ? 'leave blank to auto-generate' : 'my-new-topic'}
+              className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono disabled:bg-slate-100 disabled:text-slate-500"
+            />
+          </Field>
+        )}
         <Field label="Name">
           <input
             type="text"
@@ -153,6 +174,23 @@ export default function TopicForm({ mode, initial }: Props) {
             className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
             required
           />
+        </Field>
+        <Field
+          label="Visibility"
+          hint={
+            form.visibility === 'private'
+              ? 'only you can see this topic'
+              : 'searchable + subscribable by other users'
+          }
+        >
+          <select
+            value={form.visibility}
+            onChange={e => patch('visibility', e.target.value as 'private' | 'public')}
+            className="w-full max-w-xs px-3 py-2 border border-slate-300 rounded text-sm"
+          >
+            <option value="private">Private</option>
+            <option value="public">Public</option>
+          </select>
         </Field>
         <Field label="Stream" hint="grouping label, e.g. 'foundations' or 'photometric_classification'">
           <input

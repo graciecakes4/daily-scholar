@@ -125,6 +125,11 @@ export interface Topic {
   prerequisites: string[];
   created_via: string;
   source_yaml_present: boolean;
+  // Phase C ownership fields:
+  //   owner_user_id === null  → system topic (visible to all, admin-only edit)
+  //   owner_user_id === number → owned by users.id
+  owner_user_id: number | null;
+  visibility: 'private' | 'public';
   created_at: string;
   updated_at: string;
 
@@ -136,7 +141,8 @@ export interface Topic {
 }
 
 export interface TopicCreate {
-  id: string;
+  /** Admin-only override; server auto-generates for regular users. */
+  id?: string;
   name: string;
   stream?: string;
   active?: boolean;
@@ -150,6 +156,10 @@ export interface TopicCreate {
   resources?: string[];
   quiz_difficulty?: string;
   prerequisites?: string[];
+  /** Admin-only override; defaults to caller's id (or null for admins). */
+  owner_user_id?: number | null;
+  /** private (default for user topics) | public (default for system). */
+  visibility?: 'private' | 'public';
 }
 
 export type TopicUpdate = Partial<Omit<TopicCreate, 'id'>>;

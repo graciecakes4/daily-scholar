@@ -18,6 +18,7 @@ import {
   importTopicsFromYaml, exportTopicsToYaml,
   type Topic,
 } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 
 function streamDisplayName(stream: string): string {
   return stream
@@ -26,6 +27,8 @@ function streamDisplayName(stream: string): string {
 }
 
 export default function TopicCatalogPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +36,20 @@ export default function TopicCatalogPage() {
   const [streamFilter, setStreamFilter] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+  // ownership check: caller can edit/delete iff admin or the row's owner.
+  // No client user_id is exposed today (the api uses cookies); we infer
+  // ownership from the response shape — if you got the topic back via
+  // /topics, you can view it, but you can only edit yours or (if admin)
+  // anything. We rely on the backend to 403 stale assumptions; this
+  // function just suppresses UI noise.
+  function canEdit(t: Topic): boolean {
+    if (isAdmin) return true;
+    if (t.owner_user_id === null) return false;  // system → admin only
+    // we don't know our int user.id client-side, so assume "non-system
+    // topic returned to us" = ours. Backend enforces the real rule.
+    return true;
+  }
 
   useEffect(() => {
     void fetchTopics();
@@ -217,6 +234,7 @@ export default function TopicCatalogPage() {
                     key={topic.id}
                     topic={topic}
                     busy={busy}
+                    canEdit={canEdit(topic)}
                     onToggleActive={() => toggleActive(topic)}
                     onHardDelete={() => handleHardDelete(topic)}
                   />
@@ -231,23 +249,43 @@ export default function TopicCatalogPage() {
 }
 
 function TopicRow({
-  topic, busy, onToggleActive, onHardDelete,
+  topic, busy, canEdit, onToggleActive, onHardDelete,
 }: {
   topic: Topic;
   busy: boolean;
+  canEdit: boolean;
   onToggleActive: () => void;
   onHardDelete: () => void;
 }) {
+  // Phase C ownership badge — system / your topic / shared (other user's
+  // public topic that you can see but not edit)
+  const ownerBadge =
+    topic.owner_user_id === null
+      ? { label: 'System', cls: 'bg-slate-100 text-slate-700', title: 'Shared by the app' }
+      : canEdit
+        ? { label: 'Yours', cls: 'bg-sky-100 text-sky-800', title: 'You own this topic' }
+        : { label: 'Shared', cls: 'bg-violet-100 text-violet-700', title: 'Public topic owned by another user' };
+
   return (
     <div className="p-4 flex items-start gap-4">
       <div className="flex-grow min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <Link
-            href={`/topics/${encodeURIComponent(topic.id)}/edit`}
-            className="font-semibold text-slate-900 hover:underline"
-          >
-            {topic.name}
-          </Link>
+          {canEdit ? (
+            <Link
+              href={`/topics/${encodeURIComponent(topic.id)}/edit`}
+              className="font-semibold text-slate-900 hover:underline"
+            >
+              {topic.name}
+            </Link>
+          ) : (
+            <span className="font-semibold text-slate-900">{topic.name}</span>
+          )}
+          <span className={`text-xs px-2 py-0.5 rounded ${ownerBadge.cls}`} title={ownerBadge.title}>
+            {ownerBadge.label}
+          </span>
+          {topic.visibility === 'private' && topic.owner_user_id !== null && (
+            <span className="text-xs px-2 py-0.5 bg-slate-200 text-slate-700 rounded" title="Only you can see this topic">private</span>
+          )}
           {!topic.active && (
             <span className="text-xs px-2 py-0.5 bg-slate-200 text-slate-600 rounded">inactive</span>
           )}
@@ -265,30 +303,34 @@ function TopicRow({
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <button
-          onClick={onToggleActive}
-          disabled={busy}
-          className={`text-xs px-3 py-1.5 rounded border disabled:opacity-50 ${
-            topic.active
-              ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-              : 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
-          }`}
-        >
-          {topic.active ? 'Deactivate' : 'Activate'}
-        </button>
-        <Link
-          href={`/topics/${encodeURIComponent(topic.id)}/edit`}
-          className="text-xs px-3 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
-        >
-          Edit
-        </Link>
-        <button
-          onClick={onHardDelete}
-          disabled={busy}
-          className="text-xs px-3 py-1.5 rounded bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-        >
-          Delete
-        </button>
+        {canEdit && (
+          <>
+            <button
+              onClick={onToggleActive}
+              disabled={busy}
+              className={`text-xs px-3 py-1.5 rounded border disabled:opacity-50 ${
+                topic.active
+                  ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                  : 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+              }`}
+            >
+              {topic.active ? 'Deactivate' : 'Activate'}
+            </button>
+            <Link
+              href={`/topics/${encodeURIComponent(topic.id)}/edit`}
+              className="text-xs px-3 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
+            >
+              Edit
+            </Link>
+            <button
+              onClick={onHardDelete}
+              disabled={busy}
+              className="text-xs px-3 py-1.5 rounded bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+            >
+              Delete
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
