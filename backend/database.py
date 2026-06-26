@@ -494,6 +494,47 @@ class User(Base):
     last_login_at = Column(DateTime, nullable=True)
 
 
+class InviteCode(Base):
+    """
+    Single- or multi-use signup invitation issued by an admin.
+
+    The signup endpoint validates an incoming `invite_code` against this
+    table: it must exist, not be revoked, not be expired, and `uses` must
+    be below `max_uses`. On a successful signup we atomically increment
+    `uses` and (when `uses` hits `max_uses`) stamp `redeemed_at` so the
+    admin UI can render "used" vs "available" without recomputing from
+    `uses`.
+
+    `max_uses=1` codes (the default) are effectively single-use; setting
+    `max_uses=N` lets an admin hand out one code to a small cohort.
+    """
+    __tablename__ = "invite_codes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # short urlsafe slug from secrets.token_urlsafe(9) — 12 chars,
+    # ~70 bits of entropy; readable / phone-shareable
+    code = Column(String(32), unique=True, nullable=False, index=True)
+
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # null = never expires
+    expires_at = Column(DateTime, nullable=True)
+
+    max_uses = Column(Integer, default=1, nullable=False)
+    uses = Column(Integer, default=0, nullable=False)
+
+    # set when uses reaches max_uses (lets the UI render "used by" without
+    # recomputing). Stamped to the most-recent redemption time.
+    redeemed_at = Column(DateTime, nullable=True)
+    # last user to redeem the code; useful for single-use code auditing
+    last_redeemed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # admin-set kill switch — separate from expiry so we can tell "rotated
+    # out" from "naturally expired" in audit views
+    revoked_at = Column(DateTime, nullable=True)
+
+
 class Session(Base):
     """
     Server-side opaque session token. The cookie carries `token`; we look

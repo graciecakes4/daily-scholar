@@ -34,6 +34,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [userId, setUserId] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +42,10 @@ export default function SignupPage() {
   const passwordTooShort = password.length > 0 && password.length < 8;
   const passwordMismatch = confirm.length > 0 && password !== confirm;
 
+  // we don't know client-side whether OPEN_SIGNUP is on, so we always show
+  // the invite-code field. The backend decides whether to require it; if
+  // the user leaves it blank and the server is gated, the 400 message
+  // bubbles up via `error` and they can paste the code in then.
   const disabled =
     submitting ||
     !email ||
@@ -57,6 +62,7 @@ export default function SignupPage() {
         email,
         password,
         user_id: userId.trim() || undefined,
+        invite_code: inviteCode.trim() || undefined,
       });
       router.push('/account/pending');
     } catch (err: any) {
@@ -69,6 +75,22 @@ export default function SignupPage() {
   return (
     <AuthShell title="Create your account">
       <form onSubmit={onSubmit} className="space-y-4">
+        <Field
+          label="Invite code"
+          htmlFor="su-invite"
+          hint="An admin should have shared one with you. Required for new accounts."
+        >
+          <input
+            id="su-invite"
+            type="text"
+            autoComplete="off"
+            value={inviteCode}
+            onChange={e => setInviteCode(e.target.value)}
+            placeholder="e.g. aB3-x7F_kLm"
+            className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:border-slate-900"
+          />
+        </Field>
+
         <Field label="Email" htmlFor="su-email">
           <input
             id="su-email"

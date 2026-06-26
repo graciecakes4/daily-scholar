@@ -50,6 +50,14 @@ from ..services.auth_sessions import (
     lookup_session_user,
     revoke_session,
 )
+from ..services.invite_codes import (
+    InviteCodeError,
+    InviteCodeExhausted,
+    InviteCodeExpired,
+    InviteCodeRevoked,
+    InviteCodeUnknown,
+    validate_and_redeem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +120,19 @@ class SignupRequest(BaseModel):
         default=None,
         description="Optional custom handle. Defaults to the email when omitted.",
     )
+    invite_code: Optional[str] = Field(
+        default=None,
+        description=(
+            "Invite code issued by an admin. Required unless the server is "
+            "running with OPEN_SIGNUP=1 (local dev only)."
+        ),
+    )
+
+
+def _open_signup_enabled() -> bool:
+    """Env-gated bypass for local dev: OPEN_SIGNUP=1 disables the invite check."""
+    val = os.environ.get("OPEN_SIGNUP", "").strip().lower()
+    return val in ("1", "true", "yes", "on")
 
 
 class LoginRequest(BaseModel):
@@ -149,18 +170,18 @@ def _profile(user: User) -> UserProfile:
 @auth_router.post("/signup", status_code=201)
 def signup(body: SignupRequest, response: Response) -> dict:
     """
-    Create a new account in `pending` status.
+    Create a new account in `pending` status. Requires a valid
+    `invite_code` issued by an admin, unless the server is running with
+    `OPEN_SIGNUP=1` (local dev only — never in production).
 
-    Phase A leaves this endpoint open (no invite code required) so the
-    signup → login → me flow can be tested end-to-end. Phase B will add
-    the `invite_code` field and validate it against the `invite_codes`
-    table before allowing the row to be inserted.
+    The invite redemption + user insert run in the same DB transaction:
+    if the user insert fails (duplicate email, etc.) the invite's
+    `uses` counter is NOT incremented. This keeps single-use codes
+    usable after a failed first attempt.
 
     Returns the new user's profile + a hint that admin approval is needed.
     Does NOT log the user in — they have to wait for approval and then
-    call /auth/login. (Logging them in immediately would put a "pending"
-    cookie on them, which is fine, but the explicit two-step makes the
-    "you need approval" message harder to miss.)
+    call /auth/login.
     """
     # normalize + validate up front so we 400 before touching the DB
     try:
@@ -175,6 +196,10 @@ def signup(body: SignupRequest, response: Response) -> dict:
             user_id = validate_user_id(body.user_id)
         except InvalidUserIdError as e:
             raise HTTPException(status_code=400, detail=str(e))
+
+    invite_required = not _open_signup_enabled()
+    if invite_required and (body.invite_code is None or not body.invite_code.strip()):
+        raise HTTPException(status_code=400, detail="invite code is required")
 
     session = get_session()
     try:
@@ -194,6 +219,28 @@ def signup(body: SignupRequest, response: Response) -> dict:
             created_at=datetime.utcnow(),
         )
         session.add(user)
+        session.flush()        # populate user.id without committing
+
+        # redeem the invite inside the same transaction so a failed user
+        # insert (race condition on uniqueness) doesn't burn the code
+        if invite_required:
+            try:
+                validate_and_redeem(
+                    body.invite_code or "",
+                    redeeming_user_id_int=user.id,
+                    session=session,
+                )
+            except InviteCodeUnknown as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except InviteCodeRevoked as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except InviteCodeExpired as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except InviteCodeExhausted as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except InviteCodeError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
         session.commit()
         session.refresh(user)
         return {

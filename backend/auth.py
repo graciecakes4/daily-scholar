@@ -52,14 +52,17 @@ from __future__ import annotations
 import time
 from typing import Any, Optional
 
-from fastapi import Cookie, Header, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, status
 
 from .config import get_settings
 from .database import (
     DEFAULT_USER_ID,
+    USER_ROLE_ADMIN,
     USER_STATUS_ACTIVE,
     USER_STATUS_PENDING,
     USER_STATUS_SUSPENDED,
+    User,
+    get_session,
 )
 
 
@@ -301,3 +304,53 @@ def require_cloudflare_access(
         cf_access_email, cf_access_jwt, x_user_id=None,
         ds_session=ds_session, require_cf=True,
     )
+
+
+def lookup_user_by_user_id(user_id: str) -> Optional[User]:
+    """
+    Resolve a `user_id` string (the value stored in seen_papers.user_id
+    etc.) to the corresponding User row, or None when no real row exists
+    (solo sentinel, or a CF Access email that hasn't signed up in-app yet).
+
+    Detaches the User from the DB session so callers can read fields
+    after the session closes.
+    """
+    if not user_id or user_id == DEFAULT_USER_ID:
+        return None
+    session = get_session()
+    try:
+        user = (
+            session.query(User)
+            .filter(User.user_id == user_id)
+            .first()
+        )
+        if user is not None:
+            session.expunge(user)
+        return user
+    finally:
+        session.close()
+
+
+def require_admin(user_id: str = Depends(get_current_user_id)) -> str:
+    """
+    Allow only admin callers. Returns the caller's `user_id` string (same
+    shape as get_current_user_id) so endpoints can keep using it for
+    filtering / audit fields.
+
+    Solo dev (`__local__`) is treated as admin: in solo mode there is
+    exactly one user and it's the operator. Real users (CF Access or
+    in-app session) must have a User row with role='admin'.
+
+    This is the in-app role gate that replaces the deferred CF-Access-only
+    /admin/* protection from Phase 4.
+    """
+    if user_id == DEFAULT_USER_ID:
+        return user_id
+
+    user = lookup_user_by_user_id(user_id)
+    if user is None or user.role != USER_ROLE_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required",
+        )
+    return user_id

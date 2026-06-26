@@ -807,6 +807,8 @@ export interface SignupBody {
   password: string;
   /** Optional custom handle. Omit to default to the email. */
   user_id?: string;
+  /** Required unless the server is running with OPEN_SIGNUP=1 (local dev). */
+  invite_code?: string;
 }
 
 export interface LoginBody {
@@ -840,4 +842,68 @@ export async function logout(): Promise<{ ok: boolean; revoked: boolean }> {
 
 export async function getMe(): Promise<{ profile: AuthUser }> {
   return fetchAPI('/auth/me');
+}
+
+// -----------------------------------------------------------------------------
+// Admin: invite codes (Phase B)
+// -----------------------------------------------------------------------------
+
+export type InviteState = 'available' | 'exhausted' | 'expired' | 'revoked';
+
+export interface InviteSummary {
+  id: number;
+  code: string;
+  created_at: string;
+  expires_at: string | null;
+  max_uses: number;
+  uses: number;
+  redeemed_at: string | null;
+  revoked_at: string | null;
+  state: InviteState;
+}
+
+export interface CreateInviteBody {
+  /** 1-365 days from now; omit for a non-expiring code. */
+  expires_in_days?: number;
+  /** Default 1 (single-use). */
+  max_uses?: number;
+}
+
+export async function listInvites(includeRevoked = true): Promise<{ invites: InviteSummary[] }> {
+  const qs = includeRevoked ? '' : '?include_revoked=false';
+  return fetchAPI(`/admin/invites${qs}`);
+}
+
+export async function createInvite(body: CreateInviteBody): Promise<{ invite: InviteSummary }> {
+  return fetchAPI('/admin/invites', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function revokeInvite(id: number): Promise<{ ok: boolean; revoked: boolean }> {
+  return fetchAPI(`/admin/invites/${id}`, { method: 'DELETE' });
+}
+
+// -----------------------------------------------------------------------------
+// Admin: approval queue (Phase B)
+// -----------------------------------------------------------------------------
+
+export interface PendingUserSummary {
+  id: number;
+  email: string;
+  user_id: string;
+  created_at: string;
+  waiting_seconds: number;
+}
+
+export async function listPendingApprovals(): Promise<{ pending: PendingUserSummary[]; count: number }> {
+  return fetchAPI('/admin/approvals');
+}
+
+export async function approveUser(pendingUserId: number): Promise<{
+  ok: boolean; user_id?: string; email?: string; approved_at?: string; message?: string;
+}> {
+  return fetchAPI(`/admin/approvals/${pendingUserId}/approve`, { method: 'POST' });
+}
+
+export async function rejectUser(pendingUserId: number): Promise<{ ok: boolean; deleted_user_id?: string }> {
+  return fetchAPI(`/admin/approvals/${pendingUserId}/reject`, { method: 'POST' });
 }
