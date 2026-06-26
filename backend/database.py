@@ -552,6 +552,54 @@ class InviteCode(Base):
     revoked_at = Column(DateTime, nullable=True)
 
 
+class AdminAuditEvent(Base):
+    """
+    Append-only log of admin mutations: who approved/rejected which user,
+    who issued/revoked which invite code, who changed someone's role or
+    status. Read-only after insert; nothing in the app deletes rows.
+
+    Denormalized actor + target identifiers preserve display info even if
+    the underlying user / invite row is later deleted. The FK columns
+    `actor_user_id` (nullable) + `target_id` keep a best-effort link to
+    live rows for querying; the `_string` / `_label` siblings keep the
+    history readable forever.
+    """
+    __tablename__ = "admin_audit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # "user.approve" | "user.reject" | "user.role_change"
+    # "user.suspend" | "user.reactivate"
+    # "invite.create" | "invite.revoke"
+    event_type = Column(String(50), nullable=False, index=True)
+
+    # actor — the admin who did the thing. NULL = solo `__local__` sentinel.
+    # FK is nullable + ON DELETE SET NULL (Postgres); the denormalized
+    # _string keeps the display name even after the row is gone.
+    actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    actor_user_id_string = Column(String(100), nullable=False)
+
+    # target — the user / invite that was acted on
+    # "user" | "invite"
+    target_type = Column(String(20), nullable=False)
+    # the target's stable id (user.user_id string for users; invite_codes.code for invites)
+    target_id = Column(String(200), nullable=True, index=True)
+    # human-readable handle (email for users; code itself for invites) preserved
+    # even if the target row gets deleted later
+    target_label = Column(String(200), nullable=True)
+
+    # flexible bag for before/after values and event-specific context
+    # (e.g., {"old_role": "user", "new_role": "admin"})
+    audit_metadata = Column("metadata", JSON, nullable=False, default=dict)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    __table_args__ = (
+        Index("idx_admin_audit_created", "created_at"),
+        Index("idx_admin_audit_event_created", "event_type", "created_at"),
+    )
+
+
 class TopicSubscription(Base):
     """
     A user's subscription to another user's public topic (Phase D).

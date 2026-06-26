@@ -37,6 +37,7 @@ from ..database import (
     User,
     get_session,
 )
+from ..services.audit_log import EventType, TargetType, log_event
 from ..services.auth_sessions import revoke_all_sessions_for_user
 
 logger = logging.getLogger(__name__)
@@ -193,10 +194,15 @@ def change_role(
                     detail="Cannot demote the last remaining admin.",
                 )
 
+        old_role = target.role
         target.role = body.role
+        # snapshot fields for audit before commit + refresh
+        target_user_id_str = target.user_id
+        target_email = target.email
+        new_role = target.role
         session.commit()
         session.refresh(target)
-        return _serialize(target)
+        result = _serialize(target)
     except HTTPException:
         session.rollback()
         raise
@@ -206,6 +212,17 @@ def change_role(
         raise HTTPException(status_code=500, detail="Could not change role")
     finally:
         session.close()
+
+    log_event(
+        event_type=EventType.USER_ROLE_CHANGE,
+        actor_user_id_string=actor_user_id,
+        target_type=TargetType.USER,
+        target_id=target_user_id_str,
+        target_label=target_email,
+        metadata={"old_role": old_role, "new_role": new_role},
+    )
+
+    return result
 
 
 @admin_accounts_router.put("/{target_user_id}/status", response_model=AccountSummary)
@@ -254,12 +271,16 @@ def change_status(
                         detail="Cannot suspend the last remaining admin.",
                     )
 
+        old_status = target.status
         target.status = body.status
         session.commit()
 
         # do the session revocation OUTSIDE the user-update transaction
         # so a session-revoke error doesn't roll back the status flip
         target_id = target.id
+        target_user_id_str = target.user_id
+        target_email = target.email
+        new_status = target.status
         session.refresh(target)
         result = _serialize(target)
     except HTTPException:
@@ -277,5 +298,21 @@ def change_status(
             revoke_all_sessions_for_user(target_id)
         except Exception as e:  # noqa: BLE001
             logger.warning("change_status: session revoke failed for user %s: %s", target_id, e)
+
+    # audit log: suspend and reactivate get distinct event types so the
+    # admin UI can filter on each independently
+    event = (
+        EventType.USER_SUSPEND
+        if new_status == USER_STATUS_SUSPENDED
+        else EventType.USER_REACTIVATE
+    )
+    log_event(
+        event_type=event,
+        actor_user_id_string=actor_user_id,
+        target_type=TargetType.USER,
+        target_id=target_user_id_str,
+        target_label=target_email,
+        metadata={"old_status": old_status, "new_status": new_status},
+    )
 
     return result

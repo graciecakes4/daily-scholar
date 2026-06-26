@@ -32,6 +32,7 @@ from ..database import (
     UserStats,
     get_session,
 )
+from ..services.audit_log import EventType, TargetType, log_event
 from ..services.auth_sessions import revoke_all_sessions_for_user
 
 logger = logging.getLogger(__name__)
@@ -133,21 +134,36 @@ def approve(
         target.status = USER_STATUS_ACTIVE
         target.approved_at = datetime.utcnow()
         target.approved_by_user_id = _resolve_approving_admin_id(actor_user_id)
+        # snapshot fields before closing the session so we can log + return
+        # without touching a detached row
+        target_user_id_str = target.user_id
+        target_email = target.email
+        approved_at_iso = target.approved_at.isoformat()
         session.commit()
-        return {
-            "ok": True,
-            "user_id": target.user_id,
-            "email": target.email,
-            "approved_at": target.approved_at.isoformat(),
-        }
     finally:
         session.close()
+
+    log_event(
+        event_type=EventType.USER_APPROVE,
+        actor_user_id_string=actor_user_id,
+        target_type=TargetType.USER,
+        target_id=target_user_id_str,
+        target_label=target_email,
+        metadata={"approved_at": approved_at_iso},
+    )
+
+    return {
+        "ok": True,
+        "user_id": target_user_id_str,
+        "email": target_email,
+        "approved_at": approved_at_iso,
+    }
 
 
 @admin_approvals_router.post("/{pending_user_id}/reject")
 def reject(
     pending_user_id: int,
-    _: str = Depends(require_admin),
+    actor_user_id: str = Depends(require_admin),
 ) -> dict:
     """
     Delete the pending user (and any rows they created during their
@@ -175,6 +191,7 @@ def reject(
         # via get_current_user_id), but settings/stats can be auto-created
         # by lazy-init helpers — wipe them so a re-signup gets a clean slate.
         target_uid = target.user_id
+        target_email = target.email
         for model in (UserSettings, UserStats):
             session.query(model).filter(model.user_id == target_uid).delete(
                 synchronize_session=False
@@ -182,6 +199,16 @@ def reject(
 
         session.delete(target)
         session.commit()
-        return {"ok": True, "deleted_user_id": target_uid}
     finally:
         session.close()
+
+    log_event(
+        event_type=EventType.USER_REJECT,
+        actor_user_id_string=actor_user_id,
+        target_type=TargetType.USER,
+        target_id=target_uid,
+        target_label=target_email,
+        metadata={"deleted": True},
+    )
+
+    return {"ok": True, "deleted_user_id": target_uid}

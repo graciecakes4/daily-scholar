@@ -20,11 +20,15 @@ import {
   changeAccountStatus,
   createInvite,
   listAccounts,
+  listAuditEvents,
+  listAuditEventTypes,
   listInvites,
   listPendingApprovals,
   rejectUser,
   revokeInvite,
   type AccountSummary,
+  type AuditEvent,
+  type AuditEventType,
   type InviteState,
   type InviteSummary,
   type PendingUserSummary,
@@ -33,7 +37,7 @@ import {
 } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 
-type Tab = 'approvals' | 'invites' | 'users';
+type Tab = 'approvals' | 'invites' | 'users' | 'audit';
 
 export default function AdminSettingsPage() {
   const { user, loading } = useAuth();
@@ -80,12 +84,16 @@ export default function AdminSettingsPage() {
           <TabButton active={tab === 'users'} onClick={() => setTab('users')}>
             Users
           </TabButton>
+          <TabButton active={tab === 'audit'} onClick={() => setTab('audit')}>
+            Audit log
+          </TabButton>
         </nav>
       </div>
 
       {tab === 'approvals' && <ApprovalsTab />}
       {tab === 'invites' && <InvitesTab />}
       {tab === 'users' && <UsersTab currentUserId={currentUserId} />}
+      {tab === 'audit' && <AuditTab />}
     </div>
   );
 }
@@ -593,6 +601,266 @@ function StatusBadge({ status }: { status: UserStatus }) {
   return (
     <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${map[status]}`}>
       {status}
+    </span>
+  );
+}
+
+// ---------- audit log tab ----------
+
+const PAGE_SIZE = 50;
+
+function AuditTab() {
+  const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [eventTypes, setEventTypes] = useState<AuditEventType[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [eventTypeFilter, setEventTypeFilter] = useState<'' | AuditEventType>('');
+  const [actorFilter, setActorFilter] = useState('');
+  const [targetFilter, setTargetFilter] = useState('');
+  const [sinceFilter, setSinceFilter] = useState('');
+  const [untilFilter, setUntilFilter] = useState('');
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // load event type catalog once for the dropdown
+  useEffect(() => {
+    listAuditEventTypes()
+      .then(r => setEventTypes(r.event_types))
+      .catch(() => {});      // non-fatal — dropdown just stays empty
+  }, []);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await listAuditEvents({
+        event_type: eventTypeFilter || undefined,
+        actor: actorFilter.trim() || undefined,
+        target_id: targetFilter.trim() || undefined,
+        since: sinceFilter ? `${sinceFilter}T00:00:00` : undefined,
+        until: untilFilter ? `${untilFilter}T23:59:59` : undefined,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      });
+      setEvents(r.events);
+      setTotal(r.total);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load audit log');
+    } finally {
+      setLoading(false);
+    }
+  }, [eventTypeFilter, actorFilter, targetFilter, sinceFilter, untilFilter, page]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // reset to page 0 whenever filters change so we don't get stranded
+  // on page 5 of a much-shorter filtered result set
+  useEffect(() => { setPage(0); }, [eventTypeFilter, actorFilter, targetFilter, sinceFilter, untilFilter]);
+
+  function clearFilters() {
+    setEventTypeFilter('');
+    setActorFilter('');
+    setTargetFilter('');
+    setSinceFilter('');
+    setUntilFilter('');
+  }
+
+  const maxPage = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1);
+
+  return (
+    <section className="space-y-4">
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>
+      )}
+
+      {/* filters */}
+      <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <label className="text-xs text-slate-500 block">Event</label>
+            <select
+              value={eventTypeFilter}
+              onChange={e => setEventTypeFilter(e.target.value as '' | AuditEventType)}
+              className="text-sm border border-slate-300 rounded px-2 py-1"
+            >
+              <option value="">All events</option>
+              {eventTypes.map(t => (
+                <option key={t} value={t}>{eventLabel(t)}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-slate-500 block">Actor</label>
+            <input
+              type="text"
+              value={actorFilter}
+              onChange={e => setActorFilter(e.target.value)}
+              placeholder="email or handle"
+              className="text-sm border border-slate-300 rounded px-2 py-1 w-48"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-slate-500 block">Target</label>
+            <input
+              type="text"
+              value={targetFilter}
+              onChange={e => setTargetFilter(e.target.value)}
+              placeholder="user_id or invite code"
+              className="text-sm border border-slate-300 rounded px-2 py-1 w-48"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-slate-500 block">Since</label>
+            <input
+              type="date"
+              value={sinceFilter}
+              onChange={e => setSinceFilter(e.target.value)}
+              className="text-sm border border-slate-300 rounded px-2 py-1"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-slate-500 block">Until</label>
+            <input
+              type="date"
+              value={untilFilter}
+              onChange={e => setUntilFilter(e.target.value)}
+              className="text-sm border border-slate-300 rounded px-2 py-1"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="text-xs text-slate-500 hover:text-slate-700 hover:underline px-2 py-1"
+          >
+            Clear
+          </button>
+          <span className="text-xs text-slate-400 ml-auto">
+            {total.toLocaleString()} event{total === 1 ? '' : 's'}
+          </span>
+        </div>
+      </div>
+
+      {/* table */}
+      {loading ? (
+        <div className="text-slate-500">Loading…</div>
+      ) : events.length === 0 ? (
+        <div className="text-sm text-slate-500 italic">No events match.</div>
+      ) : (
+        <ul className="space-y-2">
+          {events.map(ev => {
+            const isExpanded = expandedId === ev.id;
+            return (
+              <li
+                key={ev.id}
+                className="bg-white border border-slate-200 rounded-lg p-3 space-y-2"
+              >
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(isExpanded ? null : ev.id)}
+                  className="w-full flex items-start justify-between gap-3 text-left"
+                >
+                  <div className="min-w-0 flex-grow">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <EventBadge type={ev.event_type} />
+                      <span className="text-sm text-slate-700">
+                        <strong>{ev.actor_user_id_string}</strong>{' '}
+                        <span className="text-slate-500">{eventVerb(ev.event_type)}</span>{' '}
+                        <strong className="font-mono text-xs">{ev.target_label || ev.target_id || '—'}</strong>
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">
+                      {new Date(ev.created_at).toLocaleString()} · #{ev.id}
+                    </div>
+                  </div>
+                  <span className="text-xs text-slate-400 shrink-0">
+                    {isExpanded ? '▾' : '▸'}
+                  </span>
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t border-slate-100 pt-2">
+                    <pre className="text-xs bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto font-mono">
+{JSON.stringify(ev.metadata, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* pagination */}
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between gap-3 pt-2">
+          <button
+            type="button"
+            disabled={page <= 0}
+            onClick={() => setPage(p => Math.max(0, p - 1))}
+            className="text-sm px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded hover:bg-slate-50 disabled:opacity-40"
+          >
+            ← Newer
+          </button>
+          <span className="text-xs text-slate-500">
+            Page {page + 1} of {maxPage + 1}
+          </span>
+          <button
+            type="button"
+            disabled={page >= maxPage}
+            onClick={() => setPage(p => Math.min(maxPage, p + 1))}
+            className="text-sm px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded hover:bg-slate-50 disabled:opacity-40"
+          >
+            Older →
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+const EVENT_LABELS: Record<AuditEventType, string> = {
+  'user.approve': 'Approve user',
+  'user.reject': 'Reject user',
+  'user.role_change': 'Change role',
+  'user.suspend': 'Suspend',
+  'user.reactivate': 'Reactivate',
+  'invite.create': 'Create invite',
+  'invite.revoke': 'Revoke invite',
+};
+
+const EVENT_VERBS: Record<AuditEventType, string> = {
+  'user.approve': 'approved',
+  'user.reject': 'rejected',
+  'user.role_change': 'changed role of',
+  'user.suspend': 'suspended',
+  'user.reactivate': 'reactivated',
+  'invite.create': 'created invite',
+  'invite.revoke': 'revoked invite',
+};
+
+const EVENT_STYLES: Record<AuditEventType, string> = {
+  'user.approve': 'bg-emerald-100 text-emerald-800',
+  'user.reject': 'bg-rose-100 text-rose-800',
+  'user.role_change': 'bg-violet-100 text-violet-800',
+  'user.suspend': 'bg-rose-100 text-rose-800',
+  'user.reactivate': 'bg-emerald-100 text-emerald-800',
+  'invite.create': 'bg-sky-100 text-sky-800',
+  'invite.revoke': 'bg-slate-200 text-slate-700',
+};
+
+function eventLabel(type: AuditEventType): string {
+  return EVENT_LABELS[type] ?? type;
+}
+
+function eventVerb(type: AuditEventType): string {
+  return EVENT_VERBS[type] ?? type;
+}
+
+function EventBadge({ type }: { type: AuditEventType }) {
+  return (
+    <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${EVENT_STYLES[type] ?? 'bg-slate-100 text-slate-700'}`}>
+      {eventLabel(type)}
     </span>
   );
 }
