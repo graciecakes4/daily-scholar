@@ -198,6 +198,10 @@ def bootstrap_topics_from_yaml() -> dict[str, int]:
                 id=topic_id,
                 created_via="yaml",
                 source_yaml_present=True,
+                # yaml-bootstrapped topics are system topics: no owner,
+                # public visibility so everyone can see + scope to them
+                owner_user_id=None,
+                visibility="public",
                 created_at=now,
                 updated_at=now,
                 **_extract_fields(by_id[topic_id], source=topic_id),
@@ -273,6 +277,9 @@ def import_topics_from_yaml() -> dict[str, int]:
                         id=topic_id,
                         created_via="yaml",
                         source_yaml_present=True,
+                        # yaml-bootstrapped topics are system + public
+                        owner_user_id=None,
+                        visibility="public",
                         created_at=now,
                         updated_at=now,
                         **fields,

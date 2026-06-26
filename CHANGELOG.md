@@ -1,5 +1,123 @@
 # Changelog
 
+## [v2.2] — 2026-06-26
+
+Multi-user release. Daily Scholar moves from a solo praxis tool to a real multi-tenant beta-ready app. Six feature PRs land in one release plus a code-review agent playbook commit: configurable push notifications (PR #37), the multi-user auth foundation Phases A–F bundled (PR #38 — in-app email+password signup, invite-gated admin approval, per-user topic ownership with private/public visibility, topic discovery + subscriptions, LLM-driven onboarding wizard, admin account management UI), append-only admin audit log (PR #39), self-service password + username change + admin password reset (PR #40), beta hardening (PR #41 — custom in-memory rate limiter, double-submit-cookie CSRF, password-strength UI hint), per-page guided product tours with versioned server-side state (PR #42), and `AGENTS.md` (commit f982e4a). Solo mode (`__local__`) preserved end-to-end. **Eight new migrations (0004–0011), two new Python deps (`passlib`, `bcrypt`), one new npm dep (`driver.js`), three new dev-only env knobs.**
+
+### Added
+
+#### Configurable scheduled push notifications (PR #37)
+
+- New `user_settings.notification_settings JSON DEFAULT '{}'` column via migration `0004_notification_settings`. Holds per-user, per-type config: `{enabled, frequency: daily|weekly, time, day_of_week, ...type_specific}`.
+- New `backend/services/notifications.py` with a `REGISTRY` of notification types (study_reminder, paper_drop, weekly_recap, quiz_review). Adding a new type is one entry — the registry drives both the API and the UI.
+- New `backend/api/notifications.py`: `GET /notifications/types` (schema-driven UI metadata), `GET /notifications/settings`, `PUT /notifications/settings`, `POST /notifications/test/{type}` (sends a real push through the same dispatch path the cron uses — green test == green cron).
+- APScheduler jobs are keyed `notif:<user>:<type>` so they're idempotent on settings change — toggle takes effect immediately, no restart.
+- New `frontend/app/settings/notifications/page.tsx` — auto-renders one card per registry type with on/off toggle + frequency + time-of-day picker + day-of-week (weekly only) + Preview + Test buttons.
+
+#### Multi-user auth foundation, Phases A–F (PR #38)
+
+- **Phase A — In-app email+password auth.** Migration `0005_users_and_sessions`. New `users` table (email + user_id + password_hash + status + role + onboarded + timestamps) and `sessions` table (opaque token + user_id FK + expires_at + revoked_at + UA/IP). New `backend/services/auth_security.py` (bcrypt via passlib) + `backend/services/auth_sessions.py` (cookie issue/revoke). New `backend/api/auth.py`: `POST /auth/signup`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`. `get_current_user_id` chain refactored: session cookie → CF Access header → `X-User-Id` → `__local__`. New `scripts/create_admin.py` for bootstrap. **Two-column identity split**: `users.email` = login credential, `users.user_id` = foreign-keyable handle string used by the existing 9 user-scoped tables — no refactor needed for any `user_id VARCHAR(100)` column.
+- **Phase B — Invite codes + admin approval queue.** Migration `0006_invite_codes`. `/auth/signup` now requires `invite_code` body field unless `OPEN_SIGNUP=1`. New `backend/api/admin_invites.py` (generate / list / revoke) + `backend/api/admin_approvals.py` (list pending / approve / reject). **New `require_admin` dependency replaces `require_cloudflare_access` on `/admin/*`** — closes the admin-role-gate deferred since v1.1.
+- **Phase C — Per-user topic ownership + visibility.** Migration `0007_topic_ownership`. `topics.owner_user_id INTEGER NULLABLE` (NULL = system/yaml topic) + `topics.visibility VARCHAR(20)` (existing rows backfill `'public'`; new rows default `'private'`). User-created topics get opaque `usr-xxxxxx` ids; yaml topics keep slugs. New `backend/services/topic_ownership.py`. Topic CRUD enforces ownership; not-visible collapses to 404 (no existence leak). `/topics/import-yaml` and `/topics/export-yaml` switched to admin-only.
+- **Phase D — Topic discovery + subscriptions.** Migration `0008_topic_subscriptions`. New `topic_subscriptions` table (user_id string + topic_id FK + UNIQUE). New `backend/services/topic_subscriptions.py`. New `/topics/discover` page + search endpoint. `POST /topics/{id}/subscribe`, `DELETE /topics/{id}/subscribe`. **Scope rule changed from "system OR own OR any public" to "system OR own OR (subscribed AND still public)"** — owner flipping public→private silently drops the topic from subscribers' scope without deleting the subscription row.
+- **Phase E — LLM-driven onboarding wizard.** Migration `0009_user_onboarded` (server_default `true` so existing users skip the wizard; new INSERTs default `false`). New `backend/services/onboarding.py` (LLM-drafted topic config with defensive normalization + three fallback paths). New `backend/api/onboarding.py`: `POST /onboarding/generate-topic`, `POST /onboarding/complete`. New `frontend/app/onboarding/page.tsx` (3-step wizard) + `frontend/components/OnboardingGuard.tsx` in layout.
+- **Phase F — Admin account management UI.** New `backend/api/admin_accounts.py`: list (status/role filters), `PUT /admin/accounts/{id}/role` (last-admin protection), `PUT /admin/accounts/{id}/status` (refuses self-suspend, revokes all sessions on suspend). Third tab "Users" on `/settings/admin` with Promote/Demote + Suspend/Reactivate.
+- Frontend identity primitives: `frontend/components/AuthShell.tsx` (extracted from `app/login/page.tsx` to satisfy Next.js page-export rule), `frontend/components/UserMenu.tsx`, `frontend/hooks/useAuth.ts` with `AUTH_CHANGED_EVENT` so layout-level components refetch `/auth/me` after login/logout. `<AuthBoundary>` redirects to `/login?next=...` on any 401. New pages: `/login`, `/signup`, `/account/pending`, `/account/suspended`, `/onboarding`, `/topics/discover`, `/settings/admin` (4 tabs).
+
+#### Append-only admin audit log (PR #39)
+
+- Migration `0010_admin_audit_log`. `admin_audit_log` table with denormalized actor + target identifiers so display survives if the underlying user / invite row is deleted (FK ON DELETE SET NULL).
+- New `backend/services/audit_log.py`: `log_event()` is best-effort — wrapped in try/except + warning log so a DB hiccup in the logger never blocks the admin action it's auditing.
+- Wired into all six admin mutations: approve, reject (target email captured), role_change (old→new in metadata), suspend, reactivate (status delta), invite create (max_uses + expiry in metadata), invite revoke (only when actually flipped — no audit noise on double-revoke).
+- New `GET /admin/audit` (`backend/api/admin_audit.py`) with filters (event_type / actor / target_id / since / until) + pagination. New 4th "Audit log" tab on `/settings/admin` with color-coded event badges + click-to-expand metadata JSON.
+
+#### Self-service password + username change + admin password reset (PR #40)
+
+- `PUT /auth/password` — self-service password change, requires current password, revokes every OTHER session for the user (kicks hijacked devices) but preserves the current session via cookie token comparison.
+- `PUT /auth/username` — self-service handle change, requires current password, cascades the new `user_id` across all 10 string-`user_id` tables in a single transaction.
+- `PUT /admin/accounts/{id}/password` — admin reset, skips current-password check, revokes ALL target sessions, logs `EventType.USER_PASSWORD_RESET_ADMIN` event with only `{new_password_length: N}` in metadata (never the password itself).
+- New shared `backend/services/account_management.py` with `USER_SCOPED_MODELS` as single source of truth for the cascade table list. `scripts/reassign_user_id.py` now imports it.
+- New `frontend/app/settings/account/page.tsx` — change password + change handle + replay all tutorials in one place. Admin Users tab gains a "Reset password" modal with copy-to-clipboard.
+
+#### Beta hardening — rate limit + CSRF + password strength (PR #41)
+
+- New `backend/middleware/rate_limit.py` — custom in-memory fixed-window middleware. Default policies: `POST /auth/login` 5/min/IP, `POST /auth/signup` 3/min/IP, `POST /onboarding/generate-topic` 5/hour/user. Env flag `RATE_LIMIT_DISABLED=1` skips.
+- New `backend/middleware/csrf.py` — double-submit-cookie pattern. Non-HttpOnly `ds_csrf` cookie set on every response that lacks one, `X-CSRF-Token` header required on POST/PUT/PATCH/DELETE. Env flag `CSRF_DISABLED=1` skips.
+- New `frontend/components/PasswordStrength.tsx` — length-tier + character-class scorer, no `zxcvbn` (would've added ~400KB). Drop-ins on signup, change-password, and admin reset forms.
+- Frontend `lib/api.ts` `fetchAPI` helper auto-attaches `X-CSRF-Token` from cookie on mutating requests, with one-shot retry on the warmup case (first request before the cookie is set).
+- Mount order in `backend/main.py` is intentional: `RateLimit → CSRF → routes` (rate-limit cheaply rejects bursts BEFORE the more expensive CSRF check).
+
+#### Per-page guided product tours with versioned server-side state (PR #42)
+
+- Migration `0011_tour_state` (filename `0011_tour_version_seen.py` — see Decisions) adds `users.tour_state JSON NOT NULL DEFAULT '{}'` holding `{tour_id: highest_version_seen}`. Adding a new tour later requires no migration — just a new key.
+- New `backend/api/auth.py` endpoints: `PUT /auth/tour-completed {tour_id, version}` uses `max(current, version)` per-key (stale-callback protection), `PUT /auth/tour-reset` clears every key. `KNOWN_TOUR_IDS = {"dashboard", "scope", "topics"}` server-side; unknown ids → 400.
+- New `frontend/hooks/useDriverTour.ts` — shared driver.js plumbing (self-gates on auth loaded + user logged in + onboarded + pathname match + version unseen).
+- New tour components: `frontend/components/tours/DashboardTour.tsx` (4 steps: Paper → Review → Quiz → Settings), `ScopeTour.tsx` (2 steps), `TopicsTour.tsx` (3 steps). Each is ~40 lines: STEPS + TOUR_ID + TOUR_VERSION + one `useDriverTour()` call.
+- "Show all tutorials again" button on `/settings/account` calls `/auth/tour-reset`.
+
+#### Code-review agent playbook (commit f982e4a)
+
+- New `AGENTS.md` at the repo root — review priorities, conventions to enforce, what to skip, voice guidance for user-facing copy. Doesn't affect runtime. (Currently scoped to a FriendZone Flask app per file content — adapt for Daily Scholar's FastAPI + Next.js stack in a follow-up.)
+
+### Changed
+
+- **`/admin/*` now requires admin role.** Before: any CF-Access-authenticated user. After: caller must have a User row with `role='admin'`. Solo `__local__` is still treated as admin. Action required: seed your admin via `scripts/create_admin.py` BEFORE pointing the new frontend at prod.
+- **Topic scope rule changed.** Before: every public topic from any user auto-appeared in everyone's scope. After: system + own + (subscribed AND still public). Existing beta users whose scope relied on auto-seeing other users' public topics need to subscribe via `/topics/discover` after this ships.
+- **`/auth/signup` requires `invite_code`** in production. Set `OPEN_SIGNUP=1` only in dev / CI.
+- `GET /admin/audit` joins back to `users` for the live display info but falls back to the denormalized actor_user_id / target_email if the join misses (deleted user).
+- `get_current_user_id` chain ordering documented in `backend/dependencies/auth.py` — session cookie wins over CF Access header so a logged-in real user in a CF-protected tab doesn't get masked as the CF-Access subject.
+- Frontend nav: `<UserMenu />` lives top-right, replacing the previous logged-in-user pill that was static.
+
+### Fixed
+
+- `start.sh` HEALTH_TIMEOUT_SECONDS already 300 (preserved from v2.0) — none of the eight new migrations approach the limit but kept the cushion.
+- `backend/config.py` Settings model picks up `extra="ignore"` so an unused `BACKEND_PORT=…` (or any future stray env var) in `.env` no longer fails app startup. Found during Phase A test runs.
+- `app/login/page.tsx` page-export rule violation — Next.js App Router rejects non-default exports on page files. Extracted `AuthShell` and `Field` to `frontend/components/AuthShell.tsx`.
+- `UserMenu` was stale after login because the layout-level component didn't refetch `/auth/me` after the form POST. Added `AUTH_CHANGED_EVENT` dispatched by login/logout; `useAuth` listens.
+- SQLAlchemy `Base.metadata` name collision on the audit log model: column is declared `audit_metadata = Column("metadata", JSON, ...)` — Python attr `audit_metadata`, SQL column + JSON payload key stay `metadata`.
+- JSON column mutation invisibility: setting `users.tour_state[tour_id] = N` in-place wasn't picked up by SQLAlchemy's change-tracker — reassigning the dict wholesale (`row.tour_state = {**row.tour_state, tour_id: N}`) makes it durable. Documented in `useDriverTour` callsite comment.
+- Alembic `CommandError: Could not determine revision id` on the 0011 stub file — empty revision module crashed alembic on chain walk. Turned the stub into a real no-op revision (`revision = "0011a_placeholder"`).
+
+### Decisions
+
+- **Two-column identity split (email + user_id).** Lets users choose a custom handle without touching the 9 pre-existing user-scoped tables that key on `user_id VARCHAR(100)`. Email is the credential; user_id is the foreign-keyable identifier the rest of the app already uses.
+- **Versioned per-tour state via JSON map** (not per-tour boolean columns). Adding a new tour later = one new JSON key, no migration. Bumping a tour's version re-fires it for everyone whose stored value is lower; bump only when STEPS materially changes.
+- **Server-side tour state, no `localStorage`.** Single source of truth, cross-device sync, survives browser-data clears.
+- **Last-admin protection on role and status changes** — refuses to demote or suspend the only admin. Avoids accidental admin lockout.
+- **Custom in-memory rate-limit middleware, not `slowapi`.** Started with slowapi per the original plan but its decorator broke FastAPI's pydantic body-parameter introspection (every POST with a body model 422'd with `loc=["query","body"]`). Rewrote as middleware; dropped the dep entirely.
+- **`driver.js`, not `react-joyride`.** react-joyride 2.x imports React-18-only APIs (`unmountComponentAtNode`, `unstable_renderSubtreeIntoContainer`) that React 19 (Next 16) dropped — webpack build failed, no stable react-joyride 3.x. driver.js is ~5KB vs ~80KB, imperative API, React-version-agnostic.
+- **Topic deletion does NOT cascade to subscribers' content.** Subscription row stays; scope filter just stops returning the topic. Allows owner-flip-private as a soft removal.
+- **`AGENTS.md` left FriendZone-scoped intentionally** — the playbook structure is what matters; Daily Scholar conventions get a separate file in a follow-up so the FriendZone version stays a working reference.
+
+### Operations
+
+- **Migrations applied automatically on startup** via `create_tables()` → `alembic upgrade head`. Order: 0004 → 0005 → 0006 → 0007 → 0008 → 0009 → 0010 → 0011 (then no-op 0011a_placeholder).
+- **Bootstrap admin** after first deploy: `python scripts/create_admin.py --email <you> --password <pw>`. From inside the backend container if running compose: `docker compose exec backend python scripts/create_admin.py ...`.
+- **New env vars (production should NOT set these):**
+  - `OPEN_SIGNUP=1` — skips invite-code requirement; dev / CI only.
+  - `RATE_LIMIT_DISABLED=1` — bypasses rate limiter; dev / CI only.
+  - `CSRF_DISABLED=1` — bypasses CSRF check; dev / CI only.
+- **`SESSION_COOKIE_SECURE`** auto-derives from `debug` (Secure in prod, plain in dev). Override only if you know why.
+- **New pip deps**: `passlib[bcrypt]>=1.7.4,<2`, `bcrypt>=4.0,<5`.
+- **New npm dep**: `driver.js@^1.6.0`. (slowapi added and removed in the same release; net-new is just driver.js.)
+- **No new GitHub Actions secrets.** Railway deploy matrix unchanged from v2.0.
+- **Backfill expectations:**
+  - Existing topics → `owner_user_id NULL` + `visibility 'public'` so Grace's praxis topics stay visible to every account.
+  - Existing users → `onboarded true` (admins don't get bounced through the wizard) but `tour_state '{}'` (they'll see each tour once on next visit to its page; suppress with `UPDATE users SET tour_state = '{"dashboard":1,"scope":1,"topics":1}'` post-migration if undesirable).
+- **Local dev**: host postgres on :5432 collides with the docker postgres service — `docker-compose.yml` postgres port changed to `5433:5432` so the host port is free.
+
+### Followups
+
+- Email verification + email-driven password reset (currently locked-out users have to ask an admin out-of-band). Needs email infra — separate project.
+- `must_change_password` flag set by admin reset so the temp password forces a change on next login.
+- Per-session "Active devices" UI so users can revoke individual sessions instead of all-other.
+- DiscoverTour on `/topics/discover` introducing the subscribe model (one more `useDriverTour` component + one KNOWN_TOUR_IDS entry).
+- Redis-backed rate limiting once we scale beyond one backend process.
+- CSRF path-exempt list when webhook receivers land.
+- Tour analytics ("which step did users drop off?") if usage data matters.
+- Adapt `AGENTS.md` for Daily Scholar's stack (current content is Flask social-network).
+- iPhone hardware verification of v2.1 mobile nav still pending.
+
 ## [v2.1] — 2026-06-25
 
 Mobile-navigation release. One PR (#35) replaces the overflowing six-item horizontal top nav with a mobile-only bottom tab bar (Home / Papers / Topics / Quiz / More), makes the dashboard rows (stats band, section tabs, paper / topic-review / quiz action bars) responsive so they stop laying out wider than the viewport, and adds an `html, body { overflow-x: hidden }` safety net so any future stray-width child can't reintroduce horizontal pan. Frontend-only release. Desktop layout (≥ `md`) byte-equivalent to v2.0. 5 files changed, +262 / −45. No migrations; no new env vars; no new dependencies.

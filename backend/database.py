@@ -14,6 +14,7 @@ from typing import Optional
 from sqlalchemy import (
     Column, Integer, String, Text, Float, Boolean,
     DateTime, Date, ForeignKey, JSON, create_engine, Index, UniqueConstraint,
+    and_ as sa_and,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, Session
@@ -356,11 +357,23 @@ class Topic(Base):
     # (so UI-only topics aren't blown away when YAML files come and go)
     source_yaml_present = Column(Boolean, default=True, nullable=False)
 
+    # ownership (Phase C of auth foundation):
+    #   - NULL          → system topic; visible to everyone; only admins edit
+    #   - users.id      → user-owned topic; visible per `visibility` rules
+    # Existing yaml-bootstrapped topics get owner_user_id=NULL on backfill.
+    owner_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    # "private" → only the owner (and admins) see this topic
+    # "public"  → searchable + subscribable by other users (Phase D)
+    # System topics default to "public" so the legacy global behavior is preserved.
+    visibility = Column(String(20), default="private", nullable=False, index=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     __table_args__ = (
         Index('idx_topic_active_stream', 'active', 'stream'),
+        Index('idx_topic_owner_visibility', 'owner_user_id', 'visibility'),
     )
 
 
@@ -388,6 +401,22 @@ class UserSettings(Base):
 
     scope_mode = Column(String(20), default="all", nullable=False)
     scope_topic_ids = Column(JSON, nullable=False, default=list)
+
+    # Notification preferences. Schema lives in backend/services/notifications.py
+    # (DEFAULT_NOTIFICATION_SETTINGS). Stored as JSON so adding a new notification
+    # type later is a registry change only — no migration needed.
+    #
+    # Shape:
+    #   {
+    #     "timezone": "America/New_York",     # IANA tz used for every cron trigger
+    #     "types": {
+    #         "study_reminder": {"enabled": bool, "cron": "M H * * DOW"},
+    #         "paper_drop":     {"enabled": bool, "cron": "..."},
+    #         "weekly_status":  {"enabled": bool, "cron": "..."},
+    #         "quiz_nudge":     {"enabled": bool, "cron": "..."}
+    #     }
+    #   }
+    notification_settings = Column(JSON, nullable=False, default=dict)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -420,6 +449,220 @@ class PushSubscription(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_used_at = Column(DateTime, nullable=True)
+
+
+# =============================================================================
+# AUTH — Users and sessions (Phase A in-app auth foundation)
+# =============================================================================
+
+
+# Status / role enums kept as plain string columns so adding new values
+# later is a no-op migration. Validation lives in the API layer.
+USER_STATUS_PENDING = "pending"
+USER_STATUS_ACTIVE = "active"
+USER_STATUS_SUSPENDED = "suspended"
+VALID_USER_STATUSES = {USER_STATUS_PENDING, USER_STATUS_ACTIVE, USER_STATUS_SUSPENDED}
+
+USER_ROLE_USER = "user"
+USER_ROLE_ADMIN = "admin"
+VALID_USER_ROLES = {USER_ROLE_USER, USER_ROLE_ADMIN}
+
+
+class User(Base):
+    """
+    A real human (or service) account.
+
+    Two string identifiers, both unique:
+      - `email`  : login credential. Always lowercased on write.
+      - `user_id`: foreign-keyable identity string used in all the existing
+                   user-scoped tables (seen_papers.user_id, etc.). Defaults
+                   to email at signup; users can pick a custom handle as
+                   long as it matches the format rules in
+                   `auth_security.validate_user_id`. Locked at signup —
+                   changing it later requires `scripts/reassign_user_id.py`
+                   to migrate row ownership across the 9 user-scoped tables.
+
+    The split lets users pick a privacy-preserving handle without us
+    refactoring every existing `user_id VARCHAR(100)` column.
+    """
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(200), unique=True, nullable=False, index=True)
+    user_id = Column(String(100), unique=True, nullable=False, index=True)
+
+    password_hash = Column(String(200), nullable=False)
+
+    # "pending" → signed up but not approved (Phase B admin gate)
+    # "active"  → can log in and use the app
+    # "suspended" → can't log in; data preserved
+    status = Column(String(20), nullable=False, default=USER_STATUS_PENDING)
+    role = Column(String(20), nullable=False, default=USER_ROLE_USER)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    approved_at = Column(DateTime, nullable=True)
+    # self-referential FK so we know which admin approved which user.
+    # Nullable because the bootstrap admin has nobody to approve them.
+    approved_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    last_login_at = Column(DateTime, nullable=True)
+
+    # Phase E: false until the user has completed (or skipped) the
+    # onboarding wizard. Layout redirects to /onboarding when false.
+    onboarded = Column(Boolean, default=False, nullable=False)
+
+    # Per-tour version state. JSON map of {tour_id: highest_version_seen},
+    # e.g. {"dashboard": 1, "scope": 1, "topics": 1}. Frontend has a
+    # hardcoded TOUR_VERSION per tour; a tour fires when its stored
+    # value is below the current version. Missing keys are treated as 0.
+    # Server-side (not localStorage) for cross-device sync; JSON (not
+    # one column per tour) so adding a new tour is just a new key.
+    tour_state = Column(JSON, default=dict, nullable=False)
+
+
+class InviteCode(Base):
+    """
+    Single- or multi-use signup invitation issued by an admin.
+
+    The signup endpoint validates an incoming `invite_code` against this
+    table: it must exist, not be revoked, not be expired, and `uses` must
+    be below `max_uses`. On a successful signup we atomically increment
+    `uses` and (when `uses` hits `max_uses`) stamp `redeemed_at` so the
+    admin UI can render "used" vs "available" without recomputing from
+    `uses`.
+
+    `max_uses=1` codes (the default) are effectively single-use; setting
+    `max_uses=N` lets an admin hand out one code to a small cohort.
+    """
+    __tablename__ = "invite_codes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # short urlsafe slug from secrets.token_urlsafe(9) — 12 chars,
+    # ~70 bits of entropy; readable / phone-shareable
+    code = Column(String(32), unique=True, nullable=False, index=True)
+
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # null = never expires
+    expires_at = Column(DateTime, nullable=True)
+
+    max_uses = Column(Integer, default=1, nullable=False)
+    uses = Column(Integer, default=0, nullable=False)
+
+    # set when uses reaches max_uses (lets the UI render "used by" without
+    # recomputing). Stamped to the most-recent redemption time.
+    redeemed_at = Column(DateTime, nullable=True)
+    # last user to redeem the code; useful for single-use code auditing
+    last_redeemed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # admin-set kill switch — separate from expiry so we can tell "rotated
+    # out" from "naturally expired" in audit views
+    revoked_at = Column(DateTime, nullable=True)
+
+
+class AdminAuditEvent(Base):
+    """
+    Append-only log of admin mutations: who approved/rejected which user,
+    who issued/revoked which invite code, who changed someone's role or
+    status. Read-only after insert; nothing in the app deletes rows.
+
+    Denormalized actor + target identifiers preserve display info even if
+    the underlying user / invite row is later deleted. The FK columns
+    `actor_user_id` (nullable) + `target_id` keep a best-effort link to
+    live rows for querying; the `_string` / `_label` siblings keep the
+    history readable forever.
+    """
+    __tablename__ = "admin_audit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # "user.approve" | "user.reject" | "user.role_change"
+    # "user.suspend" | "user.reactivate"
+    # "invite.create" | "invite.revoke"
+    event_type = Column(String(50), nullable=False, index=True)
+
+    # actor — the admin who did the thing. NULL = solo `__local__` sentinel.
+    # FK is nullable + ON DELETE SET NULL (Postgres); the denormalized
+    # _string keeps the display name even after the row is gone.
+    actor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    actor_user_id_string = Column(String(100), nullable=False)
+
+    # target — the user / invite that was acted on
+    # "user" | "invite"
+    target_type = Column(String(20), nullable=False)
+    # the target's stable id (user.user_id string for users; invite_codes.code for invites)
+    target_id = Column(String(200), nullable=True, index=True)
+    # human-readable handle (email for users; code itself for invites) preserved
+    # even if the target row gets deleted later
+    target_label = Column(String(200), nullable=True)
+
+    # flexible bag for before/after values and event-specific context
+    # (e.g., {"old_role": "user", "new_role": "admin"})
+    audit_metadata = Column("metadata", JSON, nullable=False, default=dict)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    __table_args__ = (
+        Index("idx_admin_audit_created", "created_at"),
+        Index("idx_admin_audit_event_created", "event_type", "created_at"),
+    )
+
+
+class TopicSubscription(Base):
+    """
+    A user's subscription to another user's public topic (Phase D).
+
+    Subscriptions are "live" — when the owner edits the topic (keywords,
+    name, etc.) the subscriber's paper discovery picks up the changes on
+    the next query. The subscription row itself is just a (user, topic)
+    pair; the FK reference does the heavy lifting.
+
+    If the owner flips the topic from public → private, subscriptions
+    persist but the topic disappears from subscribers' scope (the
+    visibility filter rejects it). If they flip back to public, the
+    subscription comes back to life. Hard-deleting the topic cleans up
+    subscriptions explicitly (see topic_subscriptions.cleanup_subscriptions_for_topic).
+    """
+    __tablename__ = "topic_subscriptions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # subscriber identity — string user_id (email or custom handle), matches
+    # the pattern used in the 9 other user-scoped tables
+    user_id = Column(String(100), nullable=False, index=True)
+    # which topic they subscribed to
+    topic_id = Column(String(100), ForeignKey("topics.id"), nullable=False, index=True)
+    subscribed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "topic_id", name="uq_topic_subscriptions_user_topic"),
+        Index("idx_topic_subscriptions_user", "user_id"),
+    )
+
+
+class Session(Base):
+    """
+    Server-side opaque session token. The cookie carries `token`; we look
+    up the row, verify it isn't expired/revoked, and resolve to a user.
+
+    Server-side (not JWT) so we can revoke instantly on logout / suspend
+    without a denylist. The per-request DB lookup is cheap (indexed unique
+    key) and worth the simplicity.
+    """
+    __tablename__ = "sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # urlsafe random; 64 chars = ~48 bytes of entropy. Indexed unique for
+    # the per-request lookup.
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+
+    # captured at login for the session-list UI in a follow-up phase
+    user_agent = Column(String(500), nullable=True)
+    ip = Column(String(64), nullable=True)
 
 
 # =============================================================================
@@ -767,17 +1010,72 @@ def get_or_create_user_settings(user_id: str = DEFAULT_USER_ID) -> UserSettings:
         session.close()
 
 
-def get_active_topics(session: Optional[Session] = None) -> list[Topic]:
-    """All active topics, ordered by descending weight then name."""
+def _apply_visibility_filter(query, user_id: str):
+    """
+    Limit a Topic query to rows the caller can see in *scope* — i.e.,
+    topics that should drive paper discovery, daily content, and quiz.
+    Phase D changed the third bucket from "any public" to "public AND
+    subscribed", so users explicitly opt in to following other people's
+    topics via the Discover page.
+
+    Rules (mirrors services/topic_ownership.can_view_topic for the
+    scope-vs-browse split):
+      * solo `__local__` (admin sentinel) → no filter applied
+      * admin user → no filter applied
+      * regular user → system (NULL owner) OR own OR (public AND subscribed)
+
+    Imports are lazy to dodge the circular auth → database → auth and
+    topic_subscriptions → database → topic_subscriptions cycles at
+    module load.
+    """
+    if user_id == DEFAULT_USER_ID:
+        return query
+    # local imports to dodge circular load order
+    from sqlalchemy import or_
+    from .auth import lookup_user_by_user_id
+    from .services.topic_subscriptions import list_subscribed_topic_ids
+
+    user = lookup_user_by_user_id(user_id)
+    if user is not None and user.role == "admin":
+        return query
+
+    clauses = [Topic.owner_user_id.is_(None)]
+    if user is not None:
+        clauses.append(Topic.owner_user_id == user.id)
+
+    # subscribed-and-still-public topics. If the owner flipped their
+    # topic private after the subscription, we keep the subscription row
+    # but filter it out here — owner control wins over follower history.
+    sub_ids = list_subscribed_topic_ids(user_id)
+    if sub_ids:
+        clauses.append(
+            sa_and(Topic.id.in_(sub_ids), Topic.visibility == "public")
+        )
+
+    return query.filter(or_(*clauses))
+
+
+def get_active_topics(
+    session: Optional[Session] = None,
+    *,
+    user_id: str = DEFAULT_USER_ID,
+) -> list[Topic]:
+    """
+    All active topics the caller is allowed to see, ordered by descending
+    weight then name.
+
+    The `user_id` parameter applies the same ownership filter that the
+    /topics endpoints use, so paper discovery / review / quiz only see
+    topics this user actually has rights to.
+    """
     own_session = session is None
     if own_session:
         session = get_session()
     try:
+        q = session.query(Topic).filter(Topic.active.is_(True))
+        q = _apply_visibility_filter(q, user_id)
         return (
-            session.query(Topic)
-            .filter(Topic.active.is_(True))
-            .order_by(Topic.weight.desc(), Topic.name.asc())
-            .all()
+            q.order_by(Topic.weight.desc(), Topic.name.asc()).all()
         )
     finally:
         if own_session:
@@ -793,36 +1091,31 @@ def get_topics_for_scope(user_id: str = DEFAULT_USER_ID) -> list[Topic]:
       - 'silo'  : the single topic id in scope_topic_ids[0], if active
       - 'multi' : every topic in scope_topic_ids whose row is active
       - 'all'   : every active topic (default)
+    All branches also apply the Phase C ownership filter — a user can't
+    scope to a topic they can't see.
     Falls back to 'all' if a silo/multi scope resolves to zero topics.
     """
     settings = get_or_create_user_settings(user_id)
     session = get_session()
     try:
         if settings.scope_mode == "silo" and settings.scope_topic_ids:
-            topics = (
-                session.query(Topic)
-                .filter(
-                    Topic.id == settings.scope_topic_ids[0],
-                    Topic.active.is_(True),
-                )
-                .all()
+            q = session.query(Topic).filter(
+                Topic.id == settings.scope_topic_ids[0],
+                Topic.active.is_(True),
             )
+            topics = _apply_visibility_filter(q, user_id).all()
         elif settings.scope_mode == "multi" and settings.scope_topic_ids:
-            topics = (
-                session.query(Topic)
-                .filter(
-                    Topic.id.in_(settings.scope_topic_ids),
-                    Topic.active.is_(True),
-                )
-                .order_by(Topic.weight.desc(), Topic.name.asc())
-                .all()
-            )
+            q = session.query(Topic).filter(
+                Topic.id.in_(settings.scope_topic_ids),
+                Topic.active.is_(True),
+            ).order_by(Topic.weight.desc(), Topic.name.asc())
+            topics = _apply_visibility_filter(q, user_id).all()
         else:
-            topics = get_active_topics(session=session)
+            topics = get_active_topics(session=session, user_id=user_id)
 
         # fallback: never return an empty list — discovery/review needs *something*
         if not topics:
-            topics = get_active_topics(session=session)
+            topics = get_active_topics(session=session, user_id=user_id)
         return topics
     finally:
         session.close()

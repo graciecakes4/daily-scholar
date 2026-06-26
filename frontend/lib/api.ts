@@ -32,12 +32,25 @@ export class AuthError extends Error {
 // because Next renders this file on the server first.
 const AUTH_EVENT = 'daily-scholar:auth-error';
 
-function emitAuthError(detail: { status: number; message: string }) {
+function emitAuthError(detail: { status: number; message: string; redirect?: string }) {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(AUTH_EVENT, { detail }));
 }
 
 export const AUTH_ERROR_EVENT = AUTH_EVENT;
+
+// fired after a successful login or logout so any useAuth() instance —
+// even one mounted in the persistent layout above the page tree — can
+// re-fetch /auth/me and update its UI. Without this, the layout-level
+// UserMenu shows its boot-time "logged out" state forever.
+const AUTH_CHANGED = 'daily-scholar:auth-changed';
+
+function emitAuthChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(AUTH_CHANGED));
+}
+
+export const AUTH_CHANGED_EVENT = AUTH_CHANGED;
 
 // =============================================================================
 // TYPES
@@ -112,6 +125,14 @@ export interface Topic {
   prerequisites: string[];
   created_via: string;
   source_yaml_present: boolean;
+  // Phase C ownership fields:
+  //   owner_user_id === null  → system topic (visible to all, admin-only edit)
+  //   owner_user_id === number → owned by users.id
+  owner_user_id: number | null;
+  visibility: 'private' | 'public';
+  // Phase D: true when the caller has subscribed to this topic (only
+  // populated on list endpoints; single-row GET returns false).
+  is_subscribed: boolean;
   created_at: string;
   updated_at: string;
 
@@ -123,7 +144,8 @@ export interface Topic {
 }
 
 export interface TopicCreate {
-  id: string;
+  /** Admin-only override; server auto-generates for regular users. */
+  id?: string;
   name: string;
   stream?: string;
   active?: boolean;
@@ -137,6 +159,10 @@ export interface TopicCreate {
   resources?: string[];
   quiz_difficulty?: string;
   prerequisites?: string[];
+  /** Admin-only override; defaults to caller's id (or null for admins). */
+  owner_user_id?: number | null;
+  /** private (default for user topics) | public (default for system). */
+  visibility?: 'private' | 'public';
 }
 
 export type TopicUpdate = Partial<Omit<TopicCreate, 'id'>>;
@@ -271,7 +297,40 @@ export interface TopicStatusSummary {
 // API FUNCTIONS
 // =============================================================================
 
-async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
+// Methods that need a CSRF token (mutating; mirrors backend CSRFMiddleware)
+const CSRF_PROTECTED_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const CSRF_COOKIE_NAME = 'ds_csrf';
+const CSRF_HEADER_NAME = 'X-CSRF-Token';
+
+/** Read a cookie value by name from document.cookie. SSR-safe (returns null). */
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const prefix = `${name}=`;
+  for (const part of document.cookie.split(';')) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(prefix)) {
+      return decodeURIComponent(trimmed.slice(prefix.length));
+    }
+  }
+  return null;
+}
+
+async function fetchAPI<T>(endpoint: string, options?: RequestInit, _retried = false): Promise<T> {
+  const method = (options?.method || 'GET').toUpperCase();
+
+  // double-submit CSRF: read the ds_csrf cookie, send it back in
+  // X-CSRF-Token on every mutating request. Skip on GETs (server
+  // doesn't check them) and on the first request before the cookie
+  // has been set — the backend's middleware will set it on response,
+  // so a single retry handles that warmup case below.
+  const extraHeaders: Record<string, string> = {};
+  if (CSRF_PROTECTED_METHODS.has(method)) {
+    const csrf = readCookie(CSRF_COOKIE_NAME);
+    if (csrf) {
+      extraHeaders[CSRF_HEADER_NAME] = csrf;
+    }
+  }
+
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     // include cookies cross-origin so Cloudflare Access (gating the API
@@ -281,19 +340,48 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...extraHeaders,
       ...options?.headers,
     },
   });
 
+  // CSRF cookie warmup: on the very first request from a fresh tab the
+  // ds_csrf cookie may not be set yet; we 403'd, the response just set
+  // it, retry once. After that, a 403 with CSRF detail is a real failure.
+  if (
+    response.status === 403
+    && !_retried
+    && CSRF_PROTECTED_METHODS.has(method)
+    && readCookie(CSRF_COOKIE_NAME)
+  ) {
+    const clone = response.clone();
+    try {
+      const data = await clone.json();
+      if (typeof data?.detail === 'string' && /csrf/i.test(data.detail)) {
+        return fetchAPI<T>(endpoint, options, true);
+      }
+    } catch { /* not JSON — fall through to error handling below */ }
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
     // 401 gets its own subclass + a global event so the AuthBoundary can
-    // surface a "please re-authenticate" banner without each call site
-    // having to special-case it.
+    // redirect to /login from anywhere in the tree.
     if (response.status === 401) {
       const message = error.detail || 'Authentication required';
       emitAuthError({ status: 401, message });
       throw new AuthError(message);
+    }
+    // 403 with one of the auth-status reasons routes to the matching
+    // placeholder page. Same event channel, different status, so the
+    // AuthBoundary can branch on it.
+    if (response.status === 403) {
+      const detail = String(error.detail || '');
+      if (/pending approval/i.test(detail)) {
+        emitAuthError({ status: 403, message: detail, redirect: '/account/pending' });
+      } else if (/suspended/i.test(detail)) {
+        emitAuthError({ status: 403, message: detail, redirect: '/account/suspended' });
+      }
     }
     throw new Error(error.detail || `API error: ${response.status}`);
   }
@@ -677,6 +765,58 @@ export async function exportTopicsToYaml(): Promise<{ exported: number; director
 }
 
 // -----------------------------------------------------------------------------
+// Topic discovery + subscriptions (Phase D)
+// -----------------------------------------------------------------------------
+
+export async function searchTopics(q: string, limit = 50): Promise<Topic[]> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  return fetchAPI(`/topics/search?${params.toString()}`);
+}
+
+export async function subscribeTopic(
+  topicId: string,
+): Promise<{ ok: boolean; topic_id: string; subscribed_at: string }> {
+  return fetchAPI(`/topics/${encodeURIComponent(topicId)}/subscribe`, { method: 'POST' });
+}
+
+export async function unsubscribeTopic(
+  topicId: string,
+): Promise<{ ok: boolean; removed: boolean }> {
+  return fetchAPI(`/topics/${encodeURIComponent(topicId)}/subscribe`, { method: 'DELETE' });
+}
+
+// -----------------------------------------------------------------------------
+// Onboarding wizard (Phase E)
+// -----------------------------------------------------------------------------
+
+export interface TopicDraft {
+  name: string;
+  keywords: string[];
+  arxiv_categories: string[];
+  key_concepts: string[];
+}
+
+export async function generateTopicDraft(interests: string): Promise<TopicDraft> {
+  return fetchAPI('/onboarding/generate-topic', {
+    method: 'POST',
+    body: JSON.stringify({ interests }),
+  });
+}
+
+export async function completeOnboarding(
+  draft: TopicDraft & { visibility?: 'private' | 'public' },
+): Promise<{ ok: boolean; topic_id: string; name: string; onboarded: boolean }> {
+  return fetchAPI('/onboarding/complete', {
+    method: 'POST',
+    body: JSON.stringify(draft),
+  });
+}
+
+export async function skipOnboarding(): Promise<{ ok: boolean; onboarded: boolean }> {
+  return fetchAPI('/onboarding/skip', { method: 'POST' });
+}
+
+// -----------------------------------------------------------------------------
 // Scope (silo / multi / all topic selector)
 // -----------------------------------------------------------------------------
 
@@ -686,4 +826,356 @@ export async function getScope(): Promise<Scope> {
 
 export async function updateScope(payload: { scope_mode: ScopeMode; scope_topic_ids: string[] }): Promise<Scope> {
   return fetchAPI('/user/scope', { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+// -----------------------------------------------------------------------------
+// Scheduled notifications (cron-scheduled push)
+// -----------------------------------------------------------------------------
+
+export interface NotificationTypeMeta {
+  key: string;
+  label: string;
+  description: string;
+  default_cron: string;
+}
+
+export interface NotificationTypeEntry {
+  enabled: boolean;
+  cron: string;
+}
+
+export interface NotificationSettings {
+  timezone: string;
+  types: Record<string, NotificationTypeEntry>;
+}
+
+export interface NotificationPayloadPreview {
+  type: string;
+  payload: Record<string, unknown> | null;
+  would_send: boolean;
+}
+
+export interface NotificationDispatchResult {
+  ok: boolean;
+  type?: string;
+  payload?: Record<string, unknown>;
+  result?: { sent?: number; removed?: number; failed?: number };
+  skipped?: string;
+  error?: string;
+}
+
+export interface NotificationJob {
+  type: string;
+  id: string;
+  trigger: string;
+  next_run_time: string | null;
+}
+
+export async function listNotificationTypes(): Promise<{ types: NotificationTypeMeta[] }> {
+  return fetchAPI('/notifications/types');
+}
+
+export async function getNotificationSettings(): Promise<NotificationSettings> {
+  return fetchAPI('/notifications/settings');
+}
+
+export async function updateNotificationSettings(
+  settings: NotificationSettings,
+): Promise<{ settings: NotificationSettings; scheduler: Record<string, number> }> {
+  return fetchAPI('/notifications/settings', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  });
+}
+
+export async function previewNotification(typeKey: string): Promise<NotificationPayloadPreview> {
+  return fetchAPI(`/notifications/preview/${encodeURIComponent(typeKey)}`);
+}
+
+export async function testNotification(typeKey: string): Promise<NotificationDispatchResult> {
+  return fetchAPI(`/notifications/test/${encodeURIComponent(typeKey)}`, { method: 'POST' });
+}
+
+export async function listNotificationJobs(): Promise<{
+  scheduler_running: boolean;
+  jobs: NotificationJob[];
+}> {
+  return fetchAPI('/notifications/jobs');
+}
+
+// -----------------------------------------------------------------------------
+// In-app auth (Phase A)
+// -----------------------------------------------------------------------------
+
+export type UserStatus = 'pending' | 'active' | 'suspended';
+export type UserRole = 'user' | 'admin';
+
+export interface AuthUser {
+  email: string;
+  user_id: string;
+  role: UserRole;
+  status: UserStatus;
+  /** Phase E: false until the wizard runs (or is skipped). */
+  onboarded: boolean;
+  /**
+   * Per-tour version state. Map of tour_id → highest TOUR_VERSION seen.
+   * Backend backfills all known tour ids to 0 so consumers don't have
+   * to optional-chain (`user.tour_state.dashboard` is always defined).
+   */
+  tour_state: Record<string, number>;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+export interface SignupBody {
+  email: string;
+  password: string;
+  /** Optional custom handle. Omit to default to the email. */
+  user_id?: string;
+  /** Required unless the server is running with OPEN_SIGNUP=1 (local dev). */
+  invite_code?: string;
+}
+
+export interface LoginBody {
+  email: string;
+  password: string;
+}
+
+export async function signup(body: SignupBody): Promise<{ profile: AuthUser; message: string }> {
+  return fetchAPI('/auth/signup', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function login(body: LoginBody): Promise<{ profile: AuthUser; pending: boolean }> {
+  const result = await fetchAPI<{ profile: AuthUser; pending: boolean }>(
+    '/auth/login',
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+  // notify other useAuth() instances (e.g., the layout's UserMenu) so they
+  // re-fetch /auth/me and reflect the new logged-in state
+  emitAuthChanged();
+  return result;
+}
+
+export async function logout(): Promise<{ ok: boolean; revoked: boolean }> {
+  const result = await fetchAPI<{ ok: boolean; revoked: boolean }>(
+    '/auth/logout',
+    { method: 'POST' },
+  );
+  emitAuthChanged();
+  return result;
+}
+
+export async function getMe(): Promise<{ profile: AuthUser }> {
+  return fetchAPI('/auth/me');
+}
+
+// -----------------------------------------------------------------------------
+// Self-service account management (Phase F+2)
+// -----------------------------------------------------------------------------
+
+export async function changeMyPassword(
+  current_password: string,
+  new_password: string,
+): Promise<{ ok: boolean; other_sessions_revoked: number }> {
+  return fetchAPI('/auth/password', {
+    method: 'PUT',
+    body: JSON.stringify({ current_password, new_password }),
+  });
+}
+
+export async function changeMyUsername(
+  current_password: string,
+  new_user_id: string,
+): Promise<{ ok: boolean; changed: boolean; new_user_id: string; rows_moved?: Record<string, number> }> {
+  return fetchAPI('/auth/username', {
+    method: 'PUT',
+    body: JSON.stringify({ current_password, new_user_id }),
+  });
+}
+
+export async function markTourCompleted(
+  tour_id: string,
+  version: number,
+): Promise<{ ok: boolean; tour_id: string; version: number; updated: boolean }> {
+  return fetchAPI('/auth/tour-completed', {
+    method: 'PUT',
+    body: JSON.stringify({ tour_id, version }),
+  });
+}
+
+export async function resetTour(): Promise<{ ok: boolean; tour_state: Record<string, number> }> {
+  return fetchAPI('/auth/tour-reset', { method: 'PUT' });
+}
+
+// -----------------------------------------------------------------------------
+// Admin: invite codes (Phase B)
+// -----------------------------------------------------------------------------
+
+export type InviteState = 'available' | 'exhausted' | 'expired' | 'revoked';
+
+export interface InviteSummary {
+  id: number;
+  code: string;
+  created_at: string;
+  expires_at: string | null;
+  max_uses: number;
+  uses: number;
+  redeemed_at: string | null;
+  revoked_at: string | null;
+  state: InviteState;
+}
+
+export interface CreateInviteBody {
+  /** 1-365 days from now; omit for a non-expiring code. */
+  expires_in_days?: number;
+  /** Default 1 (single-use). */
+  max_uses?: number;
+}
+
+export async function listInvites(includeRevoked = true): Promise<{ invites: InviteSummary[] }> {
+  const qs = includeRevoked ? '' : '?include_revoked=false';
+  return fetchAPI(`/admin/invites${qs}`);
+}
+
+export async function createInvite(body: CreateInviteBody): Promise<{ invite: InviteSummary }> {
+  return fetchAPI('/admin/invites', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function revokeInvite(id: number): Promise<{ ok: boolean; revoked: boolean }> {
+  return fetchAPI(`/admin/invites/${id}`, { method: 'DELETE' });
+}
+
+// -----------------------------------------------------------------------------
+// Admin: approval queue (Phase B)
+// -----------------------------------------------------------------------------
+
+export interface PendingUserSummary {
+  id: number;
+  email: string;
+  user_id: string;
+  created_at: string;
+  waiting_seconds: number;
+}
+
+export async function listPendingApprovals(): Promise<{ pending: PendingUserSummary[]; count: number }> {
+  return fetchAPI('/admin/approvals');
+}
+
+export async function approveUser(pendingUserId: number): Promise<{
+  ok: boolean; user_id?: string; email?: string; approved_at?: string; message?: string;
+}> {
+  return fetchAPI(`/admin/approvals/${pendingUserId}/approve`, { method: 'POST' });
+}
+
+export async function rejectUser(pendingUserId: number): Promise<{ ok: boolean; deleted_user_id?: string }> {
+  return fetchAPI(`/admin/approvals/${pendingUserId}/reject`, { method: 'POST' });
+}
+
+// -----------------------------------------------------------------------------
+// Admin: accounts management (Phase F)
+// -----------------------------------------------------------------------------
+
+export interface AccountSummary {
+  id: number;
+  email: string;
+  user_id: string;
+  role: UserRole;
+  status: UserStatus;
+  onboarded: boolean;
+  created_at: string;
+  approved_at: string | null;
+  approved_by_user_id: number | null;
+  last_login_at: string | null;
+}
+
+export async function listAccounts(filters?: {
+  status?: UserStatus;
+  role?: UserRole;
+}): Promise<AccountSummary[]> {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set('status', filters.status);
+  if (filters?.role) params.set('role', filters.role);
+  const qs = params.toString();
+  return fetchAPI(`/admin/accounts${qs ? `?${qs}` : ''}`);
+}
+
+export async function changeAccountRole(userId: string, role: UserRole): Promise<AccountSummary> {
+  return fetchAPI(`/admin/accounts/${encodeURIComponent(userId)}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  });
+}
+
+export async function changeAccountStatus(
+  userId: string,
+  status: 'active' | 'suspended',
+): Promise<AccountSummary> {
+  return fetchAPI(`/admin/accounts/${encodeURIComponent(userId)}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function adminResetPassword(
+  userId: string,
+  new_password: string,
+): Promise<{ ok: boolean; user_id: string; email: string; sessions_revoked: boolean }> {
+  return fetchAPI(`/admin/accounts/${encodeURIComponent(userId)}/password`, {
+    method: 'PUT',
+    body: JSON.stringify({ new_password }),
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Admin: audit log
+// -----------------------------------------------------------------------------
+
+export type AuditEventType =
+  | 'user.approve'
+  | 'user.reject'
+  | 'user.role_change'
+  | 'user.suspend'
+  | 'user.reactivate'
+  | 'invite.create'
+  | 'invite.revoke';
+
+export interface AuditEvent {
+  id: number;
+  event_type: AuditEventType;
+  actor_user_id: number | null;
+  actor_user_id_string: string;
+  target_type: 'user' | 'invite';
+  target_id: string | null;
+  target_label: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AuditFilters {
+  event_type?: AuditEventType;
+  actor?: string;
+  target_id?: string;
+  /** ISO datetime string */
+  since?: string;
+  /** ISO datetime string */
+  until?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listAuditEvents(
+  filters: AuditFilters = {},
+): Promise<{ events: AuditEvent[]; total: number; limit: number; offset: number }> {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) {
+    if (v !== undefined && v !== null && v !== '') {
+      params.set(k, String(v));
+    }
+  }
+  const qs = params.toString();
+  return fetchAPI(`/admin/audit${qs ? `?${qs}` : ''}`);
+}
+
+export async function listAuditEventTypes(): Promise<{ event_types: AuditEventType[] }> {
+  return fetchAPI('/admin/audit/event-types');
 }

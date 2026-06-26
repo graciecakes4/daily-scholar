@@ -49,30 +49,14 @@ sys.path.insert(0, str(REPO_ROOT))
 from sqlalchemy import update
 
 from backend.database import (  # noqa: E402
-    ArchivedPaper,
-    ArchivedQuiz,
-    ArchivedTopicReview,
-    DailyContentCache,
-    PaperPDF,
-    PushSubscription,
-    SeenPaper,
     UserSettings,
     UserStats,
     get_session,
 )
-
-# every model that carries a user_id column per Phase 4 schema track
-USER_SCOPED_MODELS = [
-    SeenPaper,
-    ArchivedPaper,
-    ArchivedQuiz,
-    ArchivedTopicReview,
-    PaperPDF,
-    DailyContentCache,
-    UserStats,
-    PushSubscription,
-    UserSettings,
-]
+# Single source of truth for the cascade list — the self-service
+# /auth/username endpoint and this CLI both walk the same set, so
+# adding a new user-scoped table only needs one edit (in the service).
+from backend.services.account_management import USER_SCOPED_MODELS  # noqa: E402
 
 
 def _count_for_user(session, model, user_id: str) -> int:

@@ -18,7 +18,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from ..auth import get_current_user_id
+from ..auth import get_current_user_id, require_admin
 from ..database import (
     Topic,
     UserSettings,
@@ -28,6 +28,23 @@ from ..database import (
 from ..services.topic_loader import (
     export_topics_to_yaml,
     import_topics_from_yaml,
+)
+from ..services.topic_ownership import (
+    can_edit_topic,
+    can_view_topic,
+    caller_owner_id,
+    default_visibility,
+    generate_user_topic_id,
+    resolve_caller,
+)
+from ..services.topic_subscriptions import (
+    AlreadySubscribed,
+    TopicNotFound,
+    TopicNotSubscribable,
+    cleanup_subscriptions_for_topic,
+    list_subscribed_topic_ids,
+    subscribe as subscribe_topic_service,
+    unsubscribe as unsubscribe_topic_service,
 )
 
 
@@ -55,11 +72,19 @@ class TopicResponse(BaseModel):
     prerequisites: list[str]
     created_via: str
     source_yaml_present: bool
+    # Phase C: ownership + visibility surfaced so the UI can show
+    # owner badges and visibility toggles
+    owner_user_id: Optional[int]
+    visibility: str
+    # Phase D: marks topics the caller follows (vs owns / system).
+    # False on POST/PUT/GET-one responses where subscription state
+    # isn't computed; explicitly populated by GET /topics + /search.
+    is_subscribed: bool = False
     created_at: datetime
     updated_at: datetime
 
     @classmethod
-    def from_model(cls, t: Topic) -> "TopicResponse":
+    def from_model(cls, t: Topic, *, is_subscribed: bool = False) -> "TopicResponse":
         return cls(
             id=t.id,
             name=t.name,
@@ -77,15 +102,28 @@ class TopicResponse(BaseModel):
             prerequisites=list(t.prerequisites or []),
             created_via=t.created_via,
             source_yaml_present=t.source_yaml_present,
+            owner_user_id=t.owner_user_id,
+            visibility=t.visibility,
+            is_subscribed=is_subscribed,
             created_at=t.created_at,
             updated_at=t.updated_at,
         )
 
 
 class TopicCreateRequest(BaseModel):
-    """Body for POST /topics. id is required, all other fields optional with defaults."""
+    """
+    Body for POST /topics.
 
-    id: str = Field(min_length=1, max_length=100)
+    Regular users: omit `id` (server auto-generates an opaque `usr-xxxxxx`
+    slug) and `owner_user_id` (defaults to the caller's user.id). The
+    topic is created as `visibility='private'` unless explicitly set.
+
+    Admins: may pass `id` (any human slug) AND `owner_user_id=null` to
+    create a system-wide topic, mirroring yaml-bootstrapped behavior.
+    """
+
+    id: Optional[str] = Field(default=None, max_length=100,
+                              description="Admin-only override; auto-generated for regular users.")
     name: str = Field(min_length=1, max_length=200)
     stream: str = Field(default="uncategorized", max_length=100)
     active: bool = True
@@ -99,6 +137,17 @@ class TopicCreateRequest(BaseModel):
     resources: list[str] = Field(default_factory=list)
     quiz_difficulty: str = "medium"
     prerequisites: list[str] = Field(default_factory=list)
+    # Phase C: ownership knobs. Both are admin-only when set explicitly;
+    # regular users get the defaults.
+    owner_user_id: Optional[int] = Field(
+        default=None,
+        description="Admin-only override; defaults to the caller's id (or NULL for admin).",
+    )
+    visibility: Optional[str] = Field(
+        default=None,
+        pattern="^(private|public)$",
+        description="private (default for user topics) | public (default for system).",
+    )
 
 
 class TopicUpdateRequest(BaseModel):
@@ -117,6 +166,8 @@ class TopicUpdateRequest(BaseModel):
     resources: Optional[list[str]] = None
     quiz_difficulty: Optional[str] = None
     prerequisites: Optional[list[str]] = None
+    # ownership knobs admins can flip; non-admins ignore (enforced server-side)
+    visibility: Optional[str] = Field(default=None, pattern="^(private|public)$")
 
 
 class ScopeResponse(BaseModel):
@@ -156,8 +207,23 @@ def list_topics(
         default=True,
         description="Include topics whose YAML file is no longer on disk",
     ),
+    user_id: str = Depends(get_current_user_id),
 ):
-    """List all topics, ordered by descending weight then name."""
+    """
+    List topics the caller is allowed to see in their scope:
+      - system topics (owner IS NULL) — visible to everyone
+      - admins (incl. solo __local__) — see everything
+      - regular users — system + their own + topics they subscribed to
+        via /topics/discover (Phase D)
+
+    Other users' public topics that the caller HASN'T subscribed to are
+    NOT in this list — they live behind GET /topics/search so users opt
+    in explicitly.
+    """
+    from ..database import _apply_visibility_filter
+
+    sub_ids = list_subscribed_topic_ids(user_id)
+
     session = get_session()
     try:
         q = session.query(Topic)
@@ -167,9 +233,17 @@ def list_topics(
             q = q.filter(Topic.active.is_(active))
         if not include_orphaned:
             q = q.filter(Topic.source_yaml_present.is_(True))
+
+        # shared filter — kept in database.py so /topics, scope queries,
+        # paper discovery, and daily content can't drift apart
+        q = _apply_visibility_filter(q, user_id)
+
         q = q.order_by(Topic.weight.desc(), Topic.name.asc())
         rows = q.all()
-        return [TopicResponse.from_model(t) for t in rows]
+        return [
+            TopicResponse.from_model(t, is_subscribed=(t.id in sub_ids))
+            for t in rows
+        ]
     finally:
         session.close()
 
@@ -185,24 +259,129 @@ def list_streams():
         session.close()
 
 
-@topics_router.post("/import-yaml")
+@topics_router.post("/import-yaml", dependencies=[Depends(require_admin)])
 def import_yaml():
-    """Re-sync the topics table from config/topics/*.yaml. Overwrites DB fields."""
+    """Re-sync the topics table from config/topics/*.yaml. Admin-only because it mutates system topics."""
     return import_topics_from_yaml()
 
 
-@topics_router.post("/export-yaml")
+@topics_router.post("/export-yaml", dependencies=[Depends(require_admin)])
 def export_yaml():
-    """Write the current DB state out to config/topics/*.yaml files."""
+    """Write the current DB state out to config/topics/*.yaml files. Admin-only."""
     return export_topics_to_yaml()
 
 
+# ---------------------------------------------------------------------------
+# Phase D: discovery + subscriptions
+#
+# Routes must precede /{topic_id} so FastAPI doesn't try to treat
+# "search" as a literal topic id.
+# ---------------------------------------------------------------------------
+
+
+@topics_router.get("/search", response_model=list[TopicResponse])
+def search_topics(
+    q: str = Query(min_length=1, max_length=100, description="Case-insensitive name match"),
+    limit: int = Query(default=50, ge=1, le=200),
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Browse public topics owned by *other* users that the caller hasn't
+    already subscribed to. Powers the Discover page.
+
+    Filters out:
+      * system topics (already in scope)
+      * the caller's own topics
+      * private topics (any owner)
+      * topics the caller already subscribed to
+      * inactive topics
+    """
+    caller, _is_admin = resolve_caller(user_id)
+    needle = q.strip().lower()
+    if not needle:
+        return []
+
+    sub_ids = list_subscribed_topic_ids(user_id)
+
+    session = get_session()
+    try:
+        # case-insensitive name LIKE — keywords/concept search is a
+        # follow-up (Postgres-specific JSON ops vs SQLite portability)
+        q_query = (
+            session.query(Topic)
+            .filter(
+                Topic.owner_user_id.isnot(None),       # exclude system
+                Topic.visibility == "public",
+                Topic.active.is_(True),
+            )
+        )
+        if caller is not None:
+            q_query = q_query.filter(Topic.owner_user_id != caller.id)
+        if sub_ids:
+            q_query = q_query.filter(~Topic.id.in_(sub_ids))
+
+        # SQLite's LIKE is already case-insensitive for ASCII; Postgres
+        # needs explicit lower() to ignore case
+        from sqlalchemy import func
+        q_query = q_query.filter(func.lower(Topic.name).like(f"%{needle}%"))
+
+        rows = (
+            q_query.order_by(Topic.weight.desc(), Topic.name.asc())
+            .limit(limit)
+            .all()
+        )
+        return [TopicResponse.from_model(t, is_subscribed=False) for t in rows]
+    finally:
+        session.close()
+
+
+@topics_router.post("/{topic_id}/subscribe", status_code=201)
+def subscribe_to_topic(
+    topic_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Subscribe to a public topic owned by another user. Maps typed
+    `SubscriptionError` reasons to specific status codes so the UI can
+    surface them.
+    """
+    try:
+        row = subscribe_topic_service(user_id, topic_id)
+    except TopicNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except TopicNotSubscribable as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except AlreadySubscribed as e:
+        # idempotent-ish: tell the UI it's already done rather than 500ing
+        raise HTTPException(status_code=409, detail=str(e))
+    return {
+        "ok": True,
+        "topic_id": row.topic_id,
+        "subscribed_at": row.subscribed_at.isoformat(),
+    }
+
+
+@topics_router.delete("/{topic_id}/subscribe")
+def unsubscribe_from_topic(
+    topic_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Drop a subscription. Idempotent — returns 200 even if there was nothing to drop."""
+    removed = unsubscribe_topic_service(user_id, topic_id)
+    return {"ok": True, "removed": removed}
+
+
 @topics_router.get("/{topic_id}", response_model=TopicResponse)
-def get_topic(topic_id: str):
+def get_topic(topic_id: str, user_id: str = Depends(get_current_user_id)):
+    caller, is_admin = resolve_caller(user_id)
     session = get_session()
     try:
         topic = session.get(Topic, topic_id)
         if topic is None:
+            raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
+        if not can_view_topic(topic, caller, is_admin):
+            # 404 not 403 so we don't leak the existence of someone else's
+            # private topic to a random caller
             raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
         return TopicResponse.from_model(topic)
     finally:
@@ -210,17 +389,65 @@ def get_topic(topic_id: str):
 
 
 @topics_router.post("", response_model=TopicResponse, status_code=201)
-def create_topic(body: TopicCreateRequest):
+def create_topic(
+    body: TopicCreateRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Create a topic. See `TopicCreateRequest` for the per-role contract.
+
+    Solo `__local__` is treated as admin: keeps the solo dev experience
+    of "just make a topic, no owner" intact.
+    """
+    caller, is_admin = resolve_caller(user_id)
+
+    # ownership: admins can override (or omit for system); regular users
+    # always get themselves as owner regardless of what they posted
+    if is_admin:
+        # admin: respect explicit owner; default to NULL (system topic)
+        owner_id = body.owner_user_id
+    else:
+        if caller is None:
+            # logged-out caller with no User row and not solo — refuse
+            raise HTTPException(status_code=403, detail="Login required to create topics")
+        if body.owner_user_id is not None and body.owner_user_id != caller.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Only admins can create topics owned by another user",
+            )
+        owner_id = caller.id
+
+    # id: admins may supply a slug; users always get an auto-generated
+    # opaque id (server-side) so two users can't fight over the same name
+    if is_admin and body.id and body.id.strip():
+        new_id = body.id.strip()
+    else:
+        # generate, retrying on the astronomically-unlikely chance of a
+        # collision with an existing row
+        session_for_check = get_session()
+        try:
+            for _ in range(5):
+                candidate = generate_user_topic_id()
+                if session_for_check.get(Topic, candidate) is None:
+                    new_id = candidate
+                    break
+            else:
+                raise HTTPException(status_code=500, detail="Could not generate a unique topic id")
+        finally:
+            session_for_check.close()
+
+    visibility = body.visibility or default_visibility(owner_id)
+
     session = get_session()
     try:
-        if session.get(Topic, body.id) is not None:
+        if session.get(Topic, new_id) is not None:
             raise HTTPException(
                 status_code=409,
-                detail=f"Topic '{body.id}' already exists; PUT to update",
+                detail=f"Topic '{new_id}' already exists; PUT to update",
             )
         now = datetime.utcnow()
         topic = Topic(
-            id=body.id,
+            id=new_id,
             name=body.name,
             stream=body.stream,
             active=body.active,
@@ -236,6 +463,8 @@ def create_topic(body: TopicCreateRequest):
             prerequisites=body.prerequisites,
             created_via="ui",
             source_yaml_present=False,
+            owner_user_id=owner_id,
+            visibility=visibility,
             created_at=now,
             updated_at=now,
         )
@@ -248,15 +477,29 @@ def create_topic(body: TopicCreateRequest):
 
 
 @topics_router.put("/{topic_id}", response_model=TopicResponse)
-def update_topic(topic_id: str, body: TopicUpdateRequest):
+def update_topic(
+    topic_id: str,
+    body: TopicUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    caller, is_admin = resolve_caller(user_id)
+
     session = get_session()
     try:
         topic = session.get(Topic, topic_id)
         if topic is None:
             raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
+        if not can_edit_topic(topic, caller, is_admin):
+            # don't leak existence of someone else's topic; 404 if they
+            # also can't view, 403 if they can view but not edit
+            if can_view_topic(topic, caller, is_admin):
+                raise HTTPException(status_code=403, detail="You don't own this topic")
+            raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
 
-        # only apply explicitly-supplied fields
         update_data = body.model_dump(exclude_unset=True)
+        # non-admins can't change visibility on system topics (irrelevant
+        # since they fail can_edit_topic anyway), and they can flip their
+        # own topic's visibility freely — no extra check needed.
         for key, value in update_data.items():
             setattr(topic, key, value)
         topic.updated_at = datetime.utcnow()
@@ -274,18 +517,32 @@ def delete_topic(
         default=False,
         description="Hard-delete the row; default is soft-delete (active=False)",
     ),
+    user_id: str = Depends(get_current_user_id),
 ):
     """
     Soft-delete by default (active=False). Pass ?hard=true to permanently
     drop the row from the table (use with care — also clean up references
     in scope_topic_ids / prerequisites yourself).
+
+    Only the owner or an admin can delete; system topics are admin-only.
     """
+    caller, is_admin = resolve_caller(user_id)
+
     session = get_session()
     try:
         topic = session.get(Topic, topic_id)
         if topic is None:
             raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
+        if not can_edit_topic(topic, caller, is_admin):
+            if can_view_topic(topic, caller, is_admin):
+                raise HTTPException(status_code=403, detail="You don't own this topic")
+            raise HTTPException(status_code=404, detail=f"Topic '{topic_id}' not found")
+
         if hard:
+            # clean up subscriptions BEFORE dropping the parent topic.
+            # SQLite ignores FK CASCADE by default and Postgres would
+            # cascade, but being explicit keeps behavior portable.
+            cleanup_subscriptions_for_topic(topic_id)
             session.delete(topic)
             session.commit()
             return {"deleted": topic_id, "mode": "hard"}

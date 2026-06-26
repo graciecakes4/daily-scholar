@@ -8,11 +8,13 @@
  * server (today, a single sentinel user).
  */
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
   getScope, updateScope, listTopics,
   type Scope, type ScopeMode, type Topic,
 } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import { useWebPush } from '@/hooks/useWebPush';
 
 function streamDisplayName(stream: string): string {
@@ -20,6 +22,7 @@ function streamDisplayName(stream: string): string {
 }
 
 export default function ScopeSettingsPage() {
+  const { user } = useAuth();
   const [scope, setScope] = useState<Scope | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [mode, setMode] = useState<ScopeMode>('all');
@@ -104,18 +107,33 @@ export default function ScopeSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-3xl font-bold text-slate-900">Topic scope</h1>
-        <p className="text-slate-600 mt-1">
-          Choose which topics drive paper discovery, reviews, and quiz generation.
-        </p>
+      <header className="flex items-baseline justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Topic scope</h1>
+          <p className="text-slate-600 mt-1">
+            Choose which topics drive paper discovery, reviews, and quiz generation.
+          </p>
+        </div>
+        <nav className="text-sm flex gap-4">
+          <Link href="/settings/account" className="text-sky-700 hover:underline">
+            Account →
+          </Link>
+          <Link href="/settings/notifications" className="text-sky-700 hover:underline">
+            Notifications →
+          </Link>
+          {user?.role === 'admin' && (
+            <Link href="/settings/admin" className="text-sky-700 hover:underline">
+              Admin →
+            </Link>
+          )}
+        </nav>
       </header>
 
       {error && <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">{error}</div>}
       {success && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-2 text-sm">{success}</div>}
 
       {/* mode selector */}
-      <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
+      <section data-tour="scope-mode" className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
         <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Mode</h2>
         <ModeOption
           checked={mode === 'all'}
@@ -197,6 +215,7 @@ export default function ScopeSettingsPage() {
           )}
         </div>
         <button
+          data-tour="scope-save"
           onClick={save}
           disabled={saveDisabled}
           className="px-5 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50"

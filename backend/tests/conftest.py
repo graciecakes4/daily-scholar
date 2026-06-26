@@ -28,6 +28,15 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB}"
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test-not-used")
 # explicitly *off* — these tests exercise solo + X-User-Id behavior, not JWT.
 os.environ["CF_ACCESS_VERIFY_JWT"] = "0"
+# tests bypass the Phase B signup gate by default so the signup-mechanics
+# suite doesn't need an invite code in every call. The Phase B gate-tests
+# in test_invites.py override OPEN_SIGNUP per-test via monkeypatch.
+os.environ.setdefault("OPEN_SIGNUP", "1")
+# tests run with rate limiting + CSRF off so the existing suite doesn't
+# need to dance around either. The dedicated test files for each feature
+# flip the flag back on per-test via monkeypatch.
+os.environ.setdefault("RATE_LIMIT_DISABLED", "1")
+os.environ.setdefault("CSRF_DISABLED", "1")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
