@@ -687,3 +687,78 @@ export async function getScope(): Promise<Scope> {
 export async function updateScope(payload: { scope_mode: ScopeMode; scope_topic_ids: string[] }): Promise<Scope> {
   return fetchAPI('/user/scope', { method: 'PUT', body: JSON.stringify(payload) });
 }
+
+// -----------------------------------------------------------------------------
+// Scheduled notifications (cron-scheduled push)
+// -----------------------------------------------------------------------------
+
+export interface NotificationTypeMeta {
+  key: string;
+  label: string;
+  description: string;
+  default_cron: string;
+}
+
+export interface NotificationTypeEntry {
+  enabled: boolean;
+  cron: string;
+}
+
+export interface NotificationSettings {
+  timezone: string;
+  types: Record<string, NotificationTypeEntry>;
+}
+
+export interface NotificationPayloadPreview {
+  type: string;
+  payload: Record<string, unknown> | null;
+  would_send: boolean;
+}
+
+export interface NotificationDispatchResult {
+  ok: boolean;
+  type?: string;
+  payload?: Record<string, unknown>;
+  result?: { sent?: number; removed?: number; failed?: number };
+  skipped?: string;
+  error?: string;
+}
+
+export interface NotificationJob {
+  type: string;
+  id: string;
+  trigger: string;
+  next_run_time: string | null;
+}
+
+export async function listNotificationTypes(): Promise<{ types: NotificationTypeMeta[] }> {
+  return fetchAPI('/notifications/types');
+}
+
+export async function getNotificationSettings(): Promise<NotificationSettings> {
+  return fetchAPI('/notifications/settings');
+}
+
+export async function updateNotificationSettings(
+  settings: NotificationSettings,
+): Promise<{ settings: NotificationSettings; scheduler: Record<string, number> }> {
+  return fetchAPI('/notifications/settings', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  });
+}
+
+export async function previewNotification(typeKey: string): Promise<NotificationPayloadPreview> {
+  return fetchAPI(`/notifications/preview/${encodeURIComponent(typeKey)}`);
+}
+
+export async function testNotification(typeKey: string): Promise<NotificationDispatchResult> {
+  return fetchAPI(`/notifications/test/${encodeURIComponent(typeKey)}`, { method: 'POST' });
+}
+
+export async function listNotificationJobs(): Promise<{
+  scheduler_running: boolean;
+  jobs: NotificationJob[];
+}> {
+  return fetchAPI('/notifications/jobs');
+}

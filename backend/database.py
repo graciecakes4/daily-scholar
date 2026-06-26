@@ -389,6 +389,22 @@ class UserSettings(Base):
     scope_mode = Column(String(20), default="all", nullable=False)
     scope_topic_ids = Column(JSON, nullable=False, default=list)
 
+    # Notification preferences. Schema lives in backend/services/notifications.py
+    # (DEFAULT_NOTIFICATION_SETTINGS). Stored as JSON so adding a new notification
+    # type later is a registry change only — no migration needed.
+    #
+    # Shape:
+    #   {
+    #     "timezone": "America/New_York",     # IANA tz used for every cron trigger
+    #     "types": {
+    #         "study_reminder": {"enabled": bool, "cron": "M H * * DOW"},
+    #         "paper_drop":     {"enabled": bool, "cron": "..."},
+    #         "weekly_status":  {"enabled": bool, "cron": "..."},
+    #         "quiz_nudge":     {"enabled": bool, "cron": "..."}
+    #     }
+    #   }
+    notification_settings = Column(JSON, nullable=False, default=dict)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
