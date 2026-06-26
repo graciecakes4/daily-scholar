@@ -48,6 +48,7 @@ from ..services.auth_security import (
 from ..services.auth_sessions import (
     create_session,
     lookup_session_user,
+    revoke_other_sessions_for_user,
     revoke_session,
 )
 from ..services.invite_codes import (
@@ -57,6 +58,14 @@ from ..services.invite_codes import (
     InviteCodeRevoked,
     InviteCodeUnknown,
     validate_and_redeem,
+)
+from ..services.account_management import (
+    AccountError,
+    UsernameTaken,
+    UsernameUnchanged,
+    WrongPassword,
+    change_password,
+    change_username,
 )
 
 logger = logging.getLogger(__name__)
@@ -356,3 +365,113 @@ def me(
     if user is None:
         raise HTTPException(status_code=401, detail="Session expired or invalid")
     return {"profile": _profile(user).model_dump()}
+
+
+# ---------------------------------------------------------------------------
+# Self-service account mutations
+# ---------------------------------------------------------------------------
+
+
+class ChangePasswordBody(BaseModel):
+    """Body for PUT /auth/password — self-service password change."""
+
+    current_password: str
+    new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
+
+
+class ChangeUsernameBody(BaseModel):
+    """Body for PUT /auth/username — self-service handle change."""
+
+    current_password: str
+    new_user_id: str = Field(min_length=3, max_length=30)
+
+
+def _require_authed_user(ds_session: Optional[str]) -> User:
+    """
+    Resolve the session cookie to an active User row, or raise 401/403.
+    Used by self-service endpoints that need the full User row (the
+    `get_current_user_id` dependency only returns the string).
+    """
+    if not ds_session:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    user = lookup_session_user(ds_session)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
+    if user.status != USER_STATUS_ACTIVE:
+        # pending users shouldn't be able to change their password/username
+        # (their account isn't approved yet); suspended users can't login
+        # so they won't have a cookie anyway, but defend in depth
+        raise HTTPException(
+            status_code=403,
+            detail=f"Account status '{user.status}' is not allowed",
+        )
+    return user
+
+
+@auth_router.put("/password")
+def change_my_password(
+    body: ChangePasswordBody,
+    ds_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+) -> dict:
+    """
+    Self-service password change.
+
+    Verifies `current_password`, hashes + stores `new_password`, then
+    revokes every OTHER active session for the user (any hijacked tab
+    is kicked) while the current session — identified by the cookie
+    token — stays alive so the user isn't logged out of the request
+    they just made.
+    """
+    user = _require_authed_user(ds_session)
+
+    try:
+        change_password(user.id, body.current_password, body.new_password)
+    except WrongPassword as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        # hash_password validates length; surface that as a 400 instead of 500
+        raise HTTPException(status_code=400, detail=str(e))
+
+    revoked = revoke_other_sessions_for_user(user.id, except_token=ds_session or "")
+    return {"ok": True, "other_sessions_revoked": revoked}
+
+
+@auth_router.put("/username")
+def change_my_username(
+    body: ChangeUsernameBody,
+    ds_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+) -> dict:
+    """
+    Self-service username (handle) change.
+
+    Requires current password — username is part of the user's public
+    identity and we don't want a stolen cookie to be enough to rotate it.
+
+    Cascades the new handle across all 10 user-scoped tables in one
+    transaction. Sessions FK on `users.id` (int), not the string, so the
+    current cookie keeps working post-rename.
+    """
+    user = _require_authed_user(ds_session)
+
+    # password check first — never start the cascade if the actor can't
+    # prove they're who they say they are
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="current password is incorrect")
+
+    # format validation (same rules as signup)
+    try:
+        new_uid = validate_user_id(body.new_user_id)
+    except InvalidUserIdError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        counts = change_username(user.user_id, new_uid)
+    except UsernameUnchanged:
+        # idempotent no-op; tell the UI nothing happened but not an error
+        return {"ok": True, "changed": False, "new_user_id": user.user_id}
+    except UsernameTaken as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except AccountError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"ok": True, "changed": True, "new_user_id": new_uid, "rows_moved": counts}

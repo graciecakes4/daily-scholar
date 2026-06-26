@@ -118,19 +118,35 @@ def revoke_session(token: str) -> bool:
 def revoke_all_sessions_for_user(user_id_int: int) -> int:
     """
     Revoke every active session for a user. Used when an admin suspends
-    them or when the user changes their password. Returns count revoked.
+    them or when an admin resets their password. Returns count revoked.
     """
+    return _revoke_sessions(user_id_int, except_token=None)
+
+
+def revoke_other_sessions_for_user(user_id_int: int, except_token: str) -> int:
+    """
+    Revoke every active session for a user EXCEPT the one identified by
+    `except_token`. Used after a self-service password change so the
+    actor's current session stays alive while any other (potentially
+    hijacked) device gets kicked out.
+    """
+    return _revoke_sessions(user_id_int, except_token=except_token)
+
+
+def _revoke_sessions(user_id_int: int, *, except_token: Optional[str]) -> int:
     now = datetime.utcnow()
     session = get_session()
     try:
-        rows = (
+        q = (
             session.query(Session)
             .filter(
                 Session.user_id == user_id_int,
                 Session.revoked_at.is_(None),
             )
-            .all()
         )
+        if except_token:
+            q = q.filter(Session.token != except_token)
+        rows = q.all()
         for r in rows:
             r.revoked_at = now
         session.commit()

@@ -40,6 +40,10 @@ class EventType:
     USER_ROLE_CHANGE = "user.role_change"
     USER_SUSPEND = "user.suspend"
     USER_REACTIVATE = "user.reactivate"
+    # Admin-triggered password reset. Self-service password changes are
+    # NOT audited — they're a user-driven security operation, not an
+    # admin mutation worth surfacing on the admin log.
+    USER_PASSWORD_RESET_ADMIN = "user.password_reset_admin"
 
     INVITE_CREATE = "invite.create"
     INVITE_REVOKE = "invite.revoke"
@@ -52,6 +56,7 @@ class EventType:
             cls.USER_ROLE_CHANGE,
             cls.USER_SUSPEND,
             cls.USER_REACTIVATE,
+            cls.USER_PASSWORD_RESET_ADMIN,
             cls.INVITE_CREATE,
             cls.INVITE_REVOKE,
         ]
