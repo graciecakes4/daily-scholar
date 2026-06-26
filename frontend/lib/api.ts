@@ -974,3 +974,48 @@ export async function approveUser(pendingUserId: number): Promise<{
 export async function rejectUser(pendingUserId: number): Promise<{ ok: boolean; deleted_user_id?: string }> {
   return fetchAPI(`/admin/approvals/${pendingUserId}/reject`, { method: 'POST' });
 }
+
+// -----------------------------------------------------------------------------
+// Admin: accounts management (Phase F)
+// -----------------------------------------------------------------------------
+
+export interface AccountSummary {
+  id: number;
+  email: string;
+  user_id: string;
+  role: UserRole;
+  status: UserStatus;
+  onboarded: boolean;
+  created_at: string;
+  approved_at: string | null;
+  approved_by_user_id: number | null;
+  last_login_at: string | null;
+}
+
+export async function listAccounts(filters?: {
+  status?: UserStatus;
+  role?: UserRole;
+}): Promise<AccountSummary[]> {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set('status', filters.status);
+  if (filters?.role) params.set('role', filters.role);
+  const qs = params.toString();
+  return fetchAPI(`/admin/accounts${qs ? `?${qs}` : ''}`);
+}
+
+export async function changeAccountRole(userId: string, role: UserRole): Promise<AccountSummary> {
+  return fetchAPI(`/admin/accounts/${encodeURIComponent(userId)}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  });
+}
+
+export async function changeAccountStatus(
+  userId: string,
+  status: 'active' | 'suspended',
+): Promise<AccountSummary> {
+  return fetchAPI(`/admin/accounts/${encodeURIComponent(userId)}/status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+}

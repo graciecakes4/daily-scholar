@@ -1590,6 +1590,7 @@ from .api.push import push_router
 from .api.admin import admin_router
 from .api.admin_invites import admin_invites_router
 from .api.admin_approvals import admin_approvals_router
+from .api.admin_accounts import admin_accounts_router
 from .api.notifications import notifications_router
 from .api.auth import auth_router
 from .api.onboarding import onboarding_router
@@ -1599,6 +1600,7 @@ app.include_router(push_router)
 app.include_router(admin_router)
 app.include_router(admin_invites_router)
 app.include_router(admin_approvals_router)
+app.include_router(admin_accounts_router)
 app.include_router(notifications_router)
 app.include_router(auth_router)
 app.include_router(onboarding_router)

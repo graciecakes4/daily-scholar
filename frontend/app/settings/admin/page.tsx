@@ -16,22 +16,29 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   approveUser,
+  changeAccountRole,
+  changeAccountStatus,
   createInvite,
+  listAccounts,
   listInvites,
   listPendingApprovals,
   rejectUser,
   revokeInvite,
+  type AccountSummary,
   type InviteState,
   type InviteSummary,
   type PendingUserSummary,
+  type UserRole,
+  type UserStatus,
 } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 
-type Tab = 'approvals' | 'invites';
+type Tab = 'approvals' | 'invites' | 'users';
 
 export default function AdminSettingsPage() {
   const { user, loading } = useAuth();
   const [tab, setTab] = useState<Tab>('approvals');
+  const currentUserId = user?.user_id ?? null;
 
   if (loading) return <div className="text-slate-500">Loading…</div>;
 
@@ -70,10 +77,15 @@ export default function AdminSettingsPage() {
           <TabButton active={tab === 'invites'} onClick={() => setTab('invites')}>
             Invite codes
           </TabButton>
+          <TabButton active={tab === 'users'} onClick={() => setTab('users')}>
+            Users
+          </TabButton>
         </nav>
       </div>
 
-      {tab === 'approvals' ? <ApprovalsTab /> : <InvitesTab />}
+      {tab === 'approvals' && <ApprovalsTab />}
+      {tab === 'invites' && <InvitesTab />}
+      {tab === 'users' && <UsersTab currentUserId={currentUserId} />}
     </div>
   );
 }
@@ -374,6 +386,213 @@ function StateBadge({ state }: { state: InviteState }) {
   return (
     <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${styles[state]}`}>
       {state}
+    </span>
+  );
+}
+
+// ---------- users tab ----------
+
+function UsersTab({ currentUserId }: { currentUserId: string | null }) {
+  const [accounts, setAccounts] = useState<AccountSummary[]>([]);
+  const [statusFilter, setStatusFilter] = useState<'' | UserStatus>('');
+  const [roleFilter, setRoleFilter] = useState<'' | UserRole>('');
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const rows = await listAccounts({
+        status: statusFilter || undefined,
+        role: roleFilter || undefined,
+      });
+      setAccounts(rows);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load users');
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, roleFilter]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  async function onRole(u: AccountSummary, role: UserRole) {
+    const verb = role === 'admin' ? 'Promote to admin' : 'Demote to user';
+    if (!confirm(`${verb}: ${u.email}?`)) return;
+    setBusyId(u.user_id);
+    try {
+      await changeAccountRole(u.user_id, role);
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || 'Role change failed');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onStatus(u: AccountSummary, status: 'active' | 'suspended') {
+    const verb = status === 'suspended'
+      ? `Suspend ${u.email}? They'll be logged out of every device immediately.`
+      : `Reactivate ${u.email}?`;
+    if (!confirm(verb)) return;
+    setBusyId(u.user_id);
+    try {
+      await changeAccountStatus(u.user_id, status);
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || 'Status change failed');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>
+      )}
+
+      {/* filters */}
+      <div className="bg-white border border-slate-200 rounded-lg p-3 flex flex-wrap items-center gap-3">
+        <label className="text-xs text-slate-500">Status</label>
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value as '' | UserStatus)}
+          className="text-sm border border-slate-300 rounded px-2 py-1"
+        >
+          <option value="">All</option>
+          <option value="active">Active</option>
+          <option value="pending">Pending</option>
+          <option value="suspended">Suspended</option>
+        </select>
+        <label className="text-xs text-slate-500 ml-2">Role</label>
+        <select
+          value={roleFilter}
+          onChange={e => setRoleFilter(e.target.value as '' | UserRole)}
+          className="text-sm border border-slate-300 rounded px-2 py-1"
+        >
+          <option value="">All</option>
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </select>
+        <span className="text-xs text-slate-400 ml-auto">{accounts.length} user(s)</span>
+      </div>
+
+      {loading ? (
+        <div className="text-slate-500">Loading…</div>
+      ) : accounts.length === 0 ? (
+        <div className="text-sm text-slate-500 italic">No users match.</div>
+      ) : (
+        <ul className="space-y-2">
+          {accounts.map(u => {
+            const isSelf = currentUserId === u.user_id;
+            const isPending = u.status === 'pending';
+            // suspended users get a Reactivate button; active+pending get Suspend.
+            // Pending is greyed out — they should go through approvals, not status edits.
+            return (
+              <li
+                key={u.id}
+                className="bg-white border border-slate-200 rounded-lg p-4 flex items-center justify-between gap-3 flex-wrap"
+              >
+                <div className="min-w-0 flex-grow">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-slate-900 truncate">{u.email}</span>
+                    <RoleBadge role={u.role} />
+                    <StatusBadge status={u.status} />
+                    {isSelf && (
+                      <span className="text-[10px] uppercase tracking-wide bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded font-semibold">
+                        you
+                      </span>
+                    )}
+                    {!u.onboarded && u.status === 'active' && (
+                      <span className="text-[10px] uppercase tracking-wide bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
+                        un-onboarded
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    user_id: <code>{u.user_id}</code> · created {new Date(u.created_at).toLocaleDateString()}
+                    {u.last_login_at && (
+                      <> · last login {new Date(u.last_login_at).toLocaleDateString()}</>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {isPending ? (
+                    <span className="text-xs text-slate-400 italic">use Approvals tab</span>
+                  ) : (
+                    <>
+                      {u.role === 'user' ? (
+                        <button
+                          type="button"
+                          onClick={() => onRole(u, 'admin')}
+                          disabled={busyId !== null}
+                          className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded text-xs hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Promote
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onRole(u, 'user')}
+                          disabled={busyId !== null}
+                          className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded text-xs hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Demote
+                        </button>
+                      )}
+                      {u.status === 'active' ? (
+                        <button
+                          type="button"
+                          onClick={() => onStatus(u, 'suspended')}
+                          disabled={busyId !== null || isSelf}
+                          title={isSelf ? "Can't suspend yourself" : 'Suspend this account'}
+                          className="px-3 py-1.5 bg-white border border-rose-300 text-rose-700 rounded text-xs hover:bg-rose-50 disabled:opacity-50 disabled:hover:bg-white"
+                        >
+                          Suspend
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onStatus(u, 'active')}
+                          disabled={busyId !== null}
+                          className="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          Reactivate
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function RoleBadge({ role }: { role: UserRole }) {
+  return role === 'admin' ? (
+    <span className="text-[10px] uppercase tracking-wide bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded font-semibold">
+      admin
+    </span>
+  ) : null;
+}
+
+function StatusBadge({ status }: { status: UserStatus }) {
+  const map: Record<UserStatus, string> = {
+    active: 'bg-emerald-100 text-emerald-800',
+    pending: 'bg-amber-100 text-amber-800',
+    suspended: 'bg-rose-100 text-rose-800',
+  };
+  return (
+    <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${map[status]}`}>
+      {status}
     </span>
   );
 }
