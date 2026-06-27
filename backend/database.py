@@ -402,6 +402,15 @@ class UserSettings(Base):
     scope_mode = Column(String(20), default="all", nullable=False)
     scope_topic_ids = Column(JSON, nullable=False, default=list)
 
+    # phase E (scope library): pointer to the row in `scopes` that drives
+    # discovery / review / quizzes for this user. nullable so brand-new
+    # users land on the onboarding picker before anything is active.
+    # legacy scope_mode / scope_topic_ids above stay populated as a cache
+    # for one release for back-compat with the /user/scope endpoint; the
+    # migration script materializes them into a "My scope" row and points
+    # active_scope_id at it.
+    active_scope_id = Column(Integer, ForeignKey("scopes.id", ondelete="SET NULL"), nullable=True, index=True)
+
     # Notification preferences. Schema lives in backend/services/notifications.py
     # (DEFAULT_NOTIFICATION_SETTINGS). Stored as JSON so adding a new notification
     # type later is a registry change only — no migration needed.
@@ -666,6 +675,161 @@ class Session(Base):
 
 
 # =============================================================================
+# SCOPES — Saved, shareable views over the topics table (Phase E)
+# =============================================================================
+#
+# TODO(post-beta): scope_access_grants.user_id + scope_access_requests
+# .requester_user_id are kept as String(100) for consistency with the
+# existing user-scoped tables (topic_subscriptions, seen_papers, ...).
+# Once the broader String→Integer-FK migration of user-scoped tables
+# lands, switch these two columns to Integer ForeignKey("users.id") in
+# the same pass so the whole codebase is referentially consistent.
+# Tracked in the post-beta tech-debt list.
+
+
+SCOPE_VISIBILITY_PRIVATE = "private"
+SCOPE_VISIBILITY_PUBLIC = "public"
+VALID_SCOPE_VISIBILITIES = {SCOPE_VISIBILITY_PRIVATE, SCOPE_VISIBILITY_PUBLIC}
+
+SCOPE_REQUEST_PENDING = "pending"
+SCOPE_REQUEST_APPROVED = "approved"
+SCOPE_REQUEST_DENIED = "denied"
+VALID_SCOPE_REQUEST_STATUSES = {
+    SCOPE_REQUEST_PENDING,
+    SCOPE_REQUEST_APPROVED,
+    SCOPE_REQUEST_DENIED,
+}
+
+
+class Scope(Base):
+    """
+    A named, switchable view over the topics table.
+
+    A user can have many scopes in their library; exactly one is active
+    at a time (UserSettings.active_scope_id). The active scope drives
+    paper discovery, topic review, and quiz generation — the same role
+    the legacy UserSettings.scope_mode / scope_topic_ids columns used to
+    play directly.
+
+    Ownership / visibility mirror the Topic model:
+      - owner_user_id NULL  → system-seeded starter scope; visible to
+        everyone, only admins edit
+      - owner_user_id set, visibility="private" → only the owner (and
+        anyone with a ScopeAccessGrant) can read
+      - owner_user_id set, visibility="public"  → searchable + forkable
+        by any logged-in user
+
+    Forking copies the scope_mode + scope_topic_ids into a new row owned
+    by the caller and stamps forked_from_scope_id at the source. Deleting
+    the source SET NULLs forks rather than cascading so lineage doesn't
+    disappear silently from a child.
+    """
+    __tablename__ = "scopes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+
+    # null = system-seeded scope. otherwise the user who can edit it.
+    owner_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    visibility = Column(String(20), default=SCOPE_VISIBILITY_PRIVATE, nullable=False, index=True)
+
+    # selection semantics — same three modes as legacy UserSettings:
+    #   "silo"  : exactly one topic id in scope_topic_ids[0]
+    #   "multi" : explicit set in scope_topic_ids
+    #   "all"   : every active topic the viewer can see (scope_topic_ids ignored)
+    scope_mode = Column(String(20), default="all", nullable=False)
+    scope_topic_ids = Column(JSON, nullable=False, default=list)
+
+    # fork lineage. SET NULL on source delete so children persist.
+    forked_from_scope_id = Column(
+        Integer,
+        ForeignKey("scopes.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_scope_owner_visibility", "owner_user_id", "visibility"),
+        Index("idx_scope_visibility_name", "visibility", "name"),
+    )
+
+
+class ScopeAccessGrant(Base):
+    """
+    Records that a specific user has been granted view-access to a
+    private scope. One row per (scope, user). Typically created when an
+    owner approves a ScopeAccessRequest; can also be inserted directly
+    by an admin tool.
+
+    Grants are not the same as ownership — a grantee can read and fork
+    but not edit or delete the original.
+    """
+    __tablename__ = "scope_access_grants"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scope_id = Column(
+        Integer,
+        ForeignKey("scopes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # string user_id (email or custom handle), matching the convention used
+    # in the other user-scoped tables (seen_papers, topic_subscriptions, ...)
+    user_id = Column(String(100), nullable=False, index=True)
+    granted_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    granted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("scope_id", "user_id", name="uq_scope_access_grants_scope_user"),
+        Index("idx_scope_access_grants_user", "user_id"),
+    )
+
+
+class ScopeAccessRequest(Base):
+    """
+    A request from a user to view a private scope.
+
+    Flow:
+      1. requester POSTs /scopes/{id}/access-requests with an optional
+         message → row inserted with status="pending"
+      2. owner sees it in their /scopes/access-requests/incoming inbox
+      3. owner decides → status="approved" + ScopeAccessGrant inserted,
+         or status="denied"; decided_at + decided_by_user_id stamped
+
+    There may be at most one row in "pending" state per (scope,
+    requester) pair; once denied a requester can submit again. The
+    invariant is enforced in the service layer, not the DB, so the
+    history of past denied requests is preserved.
+    """
+    __tablename__ = "scope_access_requests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scope_id = Column(
+        Integer,
+        ForeignKey("scopes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    requester_user_id = Column(String(100), nullable=False, index=True)
+    message = Column(Text, nullable=True)
+
+    status = Column(String(20), default=SCOPE_REQUEST_PENDING, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    decided_at = Column(DateTime, nullable=True)
+    decided_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    __table_args__ = (
+        Index("idx_scope_access_requests_scope_status", "scope_id", "status"),
+        Index("idx_scope_access_requests_requester_status", "requester_user_id", "status"),
+    )
+
+
+# =============================================================================
 # DATABASE SETUP
 # =============================================================================
 
@@ -769,6 +933,39 @@ def create_tables():
         # fresh install — alembic creates everything
         _run_alembic("upgrade", "head")
 
+    # defensive drift detector.
+    # we've seen Postgres get stamped at a revision higher than the
+    # actual schema reached (failed mid-upgrade leaves the version_num
+    # in place; the next boot's "fully managed — just upgrade" call is
+    # then a no-op even though columns are missing). detect that here
+    # and refuse to boot with a clear remediation message — auto-healing
+    # by rewinding the chain isn't safe because not every historical
+    # migration in this project is idempotent (e.g. 0002 uses bare
+    # create_table without a _has_table guard).
+    missing = _diff_metadata_against_db(engine)
+    if missing:
+        rev_now = _read_alembic_revision(engine) or "<unknown>"
+        msg = (
+            "\n"
+            "❌ Schema drift detected.\n"
+            f"   Alembic says current revision is {rev_now}, but the live\n"
+            f"   schema is missing column(s): {missing}.\n"
+            "   This usually means a previous boot's upgrade failed partway\n"
+            "   through but the version stamp survived.\n"
+            "\n"
+            "   To recover (preserves data — the existing migrations are\n"
+            "   idempotent past 0001, so replaying re-adds the missing\n"
+            "   columns without dropping anything):\n"
+            "\n"
+            "       alembic stamp 0010_admin_audit_log\n"
+            "       alembic upgrade head\n"
+            "\n"
+            "   (Adjust the stamp revision to one prior to whichever\n"
+            "   migration introduced the missing column.) After it\n"
+            "   succeeds, restart the app.\n"
+        )
+        raise RuntimeError(msg)
+
     # seed user_stats row for the local sentinel user if absent
     session = get_session()
     try:
@@ -783,6 +980,49 @@ def create_tables():
 
     print("✅ Database schema is up to date.")
     return engine
+
+
+def _read_alembic_revision(engine) -> Optional[str]:
+    """Return the current `alembic_version.version_num`, or None if missing."""
+    from sqlalchemy import inspect, text
+    if "alembic_version" not in set(inspect(engine).get_table_names()):
+        return None
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).first()
+        return row[0] if row is not None else None
+
+
+def _diff_metadata_against_db(engine) -> list[str]:
+    """
+    Return a sorted list of `"table.column"` strings for every column the
+    SQLAlchemy models declare that does NOT exist on the live database.
+
+    Tables that don't yet exist on the DB are skipped — the upgrade path
+    creates them, and Base.metadata is the source of truth for what
+    *should* be there post-upgrade.
+
+    Empty list means the live schema matches the models.
+
+    Used by create_tables() to auto-detect the "Alembic stamped at head
+    but the DDL never ran" failure class we've hit in the wild.
+    """
+    from sqlalchemy import inspect
+
+    inspector = inspect(engine)
+    live_tables = set(inspector.get_table_names())
+
+    missing: list[str] = []
+    for table_name, table in Base.metadata.tables.items():
+        if table_name not in live_tables:
+            # the table itself is absent — the upgrade path is responsible
+            # for creating it. don't report individual columns because the
+            # whole row would be noise.
+            continue
+        live_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        for col in table.columns:
+            if col.name not in live_cols:
+                missing.append(f"{table_name}.{col.name}")
+    return sorted(missing)
 
 
 def _run_alembic(action: str, revision: str):

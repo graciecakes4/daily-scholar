@@ -1,0 +1,63 @@
+id: financial-economics-foundations
+name: Financial Economics Foundations — Asset Pricing, Risk, and Portfolios
+stream: economics_foundations
+active: true
+weight: 1.0
+keywords:
+- financial economics
+- asset pricing
+- risk
+- return
+- portfolio
+- mean-variance optimization
+- Markowitz
+- efficient frontier
+- CAPM
+- capital asset pricing model
+- beta
+- alpha
+- Sharpe ratio
+- arbitrage
+- no-arbitrage
+- factor model
+- Fama-French
+- market efficiency
+- efficient market hypothesis
+- equity premium
+- bond pricing
+- yield curve
+- term structure
+- duration
+- convexity
+- option pricing
+- Black-Scholes
+- volatility
+- implied volatility
+- stochastic discount factor
+- behavioral finance
+arxiv_categories:
+- q-fin.PR
+- q-fin.PM
+- q-fin.MF
+- econ.GN
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- the risk/return trade-off and the role of diversification
+- mean-variance portfolio optimization and the efficient frontier
+- CAPM and the interpretation of beta
+- the no-arbitrage principle as the central pricing axiom
+- factor models and how they generalize CAPM
+- the efficient market hypothesis and the difference between weak/semi-strong/strong forms
+- bond pricing, the yield curve, duration, and convexity
+- the Black-Scholes formula and the role of implied volatility
+learning_objectives:
+- Compute the expected return and variance of a two-asset portfolio
+- Apply CAPM to estimate the expected return of a stock with a given beta
+- Explain why no-arbitrage pricing pins down the value of a redundant security
+- Compute the duration of a simple bond and explain what it measures
+- Describe one empirical pattern that challenges the strict efficient market hypothesis
+resources: []
+quiz_difficulty: medium
+prerequisites:
+- microeconomics-foundations

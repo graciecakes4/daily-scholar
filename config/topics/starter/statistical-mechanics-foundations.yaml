@@ -1,0 +1,61 @@
+id: statistical-mechanics-foundations
+name: Statistical Mechanics Foundations — Ensembles, Entropy, and Phase Transitions
+stream: physics_foundations
+active: true
+weight: 1.0
+keywords:
+- statistical mechanics
+- thermodynamics
+- microcanonical ensemble
+- canonical ensemble
+- grand canonical ensemble
+- partition function
+- free energy
+- entropy
+- Boltzmann distribution
+- Maxwell-Boltzmann
+- Fermi-Dirac
+- Bose-Einstein
+- equipartition
+- ideal gas
+- ideal Bose gas
+- Bose-Einstein condensate
+- Fermi gas
+- chemical potential
+- phase transition
+- order parameter
+- critical exponent
+- Ising model
+- mean-field theory
+- renormalization group
+- universality
+- fluctuation-dissipation theorem
+- linear response
+- Langevin equation
+- Fokker-Planck equation
+- nonequilibrium
+arxiv_categories:
+- cond-mat.stat-mech
+- physics.flu-dyn
+- math-ph
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- the microcanonical, canonical, and grand canonical ensembles and when each applies
+- the partition function as the bridge between microscopic states and thermodynamics
+- entropy as an information-theoretic and thermodynamic quantity
+- the three quantum statistics (Maxwell-Boltzmann, Fermi-Dirac, Bose-Einstein)
+- the Ising model and the universal features of second-order phase transitions
+- mean-field theory and its predictions for critical exponents
+- the renormalization-group idea and universality classes
+- linear response, fluctuation-dissipation, and basic nonequilibrium tools
+learning_objectives:
+- Derive the Boltzmann distribution from the canonical ensemble
+- Compute the partition function and free energy of a two-level system
+- Identify the order parameter for the Ising model and explain mean-field predictions
+- Distinguish the three quantum statistics by their occupation numbers
+- Explain the fluctuation-dissipation theorem in plain language
+resources: []
+quiz_difficulty: medium
+prerequisites:
+- classical-mechanics-foundations

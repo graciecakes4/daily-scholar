@@ -49,10 +49,43 @@ Full topic-model schema lives in [topics.md](topics.md).
 
 ## Scope (per-user)
 
+The active scope decides which topics drive paper discovery, topic review, and quiz generation. Each user has a library of saved scopes (system-owned starters + their own + scopes shared with them); exactly one is active at a time.
+
+### Legacy shim — used by paper discovery / quiz code
+
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/scope` | Current user's topic scope (silo / multi / all) |
-| `PUT` | `/scope` | Update the topic scope |
+| `GET` | `/user/scope` | Currently-active scope projected as `{scope_mode, scope_topic_ids}` |
+| `PUT` | `/user/scope` | Update the active scope's mode + topic_ids in place |
+
+### Active scope
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/user/active-scope` | The full active `Scope` row, or `null` if no scope is active yet |
+| `PUT` | `/user/active-scope` | Switch which scope is active. Body: `{"scope_id": <id> \| null}`. `null` clears (drops the user back onto the onboarding picker) |
+
+### Scope library — first-class shareable scopes
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/scopes/mine` | Library view — every scope I own plus every private scope I have a grant for. Each item carries `relation: "owned" \| "granted"` |
+| `GET` | `/scopes/search?q=&limit=` | Public-scope search by name + description substring. Includes system-owned starters. `limit` defaults to 50, capped at 200 |
+| `GET` | `/scopes/{id}` | View one scope. Returns 404 (not 403) when not viewable so private-scope existence isn't leaked |
+| `POST` | `/scopes` | Create a new scope owned by the caller. Body: `{name, description?, visibility?, scope_mode?, scope_topic_ids?}` |
+| `PUT` | `/scopes/{id}` | Patch editable fields. Owner / admin only. Same body shape as POST, all fields optional |
+| `DELETE` | `/scopes/{id}` | Hard-delete (204). Owner / admin only. Clears `UserSettings.active_scope_id` pointers, breaks fork lineage (SET NULL on children), drops grants + requests |
+| `PUT` | `/scopes/{id}/visibility` | Flip between public/private. Body: `{"visibility": "public" \| "private"}` |
+| `POST` | `/scopes/{id}/fork` | Fork an accessible scope into the caller's library as a new private row. Body: `{name?, description?}` (defaults to "Fork of <source.name>") |
+
+### Access requests — private-scope sharing (recipient requests, owner approves)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/scopes/{id}/access-requests` | Request view-access to a private scope. Body: `{"message": "<optional>"}`. 409 if a pending request already exists, the caller is the owner, or they already have a grant |
+| `GET` | `/scopes/access-requests/incoming?status=` | Requests targeted at scopes I own. `status` defaults to `pending`; valid values: `pending` \| `approved` \| `denied` (omit for all) |
+| `GET` | `/scopes/access-requests/outgoing?status=` | Requests I've submitted (default: all statuses) |
+| `POST` | `/scopes/access-requests/{id}/decide` | Owner-only. Body: `{"decision": "approve" \| "deny"}`. Approving inserts a `ScopeAccessGrant`; denying just stamps the row |
 
 ## Web Push
 
@@ -100,8 +133,23 @@ curl http://localhost:8000/topics
 # Generate a quiz for the ml-foundations topic
 curl http://localhost:8000/quiz/generate/ml-foundations
 
-# Silo on a single topic
-curl -X PUT http://localhost:8000/scope \
+# Silo on a single topic (legacy shim — writes to the active scope)
+curl -X PUT http://localhost:8000/user/scope \
   -H "Content-Type: application/json" \
   -d '{"scope_mode": "silo", "scope_topic_ids": ["transient-photometric-classification"]}'
+
+# Fork a public starter into my library
+curl -X POST http://localhost:8000/scopes/12/fork \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My take on Physics"}'
+
+# Switch which scope drives the app
+curl -X PUT http://localhost:8000/user/active-scope \
+  -H "Content-Type: application/json" \
+  -d '{"scope_id": 17}'
+
+# Request access to a private scope
+curl -X POST http://localhost:8000/scopes/42/access-requests \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Working on a related literature review"}'
 ```

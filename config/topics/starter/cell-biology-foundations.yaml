@@ -1,0 +1,63 @@
+id: cell-biology-foundations
+name: Cell Biology Foundations — Organelles, Signaling, and the Cell Cycle
+stream: biology_foundations
+active: true
+weight: 1.0
+keywords:
+- cell biology
+- eukaryote
+- prokaryote
+- nucleus
+- mitochondrion
+- chloroplast
+- endoplasmic reticulum
+- Golgi apparatus
+- lysosome
+- ribosome
+- cytoskeleton
+- actin
+- microtubule
+- membrane
+- lipid bilayer
+- membrane protein
+- ion channel
+- transport
+- endocytosis
+- exocytosis
+- cell signaling
+- receptor
+- G-protein coupled receptor
+- kinase
+- second messenger
+- signal transduction
+- cell cycle
+- mitosis
+- meiosis
+- apoptosis
+- stem cell
+- differentiation
+arxiv_categories:
+- q-bio.CB
+- q-bio.SC
+- q-bio.MN
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- the major eukaryotic organelles and what each one does
+- the structure and function of the lipid bilayer and membrane proteins
+- how cells move material in and out (transport, endocytosis, exocytosis)
+- signal transduction cascades and the role of receptors and second messengers
+- the cell cycle, its checkpoints, and how it goes wrong in cancer
+- the difference between mitosis and meiosis
+- apoptosis as a regulated form of cell death
+- stem cells and the basics of differentiation
+learning_objectives:
+- Identify the major organelles in a labeled diagram and state each one's role
+- Trace a signal from a GPCR to a downstream cellular response
+- List the phases of the cell cycle and the key checkpoints between them
+- Distinguish mitosis from meiosis in one sentence
+- Describe one example of how a stem cell decides between self-renewal and differentiation
+resources: []
+quiz_difficulty: easy
+prerequisites:
+- molecular-biology-foundations

@@ -1,0 +1,61 @@
+id: microeconomics-foundations
+name: Microeconomics Foundations — Markets, Consumers, and Firms
+stream: economics_foundations
+active: true
+weight: 1.0
+keywords:
+- microeconomics
+- supply
+- demand
+- market equilibrium
+- price elasticity
+- consumer surplus
+- producer surplus
+- utility
+- indifference curve
+- budget constraint
+- marginal rate of substitution
+- preferences
+- demand curve
+- production function
+- marginal cost
+- marginal revenue
+- profit maximization
+- perfect competition
+- monopoly
+- oligopoly
+- monopolistic competition
+- Nash equilibrium
+- game theory
+- externalities
+- public goods
+- market failure
+- adverse selection
+- moral hazard
+- principal-agent
+- mechanism design
+- auction
+arxiv_categories:
+- econ.GN
+- econ.TH
+- econ.EM
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- supply and demand and what shifts each curve
+- market equilibrium and the meaning of consumer and producer surplus
+- utility maximization, indifference curves, and the budget constraint
+- profit maximization and the role of marginal cost and marginal revenue
+- the spectrum from perfect competition to monopoly and the welfare consequences
+- Nash equilibrium as the workhorse solution concept of game theory
+- externalities and public goods as canonical sources of market failure
+- adverse selection and moral hazard under asymmetric information
+learning_objectives:
+- Find the market equilibrium price and quantity given linear supply and demand
+- Compute the consumer surplus from a market diagram
+- Identify the profit-maximizing output for a firm facing a demand curve
+- Find the Nash equilibrium of a 2x2 simultaneous game
+- Give one example of a market failure and one policy response to it
+resources: []
+quiz_difficulty: easy
+prerequisites: []

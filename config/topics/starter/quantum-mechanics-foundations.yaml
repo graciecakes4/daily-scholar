@@ -1,0 +1,66 @@
+id: quantum-mechanics-foundations
+name: Quantum Mechanics Foundations — Wavefunctions, Operators, and Measurement
+stream: physics_foundations
+active: true
+weight: 1.0
+keywords:
+- quantum mechanics
+- wavefunction
+- Schrodinger equation
+- Hamiltonian
+- Hilbert space
+- bra-ket
+- Dirac notation
+- operator
+- hermitian operator
+- eigenstate
+- eigenvalue
+- measurement
+- observable
+- expectation value
+- uncertainty principle
+- commutator
+- spin
+- angular momentum
+- harmonic oscillator
+- hydrogen atom
+- perturbation theory
+- time-dependent perturbation
+- WKB approximation
+- variational method
+- density matrix
+- mixed state
+- entanglement
+- Bell inequality
+- quantum tunneling
+- quantum statistics
+- identical particles
+- fermion
+- boson
+- path integral
+arxiv_categories:
+- quant-ph
+- physics.atom-ph
+- math-ph
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- the wavefunction and the probabilistic interpretation of quantum amplitudes
+- the time-dependent and time-independent Schrodinger equations
+- observables as Hermitian operators and the measurement postulate
+- the commutator algebra and the uncertainty principle
+- angular momentum, spin, and the addition of angular momenta
+- the harmonic oscillator and ladder operators
+- the hydrogen atom and its degeneracies
+- perturbation theory (time-independent and time-dependent)
+- entanglement, density matrices, and the difference between pure and mixed states
+learning_objectives:
+- Solve the time-independent Schrodinger equation for the infinite square well
+- Compute expectation values and uncertainties for position and momentum
+- Apply first-order perturbation theory to a small Hamiltonian shift
+- Construct the joint state of two spin-1/2 particles and identify entangled states
+- Explain why Bell-inequality violations rule out local hidden-variable theories
+resources: []
+quiz_difficulty: medium
+prerequisites:
+- classical-mechanics-foundations

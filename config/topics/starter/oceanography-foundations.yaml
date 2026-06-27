@@ -1,0 +1,61 @@
+id: oceanography-foundations
+name: Oceanography Foundations — Circulation, Heat Transport, and Sea Level
+stream: climate_foundations
+active: true
+weight: 1.0
+keywords:
+- oceanography
+- physical oceanography
+- ocean circulation
+- thermohaline circulation
+- meridional overturning circulation
+- AMOC
+- wind-driven circulation
+- Ekman transport
+- gyre
+- western boundary current
+- Gulf Stream
+- Kuroshio
+- mixed layer
+- thermocline
+- pycnocline
+- ocean heat content
+- sea surface temperature
+- salinity
+- density
+- equation of state
+- sea level rise
+- steric sea level
+- eustatic sea level
+- ENSO
+- El Nino
+- La Nina
+- tides
+- ocean waves
+- ocean acidification
+- biogeochemistry
+arxiv_categories:
+- physics.ao-ph
+- physics.flu-dyn
+- physics.geo-ph
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- the wind-driven and thermohaline components of the ocean circulation
+- the AMOC and why it matters for climate
+- Ekman dynamics and the structure of the gyres
+- western boundary currents and why they're sharper than eastern ones
+- the mixed layer, thermocline, and how surface heat is exchanged with the deep ocean
+- the contributions to sea level rise (thermal expansion vs ice mass)
+- ENSO as the dominant mode of interannual ocean-atmosphere variability
+- ocean acidification as a direct consequence of CO2 uptake
+learning_objectives:
+- Explain why Ekman transport is perpendicular to the wind direction
+- Sketch the structure of a subtropical gyre and label the western boundary current
+- Decompose observed sea level rise into thermal-expansion and ice-mass contributions
+- Distinguish El Nino from La Nina by sea surface temperature pattern
+- Describe one mechanism by which ocean acidification affects marine ecosystems
+resources: []
+quiz_difficulty: medium
+prerequisites:
+- classical-mechanics-foundations
