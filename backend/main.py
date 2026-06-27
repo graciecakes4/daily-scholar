@@ -128,6 +128,16 @@ async def lifespan(app: FastAPI):
         f"{summary['preserved']} preserved, "
         f"{summary['marked_orphaned']} marked orphaned"
     )
+    # seed system-owned public "starter" scopes referencing the
+    # just-bootstrapped foundation topics. idempotent — runs every boot.
+    from .services.starter_scopes import seed_starter_scopes
+    starter_summary = seed_starter_scopes()
+    print(
+        f"  ↳ Starter scopes seeded: "
+        f"{starter_summary['inserted']} inserted, "
+        f"{starter_summary['refreshed']} refreshed, "
+        f"{starter_summary['unchanged']} unchanged"
+    )
     # APScheduler nightly daily-content job
     from .services.scheduler import start_scheduler, stop_scheduler
     sched = start_scheduler()
@@ -1606,6 +1616,7 @@ async def get_daily_content(
 # =============================================================================
 
 from .api.topics import topics_router, scope_router
+from .api.scopes import scopes_router, active_scope_router
 from .api.push import push_router
 from .api.admin import admin_router
 from .api.admin_invites import admin_invites_router
@@ -1617,6 +1628,9 @@ from .api.auth import auth_router
 from .api.onboarding import onboarding_router
 app.include_router(topics_router)
 app.include_router(scope_router)
+# scope-library (phase E) — first-class shareable scopes
+app.include_router(scopes_router)
+app.include_router(active_scope_router)
 app.include_router(push_router)
 app.include_router(admin_router)
 app.include_router(admin_invites_router)

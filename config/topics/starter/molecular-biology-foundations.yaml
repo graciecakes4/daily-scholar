@@ -1,0 +1,63 @@
+id: molecular-biology-foundations
+name: Molecular Biology Foundations — DNA, RNA, and the Central Dogma
+stream: biology_foundations
+active: true
+weight: 1.0
+keywords:
+- molecular biology
+- DNA
+- RNA
+- mRNA
+- tRNA
+- ribosome
+- nucleotide
+- base pair
+- double helix
+- replication
+- DNA polymerase
+- transcription
+- RNA polymerase
+- translation
+- codon
+- genetic code
+- central dogma
+- protein
+- amino acid
+- peptide bond
+- gene expression
+- promoter
+- enhancer
+- transcription factor
+- splicing
+- post-translational modification
+- chromatin
+- histone
+- epigenetics
+- CRISPR
+- gene editing
+- PCR
+- sequencing
+arxiv_categories:
+- q-bio.BM
+- q-bio.GN
+- q-bio.MN
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- the structure of DNA and the chemical basis of base pairing
+- the central dogma — DNA to RNA to protein — and where it's regulated
+- transcription, the role of RNA polymerase, and how promoters/enhancers work
+- splicing of pre-mRNA and the source of isoform diversity
+- translation, the genetic code, and how ribosomes decode mRNA
+- chromatin structure, histone modifications, and basic epigenetic regulation
+- CRISPR/Cas systems and how they're repurposed for targeted gene editing
+- the workhorses of molecular biology in the lab — PCR and sequencing
+learning_objectives:
+- Diagram the central dogma and label where each step happens in the cell
+- Translate a short mRNA sequence into a polypeptide using the genetic code
+- Explain how a transcription factor changes gene expression
+- Describe the difference between transcription and translation in plain language
+- Outline how CRISPR-Cas9 introduces a targeted double-strand break
+resources: []
+quiz_difficulty: easy
+prerequisites: []

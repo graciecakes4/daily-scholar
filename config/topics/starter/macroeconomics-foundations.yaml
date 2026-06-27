@@ -1,0 +1,61 @@
+id: macroeconomics-foundations
+name: Macroeconomics Foundations — Output, Inflation, and Policy
+stream: economics_foundations
+active: true
+weight: 1.0
+keywords:
+- macroeconomics
+- GDP
+- gross domestic product
+- inflation
+- unemployment
+- Phillips curve
+- output gap
+- business cycle
+- recession
+- aggregate demand
+- aggregate supply
+- IS-LM
+- money supply
+- central bank
+- monetary policy
+- fiscal policy
+- interest rate
+- Taylor rule
+- exchange rate
+- balance of payments
+- growth
+- Solow model
+- productivity
+- human capital
+- inflation expectations
+- quantitative easing
+- liquidity trap
+- sovereign debt
+- DSGE
+- new Keynesian
+arxiv_categories:
+- econ.GN
+- econ.TH
+- econ.EM
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- GDP, inflation, and unemployment as the headline macro variables
+- the basic business cycle and how aggregate demand and supply move
+- monetary policy tools and how a central bank uses interest rates
+- fiscal policy tools and the spending-multiplier intuition
+- the Phillips curve relationship and why it shifts
+- the Solow model and the role of capital accumulation in long-run growth
+- the zero lower bound, liquidity traps, and unconventional policy
+- the gap between classical and new-Keynesian models in one sentence
+learning_objectives:
+- Compute real GDP from nominal GDP using a price index
+- Sketch the short-run aggregate supply / aggregate demand response to a demand shock
+- Explain how a central bank uses interest rates to target inflation
+- Describe the steady-state implication of the Solow model
+- Identify one reason the Phillips curve relationship has weakened over time
+resources: []
+quiz_difficulty: medium
+prerequisites:
+- microeconomics-foundations

@@ -1,0 +1,61 @@
+id: atmospheric-physics-foundations
+name: Atmospheric Physics Foundations — Dynamics, Thermodynamics, and Circulation
+stream: climate_foundations
+active: true
+weight: 1.0
+keywords:
+- atmospheric physics
+- atmospheric dynamics
+- atmospheric thermodynamics
+- hydrostatic balance
+- geostrophic balance
+- Coriolis
+- Rossby number
+- Ekman layer
+- boundary layer
+- convection
+- moist convection
+- cloud microphysics
+- precipitation
+- radiative transfer
+- atmospheric radiation
+- Hadley cell
+- Ferrel cell
+- polar cell
+- jet stream
+- Rossby wave
+- baroclinic instability
+- monsoon
+- tropical cyclone
+- mesoscale
+- stratosphere
+- troposphere
+- ozone
+- aerosol
+- climate dynamics
+- general circulation
+arxiv_categories:
+- physics.ao-ph
+- physics.flu-dyn
+- physics.geo-ph
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- hydrostatic and geostrophic balance as the leading-order approximations
+- the role of the Coriolis force in shaping mid-latitude weather
+- moist convection and the basics of cloud microphysics
+- the three-cell picture of the general circulation
+- baroclinic instability as the origin of mid-latitude storms
+- radiative transfer and how it couples to dynamics
+- the structure of the atmosphere from troposphere through stratosphere
+- aerosols and ozone — small mass, large radiative consequence
+learning_objectives:
+- Derive the hydrostatic balance from the vertical momentum equation
+- Explain why mid-latitude winds blow roughly along isobars
+- Sketch the Hadley/Ferrel/polar cell structure with surface wind direction
+- Identify the energy source of a baroclinic mid-latitude storm
+- Describe one way aerosols change the radiative budget directly and one indirectly
+resources: []
+quiz_difficulty: medium
+prerequisites:
+- classical-mechanics-foundations
