@@ -1,48 +1,50 @@
 'use client';
 
 /**
- * Tutorial for /settings/scope — the silo/multi/all topic-scope selector.
+ * Tutorial for /settings/scope — the scope library.
  *
- * 2 steps (deliberately small — scope is one decision, not a workflow):
- *   1. Mode selector — what the three modes do
- *   2. Save button — how to apply + that the dashboard follows
+ * 2 steps (deliberately small):
+ *   1. Active scope banner — what "active" means + how it drives the app
+ *   2. Library list + new scope button — owned + shared scopes, plus
+ *      how to add more
  *
- * The picker section is NOT a target because it only renders in
- * multi/silo modes. Step 1's copy mentions that switching modes
- * reveals it, so users don't need a dedicated step.
+ * Per-scope editing (mode + topic picker + save) lives on
+ * /settings/scope/[id]; that page has its own data-tour anchors and may
+ * get a separate tour later.
  *
  * BUMP TOUR_VERSION when STEPS materially changes. Frontend gates
  * on `user.tour_state.scope < TOUR_VERSION`; bumping re-triggers
- * the tour for everyone whose stored value is lower.
+ * the tour for everyone whose stored value is lower. v1 targeted the
+ * old single-scope page (data-tour="scope-mode" / "scope-save"); v2
+ * targets the library shell.
  */
 
 import { useDriverTour } from '@/hooks/useDriverTour';
 
 export const TOUR_ID = 'scope';
-export const TOUR_VERSION = 1;
+export const TOUR_VERSION = 2;
 
 const STEPS = [
   {
-    element: '[data-tour="scope-mode"]',
+    element: '[data-tour="scope-active"]',
     popover: {
-      title: 'Pick a scope mode',
+      title: 'Your active scope',
       description:
-        "Three modes control which topics drive your daily content. " +
-        "'All' uses every active topic. 'Multi-select' lets you pick a subset. " +
-        "'Silo' focuses everything on one topic. Switching to Multi or Silo " +
-        "reveals a topic picker below.",
+        "Exactly one scope is active at a time. The active scope decides " +
+        "which topics drive paper discovery, topic review, and quizzes. " +
+        "Click the name to edit it, or hit Set Active on any other scope to switch.",
       side: 'bottom' as const,
       align: 'start' as const,
     },
   },
   {
-    element: '[data-tour="scope-save"]',
+    element: '[data-tour="scope-library"]',
     popover: {
-      title: 'Save to apply',
+      title: 'Your library',
       description:
-        "Hit Save and your dashboard immediately follows the new scope — " +
-        "today's paper, topic review, and quiz all use your updated picks " +
-        "on the next refresh.",
+        "Scopes you own and ones that have been shared with you. " +
+        "Hit “New scope” to start one from scratch, or use Browse public " +
+        "to fork a starter scope from the catalog.",
       side: 'top' as const,
       align: 'end' as const,
     },

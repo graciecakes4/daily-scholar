@@ -1,0 +1,61 @@
+id: classical-mechanics-foundations
+name: Classical Mechanics Foundations — Newtonian, Lagrangian, and Hamiltonian Mechanics
+stream: physics_foundations
+active: true
+weight: 1.0
+keywords:
+- classical mechanics
+- Newtonian mechanics
+- Newton's laws
+- equations of motion
+- rigid body
+- kinematics
+- dynamics
+- conservation of energy
+- conservation of momentum
+- angular momentum
+- Lagrangian
+- Lagrangian mechanics
+- Euler-Lagrange equations
+- principle of least action
+- generalized coordinates
+- Hamiltonian
+- Hamiltonian mechanics
+- canonical transformation
+- Poisson bracket
+- phase space
+- symplectic
+- harmonic oscillator
+- coupled oscillators
+- central force
+- Kepler problem
+- two-body problem
+- chaos
+- nonlinear dynamics
+- perturbation theory
+- normal modes
+- continuum mechanics
+arxiv_categories:
+- physics.class-ph
+- nlin.CD
+- math-ph
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- Newton's laws and their formulation in terms of forces and accelerations
+- the principle of least action and the Euler-Lagrange equations
+- the connection between symmetries and conservation laws (Noether's theorem)
+- Hamiltonian formulation, canonical coordinates, and phase space
+- normal modes and small oscillations about equilibrium
+- central-force problems and the structure of Keplerian orbits
+- rigid-body motion and the inertia tensor
+- the basic vocabulary of nonlinear dynamics and chaos
+learning_objectives:
+- Derive the Euler-Lagrange equation from the principle of least action
+- Identify a conserved quantity from a continuous symmetry of the Lagrangian
+- Convert between Lagrangian and Hamiltonian formulations of a simple system
+- Solve the small-oscillation problem for a coupled mass-spring system
+- Reduce a two-body problem to an effective one-body problem in a central potential
+resources: []
+quiz_difficulty: easy
+prerequisites: []

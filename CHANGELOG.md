@@ -1,5 +1,29 @@
 # Changelog
 
+## [v2.3] — 2026-06-27
+
+Scope library release. **Scope becomes a first-class, shareable, forkable entity** instead of a single hidden per-user setting. Five system-owned starter scopes (ML, Physics, Biology & Life Sciences, Economics & Finance, Climate & Earth Sciences) drive a new onboarding picker for fresh users; existing users get migrated transparently. Public scopes are searchable and forkable; private scopes are shareable via a request/approval workflow mirroring v2.2's invite-code pattern. **One migration (`0012_scopes`), three new tables, one new column, twelve new starter-topic YAMLs, zero new dependencies, zero env-var changes.** Solo mode (`__local__`) and the legacy `/user/scope` shape preserved end-to-end. Full release notes in [docs/releases/v2.3.md](docs/releases/v2.3.md).
+
+### Added
+
+- **Scope entity** — `scopes` table (id, name, description, owner_user_id, visibility, mode, topic_ids, forked_from_scope_id, timestamps). `UserSettings.active_scope_id` points at the row currently driving discovery / review / quizzes. Legacy `scope_mode` / `scope_topic_ids` columns kept as a one-release back-compat cache, refreshed by the service when the user switches active scope.
+- **Scope library API** — `GET /scopes/mine` (owned + granted with relation tag), `GET /scopes/search?q=` (public substring search), `GET/POST/PUT/DELETE /scopes[/{id}]` (CRUD), `PUT /scopes/{id}/visibility`, `POST /scopes/{id}/fork`.
+- **Active-scope API** — `GET /user/active-scope` (full row or `null`), `PUT /user/active-scope` (body `{"scope_id": id | null}`).
+- **Access-request lifecycle** — `POST /scopes/{id}/access-requests` (recipient asks), `GET /scopes/access-requests/incoming|outgoing` (status-filterable), `POST /scopes/access-requests/{id}/decide` (owner approves/denies). Approval inserts a `ScopeAccessGrant`; one pending per (scope, requester) enforced in the service layer.
+- **Five starter scopes + twelve foundation topics** under `config/topics/starter/`. New `backend/services/starter_scopes.py` seeds them at boot (idempotent, refreshes topic_ids if the catalog grows); also runnable via `scripts/seed_starter_scopes.py`.
+- **Frontend** — `/settings/scope` rewritten as the library view, new `/settings/scope/[id]` per-scope editor, new `/scopes/browse` for public discovery + fork (with Use Directly action + Request-access-by-id form), new `/scopes/requests` for the two-section access-request inbox, new `/scopes/picker` for first-run users. `<ScopePickerGuard />` mounted in layout. `ScopeTour` bumped to v2.
+- **Migration script** — `scripts/migrate_to_scope_library.py` materializes per-user legacy `scope_mode` / `scope_topic_ids` into a private `"My scope"` row and sets `active_scope_id`. Dry-run by default; `--apply` to commit. Idempotent.
+
+### Changed
+
+- **`backend/services/scopes.delete_scope`** does explicit cleanup (clears active pointers, breaks fork lineage, drops grants + requests) rather than relying on FK CASCADE / SET NULL, matching `topic_subscriptions`'s "don't depend on `PRAGMA foreign_keys`" convention.
+- **Migration `0012_scopes`** adds the three tables + the `active_scope_id` column. `backend/main.py` `lifespan` calls `seed_starter_scopes()` right after `bootstrap_topics_from_yaml()` so a fresh boot always has the starter content.
+
+### Preserved
+
+- `GET /user/scope` and `PUT /user/scope` (the legacy shape paper discovery + quiz code reads). Reads project from the active scope; writes update the active scope's cache in place.
+- Solo mode (`__local__`) — treated as admin for view + edit permission checks. Starter scopes are visible to it; the migration script skips it (no `users` row).
+
 ## [v2.2] — 2026-06-26
 
 Multi-user release. Daily Scholar moves from a solo praxis tool to a real multi-tenant beta-ready app. Six feature PRs land in one release plus a code-review agent playbook commit: configurable push notifications (PR #37), the multi-user auth foundation Phases A–F bundled (PR #38 — in-app email+password signup, invite-gated admin approval, per-user topic ownership with private/public visibility, topic discovery + subscriptions, LLM-driven onboarding wizard, admin account management UI), append-only admin audit log (PR #39), self-service password + username change + admin password reset (PR #40), beta hardening (PR #41 — custom in-memory rate limiter, double-submit-cookie CSRF, password-strength UI hint), per-page guided product tours with versioned server-side state (PR #42), and `AGENTS.md` (commit f982e4a). Solo mode (`__local__`) preserved end-to-end. **Eight new migrations (0004–0011), two new Python deps (`passlib`, `bcrypt`), one new npm dep (`driver.js`), three new dev-only env knobs.**

@@ -1,0 +1,62 @@
+id: climate-science-foundations
+name: Climate Science Foundations — Radiative Forcing, Feedbacks, and Sensitivity
+stream: climate_foundations
+active: true
+weight: 1.0
+keywords:
+- climate
+- climate science
+- greenhouse effect
+- greenhouse gas
+- carbon dioxide
+- methane
+- radiative forcing
+- albedo
+- energy budget
+- climate sensitivity
+- equilibrium climate sensitivity
+- transient climate response
+- climate feedback
+- water vapor feedback
+- ice-albedo feedback
+- cloud feedback
+- climate model
+- general circulation model
+- earth system model
+- CMIP
+- emission scenario
+- representative concentration pathway
+- RCP
+- SSP
+- carbon cycle
+- ocean heat uptake
+- sea level rise
+- climate variability
+- ENSO
+- detection and attribution
+- mitigation
+- adaptation
+arxiv_categories:
+- physics.ao-ph
+- physics.geo-ph
+- stat.AP
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- the greenhouse effect at the level of the planetary energy budget
+- radiative forcing as the common currency for comparing perturbations
+- the major climate feedbacks (water vapor, ice-albedo, clouds) and their signs
+- equilibrium climate sensitivity vs transient climate response
+- how a general circulation model is structured and what CMIP is
+- emission scenarios — what RCP and SSP labels actually encode
+- the carbon cycle and the role of land and ocean sinks
+- detection-and-attribution as the statistical bridge between forcing and observed change
+learning_objectives:
+- Use a simple energy-balance model to predict the temperature change from a forcing
+- Identify which of the major feedbacks are positive versus negative and why
+- Distinguish equilibrium climate sensitivity from transient climate response
+- Explain what a CMIP model intercomparison shows and what it does not
+- Describe the difference between climate mitigation and climate adaptation
+resources: []
+quiz_difficulty: medium
+prerequisites: []

@@ -1,0 +1,62 @@
+id: genetics-and-genomics-foundations
+name: Genetics and Genomics Foundations — Heredity, Variation, and Sequencing
+stream: biology_foundations
+active: true
+weight: 1.0
+keywords:
+- genetics
+- genomics
+- heredity
+- Mendelian inheritance
+- allele
+- genotype
+- phenotype
+- dominant
+- recessive
+- linkage
+- recombination
+- mutation
+- single nucleotide polymorphism
+- SNP
+- indel
+- copy number variation
+- structural variant
+- population genetics
+- Hardy-Weinberg
+- allele frequency
+- genetic drift
+- natural selection
+- whole genome sequencing
+- exome sequencing
+- RNA-seq
+- single-cell sequencing
+- GWAS
+- polygenic score
+- linkage disequilibrium
+- heritability
+- evolution
+arxiv_categories:
+- q-bio.PE
+- q-bio.GN
+- stat.AP
+recency_days: 180
+min_relevance: 0.18
+key_concepts:
+- Mendelian inheritance and the connection between genotype and phenotype
+- mutation types (point, indel, structural) and their consequences
+- recombination, linkage, and how they shape the structure of a genome
+- the Hardy-Weinberg framework and basic population-genetic intuition
+- drift versus selection as the two big forces shaping allele frequencies
+- the dominant sequencing technologies and what each is used for
+- GWAS as a tool for linking variants to traits, and its limitations
+- heritability — what it does and doesn't tell you
+learning_objectives:
+- Predict offspring genotype ratios from a single-gene Mendelian cross
+- Explain why two loci near each other on a chromosome show linkage
+- Use Hardy-Weinberg to predict allele frequencies in a stable population
+- Distinguish between genetic drift and natural selection with an example
+- Describe what a GWAS does and one reason it can miss true associations
+resources: []
+quiz_difficulty: medium
+prerequisites:
+- molecular-biology-foundations
