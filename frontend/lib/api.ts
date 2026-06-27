@@ -447,6 +447,12 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit, _retried = f
     throw new Error(error.detail || `API error: ${response.status}`);
   }
 
+  // 204 No Content and other empty-body responses can't be parsed as JSON;
+  // returning undefined is correct since the function is generic and
+  // callers that need `void` get `undefined as unknown as void`.
+  if (response.status === 204 || response.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
   return response.json();
 }
 

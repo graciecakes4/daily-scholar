@@ -17,7 +17,6 @@ import {
   listMyScopes,
   getActiveScope,
   setActiveScope,
-  createScope,
   deleteScope,
   type LibraryItem,
   type Scope,
@@ -66,21 +65,11 @@ export default function ScopeLibraryPage() {
     }
   }
 
-  async function handleCreate() {
-    setBusy(true); setError(null); setSuccess(null);
-    try {
-      // create an empty starter row; user lands on the editor to fill it in
-      const fresh = await createScope({
-        name: 'Untitled scope',
-        scope_mode: 'all',
-        scope_topic_ids: [],
-        visibility: 'private',
-      });
-      router.push(`/settings/scope/${fresh.id}`);
-    } catch (e: any) {
-      setError(e.message);
-      setBusy(false);
-    }
+  // route to the editor's "new" mode — no server-side row is created until
+  // the user explicitly hits Save in the editor, so navigating away from
+  // the editor without saving discards the draft.
+  function handleCreate() {
+    router.push('/settings/scope/new');
   }
 
   async function handleDelete(item: LibraryItem) {
@@ -112,7 +101,7 @@ export default function ScopeLibraryPage() {
             Saved views that decide which topics drive your discovery, reviews, and quizzes.
           </p>
         </div>
-        <nav className="text-sm flex gap-4">
+        <nav className="text-sm flex gap-4 ml-auto">
           <Link href="/scopes/browse" className="text-sky-700 hover:underline">
             Browse public →
           </Link>
@@ -172,14 +161,12 @@ export default function ScopeLibraryPage() {
                 Pick a starter
               </Link>
               {' '}or{' '}
-              <button
-                type="button"
-                onClick={handleCreate}
-                disabled={busy}
-                className="text-sky-700 hover:underline disabled:opacity-50"
+              <Link
+                href="/settings/scope/new"
+                className="text-sky-700 hover:underline"
               >
                 start from scratch
-              </button>
+              </Link>
               .
             </p>
           )}

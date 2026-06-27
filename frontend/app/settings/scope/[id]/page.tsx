@@ -22,6 +22,7 @@ import {
   setScopeVisibility,
   deleteScope,
   forkScope,
+  createScope,
   setActiveScope,
   getActiveScope,
   listMyScopes,
@@ -41,13 +42,17 @@ export default function ScopeEditorPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
-  const scopeId = Number(params.id);
+  // "new" is a special route that means "draft a scope locally — only
+  // POST to the server when the user hits Save". Navigating away without
+  // saving leaves no row behind.
+  const isDraft = params.id === 'new';
+  const scopeId = isDraft ? null : Number(params.id);
 
   const [scope, setScope] = useState<Scope | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [activeScopeId, setActiveScopeId] = useState<number | null>(null);
   const [ownedIds, setOwnedIds] = useState<Set<number>>(new Set());
-  const [name, setName] = useState('');
+  const [name, setName] = useState(isDraft ? 'Untitled scope' : '');
   const [description, setDescription] = useState('');
   const [visibility, setVisibility] = useState<ScopeVisibility>('private');
   const [mode, setMode] = useState<ScopeMode>('all');
@@ -59,7 +64,30 @@ export default function ScopeEditorPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!Number.isFinite(scopeId)) {
+    if (isDraft) {
+      // draft mode: no fetch for the scope itself. just load the topic
+      // catalog so the picker can render. active-scope + library are
+      // also cheap and useful (so we can show "is this active" badge
+      // correctly once it's saved).
+      (async () => {
+        try {
+          const [ts, act, lib] = await Promise.all([
+            listTopics({ active: true }),
+            getActiveScope(),
+            listMyScopes(),
+          ]);
+          setTopics(ts);
+          setActiveScopeId(act?.id ?? null);
+          setOwnedIds(new Set(lib.filter(x => x.relation === 'owned').map(x => x.id)));
+        } catch (e: any) {
+          setError(e.message);
+        } finally {
+          setLoading(false);
+        }
+      })();
+      return;
+    }
+    if (scopeId === null || !Number.isFinite(scopeId)) {
       setError('Invalid scope id.');
       setLoading(false);
       return;
@@ -87,12 +115,15 @@ export default function ScopeEditorPage() {
         setLoading(false);
       }
     })();
-  }, [scopeId]);
+  }, [scopeId, isDraft]);
 
-  const isOwner = scope ? ownedIds.has(scope.id) : false;
+  // in draft mode the caller is always the owner-to-be of the new row, so
+  // every input is editable and Save is enabled per the same rules as a
+  // normal owned scope.
+  const isOwner = isDraft || (scope ? ownedIds.has(scope.id) : false);
   const isAdmin = user?.role === 'admin';
   const canEdit = isOwner || isAdmin;
-  const isActive = activeScopeId === scope?.id;
+  const isActive = !isDraft && activeScopeId === scope?.id;
 
   const grouped = useMemo(() => {
     const out: Record<string, Topic[]> = {};
@@ -120,15 +151,27 @@ export default function ScopeEditorPage() {
   async function save() {
     setSaving(true); setError(null); setSuccess(null);
     try {
-      const next = await updateScopeById(scopeId, {
+      if (isDraft) {
+        // first save of a draft: POST creates the row, then back to the
+        // library — the new scope shows up there with the right owner badge.
+        await createScope({
+          name,
+          description: description || null,
+          visibility,
+          scope_mode: mode,
+          scope_topic_ids: mode === 'all' ? [] : selected,
+        });
+        router.push('/settings/scope');
+        return;
+      }
+      await updateScopeById(scopeId!, {
         name,
         description: description || null,
         visibility,
         scope_mode: mode,
         scope_topic_ids: mode === 'all' ? [] : selected,
       });
-      setScope(next);
-      setSuccess('Saved.');
+      router.push('/settings/scope');
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -137,8 +180,14 @@ export default function ScopeEditorPage() {
   }
 
   async function toggleVisibility() {
-    if (!scope) return;
     const next: ScopeVisibility = visibility === 'public' ? 'private' : 'public';
+    // in draft mode there's no row to PUT yet — just update the local
+    // state so the visibility lands when the user hits Save.
+    if (isDraft) {
+      setVisibility(next);
+      return;
+    }
+    if (!scope) return;
     try {
       const updated = await setScopeVisibility(scope.id, next);
       setScope(updated);
@@ -182,7 +231,9 @@ export default function ScopeEditorPage() {
   }
 
   if (loading) return <div className="text-slate-500">Loading…</div>;
-  if (!scope) {
+  // draft mode renders the editor without a `scope` row; only the
+  // existing-scope path needs the "not found" guard.
+  if (!isDraft && !scope) {
     return (
       <div className="space-y-4">
         <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
@@ -214,13 +265,19 @@ export default function ScopeEditorPage() {
           <Link href="/settings/scope" className="text-sky-700 hover:underline text-sm">
             ← Library
           </Link>
-          <h1 className="text-3xl font-bold text-slate-900 mt-1 truncate">{scope.name}</h1>
+          <h1 className="text-3xl font-bold text-slate-900 mt-1 truncate">
+            {isDraft ? 'New scope' : scope?.name}
+          </h1>
           <p className="text-slate-600 mt-1 text-sm">
-            {canEdit ? 'You own this scope.' : 'Read-only — fork to make your own copy.'}
+            {isDraft
+              ? "Nothing is saved until you hit Save — navigate away to discard."
+              : canEdit
+                ? 'You own this scope.'
+                : 'Read-only — fork to make your own copy.'}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {!isActive && (
+          {!isDraft && !isActive && (
             <button
               type="button"
               onClick={handleSetActive}
@@ -384,7 +441,7 @@ export default function ScopeEditorPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {canEdit && (
+          {canEdit && !isDraft && (
             <button
               type="button"
               onClick={handleDelete}
@@ -399,17 +456,19 @@ export default function ScopeEditorPage() {
             disabled={saveDisabled}
             className="px-5 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
           >
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? 'Saving…' : isDraft ? 'Create' : 'Save'}
           </button>
         </div>
       </div>
 
-      <p className="text-xs text-slate-400">
-        Last updated {new Date(scope.updated_at).toLocaleString()}.
-        {scope.forked_from_scope_id && (
-          <> Forked from scope #{scope.forked_from_scope_id}.</>
-        )}
-      </p>
+      {scope && (
+        <p className="text-xs text-slate-400">
+          Last updated {new Date(scope.updated_at).toLocaleString()}.
+          {scope.forked_from_scope_id && (
+            <> Forked from scope #{scope.forked_from_scope_id}.</>
+          )}
+        </p>
+      )}
     </div>
   );
 }

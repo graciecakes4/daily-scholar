@@ -99,7 +99,7 @@ export default function ScopeBrowsePage() {
             edit, or use it directly to track the owner's changes live.
           </p>
         </div>
-        <nav className="text-sm flex gap-4">
+        <nav className="text-sm flex gap-4 ml-auto">
           <Link href="/settings/scope" className="text-sky-700 hover:underline">
             ← My library
           </Link>

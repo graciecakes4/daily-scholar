@@ -933,6 +933,39 @@ def create_tables():
         # fresh install — alembic creates everything
         _run_alembic("upgrade", "head")
 
+    # defensive drift detector.
+    # we've seen Postgres get stamped at a revision higher than the
+    # actual schema reached (failed mid-upgrade leaves the version_num
+    # in place; the next boot's "fully managed — just upgrade" call is
+    # then a no-op even though columns are missing). detect that here
+    # and refuse to boot with a clear remediation message — auto-healing
+    # by rewinding the chain isn't safe because not every historical
+    # migration in this project is idempotent (e.g. 0002 uses bare
+    # create_table without a _has_table guard).
+    missing = _diff_metadata_against_db(engine)
+    if missing:
+        rev_now = _read_alembic_revision(engine) or "<unknown>"
+        msg = (
+            "\n"
+            "❌ Schema drift detected.\n"
+            f"   Alembic says current revision is {rev_now}, but the live\n"
+            f"   schema is missing column(s): {missing}.\n"
+            "   This usually means a previous boot's upgrade failed partway\n"
+            "   through but the version stamp survived.\n"
+            "\n"
+            "   To recover (preserves data — the existing migrations are\n"
+            "   idempotent past 0001, so replaying re-adds the missing\n"
+            "   columns without dropping anything):\n"
+            "\n"
+            "       alembic stamp 0010_admin_audit_log\n"
+            "       alembic upgrade head\n"
+            "\n"
+            "   (Adjust the stamp revision to one prior to whichever\n"
+            "   migration introduced the missing column.) After it\n"
+            "   succeeds, restart the app.\n"
+        )
+        raise RuntimeError(msg)
+
     # seed user_stats row for the local sentinel user if absent
     session = get_session()
     try:
@@ -947,6 +980,49 @@ def create_tables():
 
     print("✅ Database schema is up to date.")
     return engine
+
+
+def _read_alembic_revision(engine) -> Optional[str]:
+    """Return the current `alembic_version.version_num`, or None if missing."""
+    from sqlalchemy import inspect, text
+    if "alembic_version" not in set(inspect(engine).get_table_names()):
+        return None
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).first()
+        return row[0] if row is not None else None
+
+
+def _diff_metadata_against_db(engine) -> list[str]:
+    """
+    Return a sorted list of `"table.column"` strings for every column the
+    SQLAlchemy models declare that does NOT exist on the live database.
+
+    Tables that don't yet exist on the DB are skipped — the upgrade path
+    creates them, and Base.metadata is the source of truth for what
+    *should* be there post-upgrade.
+
+    Empty list means the live schema matches the models.
+
+    Used by create_tables() to auto-detect the "Alembic stamped at head
+    but the DDL never ran" failure class we've hit in the wild.
+    """
+    from sqlalchemy import inspect
+
+    inspector = inspect(engine)
+    live_tables = set(inspector.get_table_names())
+
+    missing: list[str] = []
+    for table_name, table in Base.metadata.tables.items():
+        if table_name not in live_tables:
+            # the table itself is absent — the upgrade path is responsible
+            # for creating it. don't report individual columns because the
+            # whole row would be noise.
+            continue
+        live_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        for col in table.columns:
+            if col.name not in live_cols:
+                missing.append(f"{table_name}.{col.name}")
+    return sorted(missing)
 
 
 def _run_alembic(action: str, revision: str):

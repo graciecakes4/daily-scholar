@@ -93,7 +93,7 @@ export default function AccessRequestsPage() {
             Approve or deny requests for your private scopes, and track the requests you've sent.
           </p>
         </div>
-        <nav className="text-sm flex gap-4">
+        <nav className="text-sm flex gap-4 ml-auto">
           <Link href="/settings/scope" className="text-sky-700 hover:underline">
             ← My library
           </Link>
