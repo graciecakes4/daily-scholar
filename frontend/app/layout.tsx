@@ -7,6 +7,7 @@ import AuthBoundary from "@/components/AuthBoundary";
 import DashboardTour from "@/components/DashboardTour";
 import MobileTabBar from "@/components/MobileTabBar";
 import OnboardingGuard from "@/components/OnboardingGuard";
+import ScopePickerGuard from "@/components/ScopePickerGuard";
 import ScopeTour from "@/components/ScopeTour";
 import TopicsTour from "@/components/TopicsTour";
 import UserMenu from "@/components/UserMenu";
@@ -148,6 +149,9 @@ export default function RootLayout({
 
         {/* Phase E: redirect logged-in unonboarded users to /onboarding */}
         <OnboardingGuard />
+
+        {/* Phase E: redirect onboarded users with no active scope to the picker */}
+        <ScopePickerGuard />
 
         {/* Phase E follow-up: per-page guided product tours.
             Each component self-gates on user.onboarded + pathname + server-side

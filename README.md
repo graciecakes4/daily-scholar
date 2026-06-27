@@ -117,7 +117,20 @@ make vapid                           # generates VAPID_PUBLIC_KEY / VAPID_PRIVAT
 # paste the three printed lines into .env, then restart with make start
 ```
 
-Enable notifications in the app at `/settings/scope`. Regenerating the keypair invalidates every active browser subscription — treat the keys like an API secret. Full PWA + push walkthrough in [docs/PWA.md](docs/PWA.md).
+Enable notifications under Notifications on `/settings/scope`. Regenerating the keypair invalidates every active browser subscription — treat the keys like an API secret. Full PWA + push walkthrough in [docs/PWA.md](docs/PWA.md).
+
+---
+
+## Scope library
+
+A **scope** is a saved, switchable view over the topics table that decides which topics drive paper discovery, topic review, and quiz generation. As of v2.3 scopes are first-class entities — each user has a library of saved scopes (system-owned starters + their own + ones shared with them) and switches which one is active.
+
+- New users land on the **onboarding picker** (`/scopes/picker`) which surfaces five system-owned starter scopes — ML, Physics, Biology & Life Sciences, Economics & Finance, Climate & Earth Sciences — plus "Browse all public" and "Start from scratch".
+- Manage owned + shared scopes at `/settings/scope`; edit one at `/settings/scope/[id]`.
+- Browse + fork public scopes (or request access to a private one by ID) at `/scopes/browse`.
+- Accept / decline incoming access requests at `/scopes/requests`.
+
+Existing users are migrated transparently by `scripts/migrate_to_scope_library.py` (dry-run by default; `--apply` to commit). Full endpoint reference in [docs/API.md](docs/API.md) under "Scope (per-user)".
 
 ---
 

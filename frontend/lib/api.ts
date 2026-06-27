@@ -169,11 +169,72 @@ export type TopicUpdate = Partial<Omit<TopicCreate, 'id'>>;
 
 export type ScopeMode = 'silo' | 'multi' | 'all';
 
-export interface Scope {
+export type ScopeVisibility = 'private' | 'public';
+
+/**
+ * Legacy /user/scope shape — kept so existing paper-discovery / quiz code
+ * keeps working unchanged. The scope-library phase makes Scope a
+ * first-class entity (see the `Scope` interface below); this view is
+ * just a thin projection of the user's active scope's mode + topic_ids.
+ */
+export interface LegacyScopeView {
   user_id: string;
   scope_mode: ScopeMode;
   scope_topic_ids: string[];
   updated_at: string;
+}
+
+/**
+ * A first-class, switchable, shareable scope (Phase E).
+ *
+ * owner_user_id is null for system-seeded starter scopes.
+ * forked_from_scope_id is null unless this scope was forked from another.
+ */
+export interface Scope {
+  id: number;
+  name: string;
+  description: string | null;
+  owner_user_id: number | null;
+  visibility: ScopeVisibility;
+  scope_mode: ScopeMode;
+  scope_topic_ids: string[];
+  forked_from_scope_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A library entry — a scope plus the caller's relation to it. */
+export interface LibraryItem extends Scope {
+  relation: 'owned' | 'granted';
+}
+
+export type AccessRequestStatus = 'pending' | 'approved' | 'denied';
+
+export interface ScopeAccessRequest {
+  id: number;
+  scope_id: number;
+  requester_user_id: string;
+  message: string | null;
+  status: AccessRequestStatus;
+  created_at: string;
+  decided_at: string | null;
+  decided_by_user_id: number | null;
+}
+
+export interface ScopeCreatePayload {
+  name: string;
+  description?: string | null;
+  visibility?: ScopeVisibility;
+  scope_mode?: ScopeMode;
+  scope_topic_ids?: string[];
+}
+
+export interface ScopeUpdatePayload {
+  name?: string;
+  description?: string | null;
+  visibility?: ScopeVisibility;
+  scope_mode?: ScopeMode;
+  scope_topic_ids?: string[];
 }
 
 export interface TopicReview {
@@ -817,15 +878,139 @@ export async function skipOnboarding(): Promise<{ ok: boolean; onboarded: boolea
 }
 
 // -----------------------------------------------------------------------------
-// Scope (silo / multi / all topic selector)
+// Legacy /user/scope (silo / multi / all topic selector)
+// Kept so existing paper-discovery / quiz code keeps working. Reads/writes
+// reflect the currently-active scope's mode + topic_ids.
 // -----------------------------------------------------------------------------
 
-export async function getScope(): Promise<Scope> {
+export async function getScope(): Promise<LegacyScopeView> {
   return fetchAPI('/user/scope');
 }
 
-export async function updateScope(payload: { scope_mode: ScopeMode; scope_topic_ids: string[] }): Promise<Scope> {
+export async function updateScope(
+  payload: { scope_mode: ScopeMode; scope_topic_ids: string[] },
+): Promise<LegacyScopeView> {
   return fetchAPI('/user/scope', { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+// -----------------------------------------------------------------------------
+// Scope library (Phase E)
+// First-class scopes: list, search, view, create, edit, delete, fork, share.
+// -----------------------------------------------------------------------------
+
+/** All scopes the caller owns plus private scopes they have a grant for. */
+export async function listMyScopes(): Promise<LibraryItem[]> {
+  return fetchAPI('/scopes/mine');
+}
+
+/** Public-scope search; empty query returns the most-recent public scopes. */
+export async function searchPublicScopes(
+  query?: string,
+  limit = 50,
+): Promise<Scope[]> {
+  const qs = new URLSearchParams();
+  if (query) qs.set('q', query);
+  qs.set('limit', String(limit));
+  return fetchAPI(`/scopes/search?${qs.toString()}`);
+}
+
+export async function getScopeById(scopeId: number): Promise<Scope> {
+  return fetchAPI(`/scopes/${scopeId}`);
+}
+
+export async function createScope(payload: ScopeCreatePayload): Promise<Scope> {
+  return fetchAPI('/scopes', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function updateScopeById(
+  scopeId: number,
+  payload: ScopeUpdatePayload,
+): Promise<Scope> {
+  return fetchAPI(`/scopes/${scopeId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteScope(scopeId: number): Promise<void> {
+  return fetchAPI(`/scopes/${scopeId}`, { method: 'DELETE' });
+}
+
+export async function setScopeVisibility(
+  scopeId: number,
+  visibility: ScopeVisibility,
+): Promise<Scope> {
+  return fetchAPI(`/scopes/${scopeId}/visibility`, {
+    method: 'PUT',
+    body: JSON.stringify({ visibility }),
+  });
+}
+
+export async function forkScope(
+  scopeId: number,
+  payload?: { name?: string; description?: string | null },
+): Promise<Scope> {
+  return fetchAPI(`/scopes/${scopeId}/fork`, {
+    method: 'POST',
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Access requests (request -> owner approves/denies -> grant)
+// -----------------------------------------------------------------------------
+
+export async function requestScopeAccess(
+  scopeId: number,
+  message?: string,
+): Promise<ScopeAccessRequest> {
+  return fetchAPI(`/scopes/${scopeId}/access-requests`, {
+    method: 'POST',
+    body: JSON.stringify({ message: message ?? null }),
+  });
+}
+
+/** Requests targeted at scopes the caller owns. Defaults to pending. */
+export async function listIncomingAccessRequests(
+  status: AccessRequestStatus | 'all' = 'pending',
+): Promise<ScopeAccessRequest[]> {
+  const qs = status === 'all' ? '' : `?status=${status}`;
+  return fetchAPI(`/scopes/access-requests/incoming${qs}`);
+}
+
+/** Requests the caller has submitted, optionally filtered by status. */
+export async function listOutgoingAccessRequests(
+  status?: AccessRequestStatus,
+): Promise<ScopeAccessRequest[]> {
+  const qs = status ? `?status=${status}` : '';
+  return fetchAPI(`/scopes/access-requests/outgoing${qs}`);
+}
+
+export async function decideAccessRequest(
+  requestId: number,
+  decision: 'approve' | 'deny',
+): Promise<ScopeAccessRequest> {
+  return fetchAPI(`/scopes/access-requests/${requestId}/decide`, {
+    method: 'POST',
+    body: JSON.stringify({ decision }),
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Active scope — which scope drives paper discovery / quizzes today
+// -----------------------------------------------------------------------------
+
+/** Returns null if the user hasn't picked an active scope yet. */
+export async function getActiveScope(): Promise<Scope | null> {
+  return fetchAPI('/user/active-scope');
+}
+
+/** Pass null to clear (drops the user back onto the onboarding picker). */
+export async function setActiveScope(scopeId: number | null): Promise<Scope | null> {
+  return fetchAPI('/user/active-scope', {
+    method: 'PUT',
+    body: JSON.stringify({ scope_id: scopeId }),
+  });
 }
 
 // -----------------------------------------------------------------------------

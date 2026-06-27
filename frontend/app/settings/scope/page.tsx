@@ -1,125 +1,126 @@
 'use client';
 
 /**
- * Topic scope selector — silo / multi / all.
+ * Scope library — the list of scopes the user owns + has a grant for.
  *
- * The scope controls which topics drive paper discovery, topic review,
- * and quiz generation throughout the app. Persisted per-user on the
- * server (today, a single sentinel user).
+ * Each scope is a saved, switchable view over the topics table. Exactly
+ * one scope is active at a time; the active scope drives paper discovery,
+ * topic review, and quizzes. Users browse and fork public scopes from
+ * /scopes/browse, accept incoming access requests at /scopes/requests,
+ * and edit individual scopes at /settings/scope/[id].
  */
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import {
-  getScope, updateScope, listTopics,
-  type Scope, type ScopeMode, type Topic,
+  listMyScopes,
+  getActiveScope,
+  setActiveScope,
+  createScope,
+  deleteScope,
+  type LibraryItem,
+  type Scope,
 } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
-import { useWebPush } from '@/hooks/useWebPush';
 
-function streamDisplayName(stream: string): string {
-  return stream.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
-export default function ScopeSettingsPage() {
+export default function ScopeLibraryPage() {
   const { user } = useAuth();
-  const [scope, setScope] = useState<Scope | null>(null);
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [mode, setMode] = useState<ScopeMode>('all');
-  const [selected, setSelected] = useState<string[]>([]);
+  const router = useRouter();
+  const [library, setLibrary] = useState<LibraryItem[]>([]);
+  const [active, setActive] = useState<Scope | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [scopeData, topicsData] = await Promise.all([
-          getScope(),
-          listTopics({ active: true }),
-        ]);
-        setScope(scopeData);
-        setTopics(topicsData);
-        setMode(scopeData.scope_mode);
-        setSelected(scopeData.scope_topic_ids);
-      } catch (e: any) {
-        setError(e.message);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  // group topics by stream for the picker
-  const grouped = useMemo(() => {
-    const out: Record<string, Topic[]> = {};
-    for (const t of topics) {
-      if (!out[t.stream]) out[t.stream] = [];
-      out[t.stream].push(t);
-    }
-    return out;
-  }, [topics]);
-
-  function toggleSelected(id: string) {
-    if (mode === 'silo') {
-      setSelected([id]);
-      return;
-    }
-    setSelected(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
-  }
-
-  function setRadioMode(next: ScopeMode) {
-    setMode(next);
-    setSuccess(null);
-    if (next === 'all') setSelected([]);
-    if (next === 'silo' && selected.length > 1) setSelected([selected[0]]);
-  }
-
-  async function save() {
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
+  async function load() {
     try {
-      const payload = { scope_mode: mode, scope_topic_ids: mode === 'all' ? [] : selected };
-      const updated = await updateScope(payload);
-      setScope(updated);
-      setSelected(updated.scope_topic_ids);
-      setSuccess('Scope updated.');
+      const [lib, act] = await Promise.all([
+        listMyScopes(),
+        getActiveScope(),
+      ]);
+      setLibrary(lib);
+      setActive(act);
     } catch (e: any) {
       setError(e.message);
     } finally {
-      setSaving(false);
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function handleSetActive(id: number | null) {
+    setBusy(true); setError(null); setSuccess(null);
+    try {
+      const next = await setActiveScope(id);
+      setActive(next);
+      setSuccess(id === null ? 'Active scope cleared.' : 'Active scope updated.');
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCreate() {
+    setBusy(true); setError(null); setSuccess(null);
+    try {
+      // create an empty starter row; user lands on the editor to fill it in
+      const fresh = await createScope({
+        name: 'Untitled scope',
+        scope_mode: 'all',
+        scope_topic_ids: [],
+        visibility: 'private',
+      });
+      router.push(`/settings/scope/${fresh.id}`);
+    } catch (e: any) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete(item: LibraryItem) {
+    if (item.relation !== 'owned') return;
+    if (!confirm(`Delete "${item.name}"? This cannot be undone.`)) return;
+    setBusy(true); setError(null); setSuccess(null);
+    try {
+      await deleteScope(item.id);
+      await load();
+      setSuccess(`Deleted "${item.name}".`);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
     }
   }
 
   if (loading) return <div className="text-slate-500">Loading…</div>;
 
-  const inScopeCount =
-    mode === 'all' ? topics.length :
-    mode === 'silo' ? Math.min(selected.length, 1) :
-    selected.length;
-
-  const saveDisabled =
-    saving ||
-    (mode === 'silo' && selected.length !== 1) ||
-    (mode === 'multi' && selected.length === 0);
+  const owned = library.filter(s => s.relation === 'owned');
+  const granted = library.filter(s => s.relation === 'granted');
 
   return (
     <div className="space-y-6">
       <header className="flex items-baseline justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Topic scope</h1>
+          <h1 className="text-3xl font-bold text-slate-900">Scope library</h1>
           <p className="text-slate-600 mt-1">
-            Choose which topics drive paper discovery, reviews, and quiz generation.
+            Saved views that decide which topics drive your discovery, reviews, and quizzes.
           </p>
         </div>
         <nav className="text-sm flex gap-4">
+          <Link href="/scopes/browse" className="text-sky-700 hover:underline">
+            Browse public →
+          </Link>
+          <Link href="/scopes/requests" className="text-sky-700 hover:underline">
+            Access requests →
+          </Link>
           <Link href="/settings/account" className="text-sky-700 hover:underline">
             Account →
-          </Link>
-          <Link href="/settings/notifications" className="text-sky-700 hover:underline">
-            Notifications →
           </Link>
           {user?.role === 'admin' && (
             <Link href="/settings/admin" className="text-sky-700 hover:underline">
@@ -129,210 +130,215 @@ export default function ScopeSettingsPage() {
         </nav>
       </header>
 
-      {error && <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">{error}</div>}
-      {success && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-2 text-sm">{success}</div>}
-
-      {/* mode selector */}
-      <section data-tour="scope-mode" className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Mode</h2>
-        <ModeOption
-          checked={mode === 'all'}
-          onChange={() => setRadioMode('all')}
-          label="All active topics"
-          help="Every topic with active=true contributes to discovery and review."
-        />
-        <ModeOption
-          checked={mode === 'multi'}
-          onChange={() => setRadioMode('multi')}
-          label="Multi-select"
-          help="Pick a specific set of topics."
-        />
-        <ModeOption
-          checked={mode === 'silo'}
-          onChange={() => setRadioMode('silo')}
-          label="Silo"
-          help="Focus deeply on one topic."
-        />
-      </section>
-
-      {/* topic picker (hidden in 'all' mode) */}
-      {mode !== 'all' && (
-        <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
-              {mode === 'silo' ? 'Select one topic' : 'Select topics'}
-            </h2>
-            <span className="text-xs text-slate-500">{selected.length} selected</span>
-          </div>
-          <div className="space-y-4">
-            {Object.keys(grouped).sort().map(stream => (
-              <div key={stream}>
-                <h3 className="text-xs uppercase tracking-wide text-slate-400 mb-1">
-                  {streamDisplayName(stream)}
-                </h3>
-                <div className="space-y-1">
-                  {grouped[stream].map(t => (
-                    <label
-                      key={t.id}
-                      className={`flex items-center gap-3 px-3 py-2 rounded cursor-pointer border ${
-                        selected.includes(t.id)
-                          ? 'bg-slate-900 text-white border-slate-900'
-                          : 'bg-white border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      <input
-                        type={mode === 'silo' ? 'radio' : 'checkbox'}
-                        name="topic-pick"
-                        checked={selected.includes(t.id)}
-                        onChange={() => toggleSelected(t.id)}
-                      />
-                      <div className="flex-grow min-w-0">
-                        <div className={`text-sm font-medium ${selected.includes(t.id) ? 'text-white' : 'text-slate-900'}`}>
-                          {t.name}
-                        </div>
-                        <div className={`text-xs truncate ${selected.includes(t.id) ? 'text-slate-300' : 'text-slate-500'}`}>
-                          {t.id}
-                        </div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-2 text-sm">
+          {success}
+        </div>
       )}
 
-      {/* footer summary + save */}
-      <div className="bg-slate-100 border border-slate-200 rounded-lg p-4 flex items-center justify-between">
-        <div className="text-sm text-slate-700">
-          {mode === 'all' && <span><strong>{topics.length}</strong> active topic(s) in scope.</span>}
-          {mode === 'multi' && <span><strong>{inScopeCount}</strong> topic(s) selected.</span>}
-          {mode === 'silo' && (
-            selected.length === 1
-              ? <span>Siloed on <strong>{topics.find(t => t.id === selected[0])?.name || selected[0]}</strong>.</span>
-              : <span className="text-slate-500">Pick one topic to silo on.</span>
+      {/* active scope banner */}
+      <section
+        data-tour="scope-active"
+        className="bg-white border border-slate-200 rounded-lg p-5 flex items-center justify-between gap-4 flex-wrap"
+      >
+        <div>
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+            Active scope
+          </h2>
+          {active ? (
+            <div className="mt-1">
+              <Link
+                href={`/settings/scope/${active.id}`}
+                className="text-lg font-medium text-slate-900 hover:underline"
+              >
+                {active.name}
+              </Link>
+              <div className="text-xs text-slate-500 mt-0.5">
+                <span className="font-mono">{active.scope_mode}</span>
+                {' · '}
+                {active.scope_topic_ids.length} topic(s)
+                {active.visibility === 'public' && ' · public'}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-600 mt-1">
+              No scope is active.{' '}
+              <Link href="/scopes/browse" className="text-sky-700 hover:underline">
+                Pick a starter
+              </Link>
+              {' '}or{' '}
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={busy}
+                className="text-sky-700 hover:underline disabled:opacity-50"
+              >
+                start from scratch
+              </button>
+              .
+            </p>
           )}
         </div>
-        <button
-          data-tour="scope-save"
-          onClick={save}
-          disabled={saveDisabled}
-          className="px-5 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
-        >
-          {saving ? 'Saving…' : 'Save scope'}
-        </button>
-      </div>
+        {active && (
+          <button
+            type="button"
+            onClick={() => handleSetActive(null)}
+            disabled={busy}
+            className="text-xs text-slate-500 hover:text-slate-700 underline disabled:opacity-50"
+            title="Clear active scope — drops you back onto the picker"
+          >
+            Clear
+          </button>
+        )}
+      </section>
 
-      {scope && (
-        <p className="text-xs text-slate-400">
-          Last updated {new Date(scope.updated_at).toLocaleString()} for <code>{scope.user_id}</code>.
-        </p>
+      {/* my scopes */}
+      <section data-tour="scope-library" className="space-y-3">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+            My scopes ({owned.length})
+          </h2>
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={busy}
+            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+          >
+            {busy ? 'Working…' : 'New scope'}
+          </button>
+        </div>
+        {owned.length === 0 ? (
+          <p className="text-sm text-slate-500 italic">
+            You haven't created any scopes yet. Fork a public starter or create one from scratch.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {owned.map(s => (
+              <LibraryRow
+                key={s.id}
+                item={s}
+                isActive={active?.id === s.id}
+                busy={busy}
+                onSetActive={() => handleSetActive(s.id)}
+                onDelete={() => handleDelete(s)}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* shared with me */}
+      {granted.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+            Shared with me ({granted.length})
+          </h2>
+          <ul className="space-y-2">
+            {granted.map(s => (
+              <LibraryRow
+                key={s.id}
+                item={s}
+                isActive={active?.id === s.id}
+                busy={busy}
+                onSetActive={() => handleSetActive(s.id)}
+              />
+            ))}
+          </ul>
+        </section>
       )}
-
-      <NotificationsSection />
     </div>
   );
 }
 
-function NotificationsSection() {
-  const { supported, permission, subscribed, busy, error, subscribe, unsubscribe, sendTest } = useWebPush();
-
-  // detect iOS Safari NOT yet running standalone — push only works on iOS after A2HS
-  const iosNeedsInstall =
-    typeof window !== 'undefined' &&
-    /iPad|iPhone|iPod/.test(navigator.userAgent) &&
-    !((navigator as any).standalone === true) &&
-    !window.matchMedia?.('(display-mode: standalone)').matches;
-
+function LibraryRow({
+  item, isActive, busy, onSetActive, onDelete,
+}: {
+  item: LibraryItem;
+  isActive: boolean;
+  busy: boolean;
+  onSetActive: () => void;
+  onDelete?: () => void;
+}) {
   return (
-    <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
-      <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
-        Notifications
-      </h2>
-
-      {!supported && (
-        <p className="text-sm text-slate-600">
-          Push notifications aren't supported in this browser. Try Chrome, Edge, Firefox, or Safari (16.4+).
-        </p>
-      )}
-
-      {supported && iosNeedsInstall && !subscribed && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded p-3 text-sm">
-          iOS requires installing the app to your home screen before push notifications can be enabled.
-          Open in Safari → Share → <strong>Add to Home Screen</strong>, then come back here.
-        </div>
-      )}
-
-      {supported && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <div className="text-sm font-medium text-slate-900">
-                Daily-paper push notifications
-              </div>
-              <div className="text-xs text-slate-500">
-                Status:{' '}
-                <span className="font-mono">
-                  permission={permission}, subscribed={String(subscribed)}
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {!subscribed ? (
-                <button
-                  onClick={subscribe}
-                  disabled={busy || permission === 'denied'}
-                  className="px-4 py-2 bg-slate-900 text-white rounded text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
-                >
-                  {busy ? 'Enabling…' : 'Enable notifications'}
-                </button>
-              ) : (
-                <>
-                  <button
-                    onClick={sendTest}
-                    disabled={busy}
-                    className="px-3 py-1.5 bg-sky-100 text-sky-800 rounded text-sm hover:bg-sky-200 disabled:opacity-50"
-                  >
-                    Send test
-                  </button>
-                  <button
-                    onClick={unsubscribe}
-                    disabled={busy}
-                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    Unsubscribe
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {permission === 'denied' && (
-            <p className="text-xs text-rose-700">
-              Notification permission was denied. Re-enable it in your browser's site settings, then refresh.
-            </p>
+    <li className={`bg-white border rounded-lg p-4 flex items-start gap-3 ${
+      isActive ? 'border-slate-900 ring-1 ring-slate-900/10' : 'border-slate-200'
+    }`}>
+      <div className="flex-grow min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href={`/settings/scope/${item.id}`}
+            className="font-medium text-slate-900 hover:underline truncate"
+          >
+            {item.name}
+          </Link>
+          <VisibilityBadge visibility={item.visibility} />
+          {item.relation === 'granted' && (
+            <span className="text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded px-1.5 py-0.5">
+              shared
+            </span>
           )}
-
-          {error && (
-            <p className="text-xs text-rose-700">{error}</p>
+          {isActive && (
+            <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded px-1.5 py-0.5">
+              active
+            </span>
+          )}
+          {item.forked_from_scope_id && (
+            <span className="text-xs text-slate-400">
+              forked from #{item.forked_from_scope_id}
+            </span>
           )}
         </div>
-      )}
-    </section>
+        {item.description && (
+          <p className="text-sm text-slate-600 mt-1 truncate">{item.description}</p>
+        )}
+        <div className="text-xs text-slate-500 mt-1">
+          <span className="font-mono">{item.scope_mode}</span>
+          {' · '}
+          {item.scope_topic_ids.length} topic(s)
+        </div>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {!isActive && (
+          <button
+            type="button"
+            onClick={onSetActive}
+            disabled={busy}
+            className="text-sm px-3 py-1.5 bg-slate-100 text-slate-700 rounded hover:bg-slate-200 disabled:opacity-50"
+          >
+            Set active
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={busy}
+            className="text-sm px-3 py-1.5 text-rose-600 hover:bg-rose-50 rounded disabled:opacity-50"
+          >
+            Delete
+          </button>
+        )}
+      </div>
+    </li>
   );
 }
 
-function ModeOption({
-  checked, onChange, label, help,
-}: { checked: boolean; onChange: () => void; label: string; help: string }) {
+function VisibilityBadge({ visibility }: { visibility: 'public' | 'private' }) {
+  if (visibility === 'public') {
+    return (
+      <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded px-1.5 py-0.5">
+        public
+      </span>
+    );
+  }
   return (
-    <label className="flex items-start gap-3 cursor-pointer">
-      <input type="radio" checked={checked} onChange={onChange} className="mt-1" />
-      <div>
-        <div className="text-sm font-medium text-slate-900">{label}</div>
-        <div className="text-xs text-slate-500">{help}</div>
-      </div>
-    </label>
+    <span className="text-xs bg-slate-100 text-slate-600 border border-slate-200 rounded px-1.5 py-0.5">
+      private
+    </span>
   );
 }
