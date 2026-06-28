@@ -92,8 +92,19 @@ def _cookie_secure() -> bool:
     return val.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _cookie_domain() -> Optional[str]:
+    """
+    Same logic as backend/middleware/csrf.py _cookie_domain. Read
+    COOKIE_DOMAIN env. None = origin-scoped (local dev). Set to
+    ".example.com" in cross-subdomain prod so the session cookie is sent
+    on requests to either subdomain.
+    """
+    val = os.environ.get("COOKIE_DOMAIN", "").strip()
+    return val or None
+
+
 def _set_session_cookie(response: Response, token: str, max_age_seconds: int) -> None:
-    response.set_cookie(
+    kwargs = dict(
         key=SESSION_COOKIE_NAME,
         value=token,
         max_age=max_age_seconds,
@@ -102,16 +113,24 @@ def _set_session_cookie(response: Response, token: str, max_age_seconds: int) ->
         samesite="lax",
         path="/",
     )
+    domain = _cookie_domain()
+    if domain:
+        kwargs["domain"] = domain
+    response.set_cookie(**kwargs)
 
 
 def _clear_session_cookie(response: Response) -> None:
-    response.delete_cookie(
+    kwargs = dict(
         key=SESSION_COOKIE_NAME,
         path="/",
         secure=_cookie_secure(),
         samesite="lax",
         httponly=True,
     )
+    domain = _cookie_domain()
+    if domain:
+        kwargs["domain"] = domain
+    response.delete_cookie(**kwargs)
 
 
 # ---------------------------------------------------------------------------

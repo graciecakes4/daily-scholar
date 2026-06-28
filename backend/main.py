@@ -188,24 +188,26 @@ def _resolve_cors_origins() -> list[str]:
     return origins
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_resolve_cors_origins(),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 # ---------------------------------------------------------------------------
-# Beta hardening middleware: rate limit + CSRF.
+# Middleware stack.
+#
+# Starlette wraps middleware in LIFO order: the LAST add_middleware call
+# is the OUTERMOST layer (runs first on each request, last on each response).
+# CORS is added LAST so its Access-Control-Allow-* headers attach to every
+# response — including early 403s returned by the inner CSRF / rate-limit
+# middlewares. Otherwise an inner middleware's early return would surface
+# in the browser as a misleading "CORS error" because the response wouldn't
+# carry CORS headers.
+#
+# Request flow:   CORS → RateLimit → CSRF → handler
+# Response flow:  handler → CSRF → RateLimit → CORS  (CORS decorates every response)
 #
 # Rate limiting is custom (backend/middleware/rate_limit.py) rather than
 # slowapi because slowapi's decorator approach broke FastAPI's body
 # introspection. The middleware sits in front of all routes and matches
 # on (method, path) per DEFAULT_POLICIES.
 #
-# CSRF uses the double-submit-cookie pattern. Both middlewares no-op
+# CSRF uses the double-submit-cookie pattern. Both inner middlewares no-op
 # when their respective env flags are set (RATE_LIMIT_DISABLED=1 /
 # CSRF_DISABLED=1) — defaults in conftest for tests.
 # ---------------------------------------------------------------------------
@@ -213,8 +215,18 @@ app.add_middleware(
 from .middleware.csrf import CSRFMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
 
+# innermost middlewares first
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(RateLimitMiddleware)
+
+# CORS LAST → outermost layer, sees and decorates every response
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_resolve_cors_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # topics_router and scope_router are mounted at the END of main.py so the
 # specific @app.get paths (/topics/status-summary, /topics/random-review,

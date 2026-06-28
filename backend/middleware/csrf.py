@@ -57,6 +57,24 @@ def _cookie_secure() -> bool:
     return val.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _cookie_domain() -> Optional[str]:
+    """
+    Return the Domain attribute for the CSRF cookie, or None to leave it
+    origin-scoped (the FastAPI / Starlette default).
+
+    Cross-subdomain frontend / backend setups (e.g. scholar.example.com +
+    api.example.com) need this set to the parent eTLD+1 (.example.com)
+    so the cookie is readable by JS on EITHER subdomain via document.cookie.
+    Without it, JS at the frontend can't read the cookie that's set by the
+    API, the double-submit token can't round-trip, and every mutating
+    request 403s.
+
+    Local dev (single localhost origin) leaves this unset.
+    """
+    val = os.environ.get("COOKIE_DOMAIN", "").strip()
+    return val or None
+
+
 class CSRFMiddleware(BaseHTTPMiddleware):
     """
     Validates the double-submit cookie on every mutating request, and
@@ -90,7 +108,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         # If they came in with one, leave it alone — rotating per request
         # would race with multi-tab sessions.
         if not cookie_token:
-            response.set_cookie(
+            cookie_kwargs = dict(
                 key=CSRF_COOKIE_NAME,
                 value=_new_token(),
                 # NOT HttpOnly — the frontend's JS needs to read it
@@ -100,4 +118,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 path="/",
                 max_age=30 * 24 * 3600,    # 30 days, matches session cookie
             )
+            # Domain attribute only set when configured — leaves local dev
+            # alone, scopes to .example.com in cross-subdomain prod so the
+            # frontend JS at scholar.example.com can read the cookie that
+            # was set by the API at api.example.com.
+            domain = _cookie_domain()
+            if domain:
+                cookie_kwargs["domain"] = domain
+            response.set_cookie(**cookie_kwargs)
         return response
