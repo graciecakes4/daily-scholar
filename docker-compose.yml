@@ -67,10 +67,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      # NEXT_PUBLIC_API_URL is no longer required at build time — the
-      # browser bundle uses /api as a same-origin path and next.config.js
-      # proxies /api/* to the backend at request time. Leaving it unset
-      # is the right default; setting it would bypass the proxy.
+      # BACKEND_INTERNAL_URL has to be a BUILD arg (not just runtime
+      # env) because Next.js evaluates next.config.js `rewrites()` at
+      # build time and bakes the destination into the route manifest.
+      args:
+        BACKEND_INTERNAL_URL: http://backend:8000
     restart: unless-stopped
     depends_on:
       backend:
@@ -78,9 +79,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
-      # Same-origin proxy target — Next.js reads this at request time
-      # and forwards /api/* to it over the compose network. On Railway
-      # the equivalent env is http://backend.railway.internal:8000.
+      # mirror at runtime too — harmless, and lets any future code
+      # path that reads the env at request time see the same value.
       BACKEND_INTERNAL_URL: http://backend:8000
     ports:
       - "3000:3000"

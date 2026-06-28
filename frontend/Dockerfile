@@ -28,16 +28,25 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# NEXT_PUBLIC_API_URL is now an OPTIONAL escape hatch. Under the
-# same-origin setup (lib/api.ts API_BASE defaults to "/api" and
-# next.config.js rewrites /api/* to the backend at request time via
-# BACKEND_INTERNAL_URL), the browser bundle doesn't need to know the
-# backend's URL at all.
-#
-# Set NEXT_PUBLIC_API_URL only if you want the browser to call an
-# external API host directly — uncommon and bypasses the proxy.
+# NEXT_PUBLIC_API_URL is an OPTIONAL escape hatch. Under the same-origin
+# setup (lib/api.ts API_BASE defaults to "/api" and next.config.js
+# rewrites /api/* to the backend), the browser bundle doesn't need to
+# know the backend's URL at all. Set it only if you want the browser
+# to call an external API host directly — uncommon, bypasses the proxy.
 ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
+# BACKEND_INTERNAL_URL — where Next.js proxies /api/* requests to.
+# Must be set at BUILD time, not runtime: Next.js evaluates the
+# rewrites() function in next.config.js during `npm run build` and
+# bakes the resolved destination into `.next/routes-manifest.json`.
+# Changing this value requires a rebuild.
+#
+#   Railway prod   → http://backend.railway.internal:8000
+#   docker-compose → http://backend:8000
+#   plain build    → http://localhost:8000 (default fallback in next.config.js)
+ARG BACKEND_INTERNAL_URL=
+ENV BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL}
 
 ENV NEXT_TELEMETRY_DISABLED=1 \
     SERWIST_SUPPRESS_TURBOPACK_WARNING=1
