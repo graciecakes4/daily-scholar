@@ -28,31 +28,16 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# NEXT_PUBLIC_API_URL is baked into the client JS bundle at build time
-# (Next.js inlines anything matching NEXT_PUBLIC_* into client code). If
-# this isn't passed in as a build arg, the fallback in lib/api.ts wins and
-# every visitor hits http://localhost:8000 (their own machine) — meaning
-# the deployed frontend can't reach the backend.
+# NEXT_PUBLIC_API_URL is now an OPTIONAL escape hatch. Under the
+# same-origin setup (lib/api.ts API_BASE defaults to "/api" and
+# next.config.js rewrites /api/* to the backend at request time via
+# BACKEND_INTERNAL_URL), the browser bundle doesn't need to know the
+# backend's URL at all.
 #
-# Railway forwards service variables as --build-arg automatically WHEN the
-# Dockerfile declares matching ARGs (which we do). docker-compose users get
-# it via `build.args` in docker-compose.yml. Plain `docker build` callers
-# must pass `--build-arg NEXT_PUBLIC_API_URL=...` themselves.
-#
-# We fail the build loudly when this is empty rather than silently shipping
-# a broken bundle — that bug burned us in production once already. To build
-# a local-dev image, set NEXT_PUBLIC_API_URL=http://localhost:8000 explicitly.
-ARG NEXT_PUBLIC_API_URL
+# Set NEXT_PUBLIC_API_URL only if you want the browser to call an
+# external API host directly — uncommon and bypasses the proxy.
+ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-
-RUN if [ -z "$NEXT_PUBLIC_API_URL" ]; then \
-        echo ""; \
-        echo "✗ NEXT_PUBLIC_API_URL is not set."; \
-        echo "  Set it as a Railway service Variable (or pass --build-arg)"; \
-        echo "  before building. See frontend/railway.toml for details."; \
-        echo ""; \
-        exit 1; \
-    fi
 
 ENV NEXT_TELEMETRY_DISABLED=1 \
     SERWIST_SUPPRESS_TURBOPACK_WARNING=1
