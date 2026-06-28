@@ -67,11 +67,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      # NEXT_PUBLIC_API_URL is inlined at `next build` time, NOT at container
-      # start, so it must live under build.args, not environment. The frontend
-      # Dockerfile hard-fails the build when this is empty.
+      # BACKEND_INTERNAL_URL has to be a BUILD arg (not just runtime
+      # env) because Next.js evaluates next.config.js `rewrites()` at
+      # build time and bakes the destination into the route manifest.
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8000
+        BACKEND_INTERNAL_URL: http://backend:8000
     restart: unless-stopped
     depends_on:
       backend:
@@ -79,6 +79,9 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
+      # mirror at runtime too — harmless, and lets any future code
+      # path that reads the env at request time see the same value.
+      BACKEND_INTERNAL_URL: http://backend:8000
     ports:
       - "3000:3000"
 

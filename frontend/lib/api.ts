@@ -4,10 +4,16 @@
  * and topic completion/rotation.
  */
 
-// exported so other modules (e.g., layout's external API Docs link) point at
-// the same backend URL without re-implementing the fallback. NEXT_PUBLIC_API_URL
-// is inlined at build time; the localhost fallback is for local dev only.
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Browser code calls the backend via the same-origin /api/* rewrite
+// configured in next.config.mjs — that proxies through to the actual
+// FastAPI service over Railway's private network (or compose-network
+// in local Docker). Same-origin means cookies and CSRF "just work"
+// with no CORS allowlist to keep in sync.
+//
+// NEXT_PUBLIC_API_URL is left as an escape hatch for advanced setups
+// where the frontend bundle needs to hit an external API directly —
+// not needed for the standard deploy.
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 /**
  * Thrown by fetchAPI on a 401 response. Distinct subclass so the AuthBoundary
