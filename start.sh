@@ -73,8 +73,12 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 # ---- backend ---------------------------------------------------------------
+# --timeout-keep-alive 75 matches Node's outbound HTTP agent default; without
+# this, Next.js's /api/* proxy reuses sockets uvicorn has already closed (5s
+# default) and intermittently fails with "socket hang up" / ECONNRESET. Keep
+# in sync with the same flag in ../Dockerfile.
 echo "→ Starting backend (uvicorn) on :8000 ..."
-(cd "$REPO_ROOT" && uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload) &
+(cd "$REPO_ROOT" && uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload --timeout-keep-alive 75) &
 BACKEND_PID=$!
 
 # ---- health check ----------------------------------------------------------

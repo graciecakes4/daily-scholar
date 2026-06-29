@@ -879,14 +879,25 @@ export async function generateTopicDraft(interests: string): Promise<TopicDraft>
 export async function completeOnboarding(
   draft: TopicDraft & { visibility?: 'private' | 'public' },
 ): Promise<{ ok: boolean; topic_id: string; name: string; onboarded: boolean }> {
-  return fetchAPI('/onboarding/complete', {
-    method: 'POST',
-    body: JSON.stringify(draft),
-  });
+  const result = await fetchAPI<{ ok: boolean; topic_id: string; name: string; onboarded: boolean }>(
+    '/onboarding/complete',
+    { method: 'POST', body: JSON.stringify(draft) },
+  );
+  // server-side onboarded flag just flipped — notify any layout-mounted
+  // useAuth() instances (OnboardingGuard, UserMenu) so they re-fetch
+  // /auth/me instead of bouncing the user back here on the next nav.
+  emitAuthChanged();
+  return result;
 }
 
 export async function skipOnboarding(): Promise<{ ok: boolean; onboarded: boolean }> {
-  return fetchAPI('/onboarding/skip', { method: 'POST' });
+  const result = await fetchAPI<{ ok: boolean; onboarded: boolean }>(
+    '/onboarding/skip',
+    { method: 'POST' },
+  );
+  // see completeOnboarding — broadcast so layout-level guards refresh
+  emitAuthChanged();
+  return result;
 }
 
 // -----------------------------------------------------------------------------

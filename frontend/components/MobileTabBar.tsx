@@ -47,6 +47,12 @@ const SettingsIcon = () => (
   </svg>
 );
 
+const NotificationsIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+  </svg>
+);
+
 const ExternalIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
     <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -173,11 +179,25 @@ export default function MobileTabBar() {
               href="/settings/scope"
               onClick={() => setMoreOpen(false)}
               className={`flex items-center gap-3 px-3 py-3 rounded-lg ${
-                pathname.startsWith('/settings') ? 'bg-blue-50 text-blue-600' : 'text-slate-700 hover:bg-slate-50'
+                pathname === '/settings/scope' || pathname.startsWith('/settings/scope/')
+                  ? 'bg-blue-50 text-blue-600'
+                  : 'text-slate-700 hover:bg-slate-50'
               }`}
             >
               <SettingsIcon />
               <span className="text-sm font-medium">Settings</span>
+            </Link>
+            <Link
+              href="/settings/notifications"
+              onClick={() => setMoreOpen(false)}
+              className={`flex items-center gap-3 px-3 py-3 rounded-lg ${
+                pathname.startsWith('/settings/notifications')
+                  ? 'bg-blue-50 text-blue-600'
+                  : 'text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <NotificationsIcon />
+              <span className="text-sm font-medium">Notifications</span>
             </Link>
             <a
               href={`${API_BASE}/docs`}
