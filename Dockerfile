@@ -68,8 +68,14 @@ USER app
 
 EXPOSE 8000
 
-# uvicorn binds 0.0.0.0 inside the container; Railway / docker-compose maps it
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# uvicorn binds 0.0.0.0 inside the container; Railway / docker-compose maps it.
+#
+# --timeout-keep-alive 75 matches Node's default outbound HTTP agent keep-alive
+# so Next.js's rewrites() proxy (undici-based connection pool) never reuses a
+# socket uvicorn has already closed. Default uvicorn is 5s, which is well below
+# Node's pool idle window and causes intermittent "socket hang up" / ECONNRESET
+# errors at the frontend proxy when multiple requests fire on a page load.
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} --timeout-keep-alive 75"]
 
 # light shell-based healthcheck — hits /health (the lightweight one)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
