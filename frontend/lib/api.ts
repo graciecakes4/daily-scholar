@@ -1211,8 +1211,15 @@ export async function markTourCompleted(
   });
 }
 
-export async function resetTour(): Promise<{ ok: boolean; tour_state: Record<string, number> }> {
-  return fetchAPI('/auth/tour-reset', { method: 'PUT' });
+export async function resetTour(
+  tour_id?: string,
+): Promise<{ ok: boolean; tour_state: Record<string, number> }> {
+  // when a tour_id is supplied, reset only that tour; otherwise the
+  // bare endpoint clears every key (used by /settings/account)
+  const path = tour_id
+    ? `/auth/tour-reset?tour_id=${encodeURIComponent(tour_id)}`
+    : '/auth/tour-reset';
+  return fetchAPI(path, { method: 'PUT' });
 }
 
 // -----------------------------------------------------------------------------

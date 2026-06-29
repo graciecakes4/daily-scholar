@@ -24,7 +24,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 
 from ..config import get_settings
@@ -584,24 +584,50 @@ def mark_tour_completed(
 
 @auth_router.put("/tour-reset")
 def reset_tour(
+    tour_id: Optional[str] = Query(
+        default=None,
+        description="Optional KNOWN_TOUR_IDS value. When provided, resets only that tour; otherwise clears every key.",
+    ),
     ds_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
 ) -> dict:
     """
-    Clear every tour state key so all tours fire again on next visit
-    to their respective pages. Powers the "Show all tutorials again"
-    button on /settings/account.
+    Reset tour state so tours fire again on next visit to their
+    respective pages.
 
-    Future enhancement (not in this phase): accept an optional
-    `tour_id` query param to reset just one tour.
+    Two modes:
+      * No `tour_id` query param: clear every key (powers the
+        "Show all tutorials again" button on /settings/account).
+      * `tour_id` provided: set only that key to 0, leaving other
+        tour state untouched. Powers the per-tour replay picker in
+        the sidebar / mobile More sheet. Unknown ids return 400
+        with the same shape as /auth/tour-completed.
+
+    Returns the new tour_state dict in both modes so the caller can
+    introspect.
     """
+    if tour_id is not None and tour_id not in KNOWN_TOUR_IDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown tour_id {tour_id!r}; valid ids: {sorted(KNOWN_TOUR_IDS)}",
+        )
+
     user = _require_authed_user(ds_session)
     session = get_session()
     try:
         row = session.query(User).filter(User.id == user.id).first()
         if row is None:
             raise HTTPException(status_code=404, detail="user not found")
-        row.tour_state = {}
+        if tour_id is None:
+            # full reset
+            row.tour_state = {}
+            session.commit()
+            return {"ok": True, "tour_state": {}}
+        # per-tour reset — assign-then-reassign so the JSON column
+        # change is detected (same MutableDict caveat as mark_tour_completed)
+        state = dict(row.tour_state or {})
+        state[tour_id] = 0
+        row.tour_state = state
         session.commit()
-        return {"ok": True, "tour_state": {}}
+        return {"ok": True, "tour_state": state}
     finally:
         session.close()

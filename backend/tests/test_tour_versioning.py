@@ -227,3 +227,39 @@ class TestTourResetEndpoint:
     def test_no_cookie_401(self, client: TestClient):
         r = client.put("/auth/tour-reset")
         assert r.status_code == 401
+
+    def test_per_tour_reset_clears_only_that_key(self, client: TestClient):
+        # arrange: a user with all three tours marked seen
+        u = _seed_user(
+            "tr-one@example.com",
+            tour_state={"dashboard": 4, "scope": 2, "topics": 3},
+        )
+        _login(client, u.email)
+
+        # act: reset just the dashboard tour
+        r = client.put("/auth/tour-reset?tour_id=dashboard")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["ok"] is True
+        # the response carries the new state dict
+        assert body["tour_state"]["dashboard"] == 0
+        assert body["tour_state"]["scope"] == 2
+        assert body["tour_state"]["topics"] == 3
+
+        # /auth/me agrees
+        state = client.get("/auth/me").json()["profile"]["tour_state"]
+        assert state["dashboard"] == 0
+        assert state["scope"] == 2
+        assert state["topics"] == 3
+        client.cookies.clear()
+
+    def test_per_tour_reset_unknown_id_400(self, client: TestClient):
+        u = _seed_user("tr-bogus@example.com", tour_state={"dashboard": 2})
+        _login(client, u.email)
+        r = client.put("/auth/tour-reset?tour_id=bogus")
+        assert r.status_code == 400
+        assert "unknown tour_id" in r.json()["detail"].lower()
+        # state must be untouched on a 400
+        state = client.get("/auth/me").json()["profile"]["tour_state"]
+        assert state["dashboard"] == 2
+        client.cookies.clear()

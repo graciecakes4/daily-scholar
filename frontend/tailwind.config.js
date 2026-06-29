@@ -9,11 +9,39 @@ module.exports = {
     extend: {
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
-        display: ['var(--font-cal)', 'system-ui', 'sans-serif'],
-        mono: ['var(--font-mono)', 'monospace'],
+        // editorial display face — fraunces is loaded via google fonts in globals.css
+        serif: ['var(--font-serif)', 'Georgia', 'serif'],
+        display: ['var(--font-serif)', 'Georgia', 'serif'],
+        mono: ['var(--font-mono)', 'IBM Plex Mono', 'monospace'],
       },
       colors: {
-        // Custom color palette for Daily Scholar
+        // editorial paper palette — see /nav-mockups/option-b-editorial-sidebar.html
+        paper: {
+          DEFAULT: '#F2EBDD',
+          2: '#FBF6EB',
+          3: '#ECE2CC',
+        },
+        ink: {
+          DEFAULT: '#1B1610',
+          2: '#3A332A',
+        },
+        muted: {
+          DEFAULT: '#7E7060',
+        },
+        rule: {
+          DEFAULT: '#DBD0B9',
+        },
+        gold: {
+          DEFAULT: '#B5862B',
+          dark: '#8A6519',
+        },
+        rust: {
+          DEFAULT: '#8E3A28',
+        },
+        moss: {
+          DEFAULT: '#4F6B3C',
+        },
+        // legacy color palette kept for pages that still reference scholar-*/surface-*
         scholar: {
           50: '#f0f7ff',
           100: '#e0efff',
