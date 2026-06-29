@@ -4,10 +4,16 @@
  * and topic completion/rotation.
  */
 
-// exported so other modules (e.g., layout's external API Docs link) point at
-// the same backend URL without re-implementing the fallback. NEXT_PUBLIC_API_URL
-// is inlined at build time; the localhost fallback is for local dev only.
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Browser code calls the backend via the same-origin /api/* rewrite
+// configured in next.config.mjs — that proxies through to the actual
+// FastAPI service over Railway's private network (or compose-network
+// in local Docker). Same-origin means cookies and CSRF "just work"
+// with no CORS allowlist to keep in sync.
+//
+// NEXT_PUBLIC_API_URL is left as an escape hatch for advanced setups
+// where the frontend bundle needs to hit an external API directly —
+// not needed for the standard deploy.
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 /**
  * Thrown by fetchAPI on a 401 response. Distinct subclass so the AuthBoundary
@@ -873,14 +879,25 @@ export async function generateTopicDraft(interests: string): Promise<TopicDraft>
 export async function completeOnboarding(
   draft: TopicDraft & { visibility?: 'private' | 'public' },
 ): Promise<{ ok: boolean; topic_id: string; name: string; onboarded: boolean }> {
-  return fetchAPI('/onboarding/complete', {
-    method: 'POST',
-    body: JSON.stringify(draft),
-  });
+  const result = await fetchAPI<{ ok: boolean; topic_id: string; name: string; onboarded: boolean }>(
+    '/onboarding/complete',
+    { method: 'POST', body: JSON.stringify(draft) },
+  );
+  // server-side onboarded flag just flipped — notify any layout-mounted
+  // useAuth() instances (OnboardingGuard, UserMenu) so they re-fetch
+  // /auth/me instead of bouncing the user back here on the next nav.
+  emitAuthChanged();
+  return result;
 }
 
 export async function skipOnboarding(): Promise<{ ok: boolean; onboarded: boolean }> {
-  return fetchAPI('/onboarding/skip', { method: 'POST' });
+  const result = await fetchAPI<{ ok: boolean; onboarded: boolean }>(
+    '/onboarding/skip',
+    { method: 'POST' },
+  );
+  // see completeOnboarding — broadcast so layout-level guards refresh
+  emitAuthChanged();
+  return result;
 }
 
 // -----------------------------------------------------------------------------
@@ -1194,8 +1211,15 @@ export async function markTourCompleted(
   });
 }
 
-export async function resetTour(): Promise<{ ok: boolean; tour_state: Record<string, number> }> {
-  return fetchAPI('/auth/tour-reset', { method: 'PUT' });
+export async function resetTour(
+  tour_id?: string,
+): Promise<{ ok: boolean; tour_state: Record<string, number> }> {
+  // when a tour_id is supplied, reset only that tour; otherwise the
+  // bare endpoint clears every key (used by /settings/account)
+  const path = tour_id
+    ? `/auth/tour-reset?tour_id=${encodeURIComponent(tour_id)}`
+    : '/auth/tour-reset';
+  return fetchAPI(path, { method: 'PUT' });
 }
 
 // -----------------------------------------------------------------------------

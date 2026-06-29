@@ -1,5 +1,71 @@
 # Changelog
 
+## [v2.4] — 2026-06-29
+
+Editorial UI + production stability release. **The sticky top nav is replaced with a 280px persistent editorial left sidebar** (cream paper + Fraunces serif + warm gold accent) reorganized into hierarchical groups (Read / Scope / Account / Help) with a pinned active-scope chip at the top of the rail. Mobile keeps the bottom tab bar but reskinned to match, with the More sheet regrouped to mirror the sidebar IA. New "Replay tutorials" picker on both surfaces re-fires a specific product tour via a new optional `?tour_id=` parameter on `PUT /auth/tour-reset`. Folded in: hotfix #46 (same-origin `/api/*` proxy, already shipped to main, unblocks prod login post-Cloudflare-Access removal) and bugfix #47 (iOS Dynamic Island safe-area, post-onboarding redirect loop, uvicorn keep-alive vs Next.js proxy `ECONNRESET`, mobile More sheet polish). **Zero new migrations, zero new dependencies, one new Railway env var (`BACKEND_INTERNAL_URL`), one removed (`NEXT_PUBLIC_API_URL`), one opt-in env var added then immediately rendered moot by same-origin (`COOKIE_DOMAIN`).** Nav-only structural change — every existing page, route, and guard still works. Full release notes in [docs/releases/v2.4.md](docs/releases/v2.4.md).
+
+### Added
+
+#### Editorial sidebar overhaul (PR #48)
+
+- **Tailwind palette + typography** — extended with `paper / ink / muted / rule / gold / gold-dark / rust / moss` tokens; legacy `scholar / surface` tokens preserved so existing pages keep rendering. `font-serif` → Fraunces, `font-mono` → IBM Plex Mono. `globals.css` imports the three Google Fonts (Fraunces + IBM Plex Mono + Inter), defines CSS custom properties for the full palette, sets warm-paper body background with two radial glows + SVG-noise `body::before` overlay, repoints scrollbar thumbs to the warm tones.
+- **`frontend/components/Sidebar.tsx`** (new, 450 lines) — 280px persistent left rail on `md+`: wordmark, pinned `ActiveScopeChip`, four named groups (Read / Scope / Account / Help) with hierarchical sub-items, `UserChip` footer with small logout popover. Hides on `/login`, `/signup`, `/account/*`.
+- **`frontend/components/ActiveScopeChip.tsx`** (new, 124 lines) — calls `getActiveScope()` on mount; three states: loading skeleton (height-stable), empty prompt linking to `/scopes/picker`, ready chip showing scope name + topic count + `edited Xh ago` via inline `formatRelative` helper.
+- **`frontend/app/layout.tsx`** rewritten as a two-column flex shell; `themeColor` → `#F2EBDD` so iOS chrome blends into the paper; main column padding-top `calc(env(safe-area-inset-top) + 2rem)` preserves the v2.3 Dynamic Island clearance.
+- **`frontend/components/MobileTabBar.tsx`** reskinned to cream/gold palette (gold underline for active tab, paper-2 sheet background, Fraunces section labels); More sheet regrouped into Scope / Account / Help to mirror the sidebar IA. Bottom tabs unchanged at Today / Papers / Topics / Quizzes / More.
+
+#### Tour replay picker + per-tour reset (PR #48)
+
+- **`PUT /auth/tour-reset`** now accepts an optional `?tour_id=<id>` query param — with it, only that key's seen-version zeroes (rest of `tour_state` untouched); without it, existing full-reset behavior. Validated against `KNOWN_TOUR_IDS`; unknown ids return 400 with the same error shape as `mark_tour_completed`.
+- **`frontend/lib/api.ts`** exposes `resetTour(tour_id?: string)` so callers can request either flavor.
+- **Help group on both surfaces** gains a "Replay tutorials" entry: tapping it swaps the same section in-place into a picker with three choices (Dashboard / Scope library / Topics); selecting one calls `resetTour(id)`, refreshes `/auth/me`, then `router.push`-es to the tour's `fire_on_path`. Pulsing gold play icon + IBM Plex Mono "loading" tag for the in-flight state; back chevron returns to the default Help list.
+- Two new tests in `backend/tests/test_tour_versioning.py`: per-tour reset clears only the target key; unknown id returns 400 without mutating state.
+
+### Changed
+
+- **Sticky top nav → persistent left sidebar on `md+`.** Mobile bottom tab bar retained. Hides on auth/account surfaces so `<AuthBoundary>` still owns the viewport there.
+- **`OnboardingGuard.SKIP_PREFIXES`** extended with `/scopes` and `/settings/scope` so the guard can't yank users off scope-setup surfaces mid-flow if onboarded state goes briefly stale (PR #47).
+- **`skipOnboarding()` and `completeOnboarding()`** now emit the `AUTH_CHANGED_EVENT` window event after success — `useAuth` is a per-component hook with no React context, so cross-instance sync only happens via this event. `login()` / `logout()` already emitted it; the onboarding mutations didn't, which caused the layout-mounted `OnboardingGuard` to loop on stale `user.onboarded === false` (PR #47).
+- **Mobile More sheet** gains a Notifications row (matching the new desktop nav entry) and tightens Settings active-state highlighting so it no longer falsely activates for non-scope `/settings/*` paths (PR #47; superseded by IA regroup in PR #48 but documented for the audit trail).
+- **`backend/main.py` middleware stack reordered.** CORS is now the OUTERMOST layer (last `add_middleware` call wins under Starlette's LIFO wrapping); request flow is `CORS → RateLimit → CSRF → handler`, response flow is `handler → CSRF → RateLimit → CORS` so CORS headers attach to every response — including early 403s from the inner CSRF / rate-limit middlewares (otherwise an inner early-return surfaces in the browser as a misleading "CORS error"). `backend/middleware/csrf.py` updated in lockstep so CSRF cookies respect `COOKIE_DOMAIN` when set. Commit `e2abd80`, reviewed alongside hotfix #46.
+- **`.gitignore`** now matches `*mockups/` to keep design exploration artifacts (this cycle: `nav-mockups/` with three nav-layout HTML prototypes) out of git. Mirrors the v2.1 pattern for `daily scholar/`.
+
+### Fixed
+
+- **iOS Dynamic Island clipping the sticky nav** — added `paddingTop: env(safe-area-inset-top)` to the sticky `<nav>` in the root layout. `viewportFit: "cover"` was already set so the page extended under the Dynamic Island; without the inset, nav contents sat behind the island on iPhone 14 Pro and later (PR #47). The PR #48 sidebar rewrite preserves the clearance via `calc(env(safe-area-inset-top) + 2rem)` on the main column.
+- **Post-onboarding redirect loop** — `OnboardingGuard` kept a stale `user.onboarded === false` after `completeOnboarding()` / `skipOnboarding()` returned, bounced users back to `/onboarding`, looped until something else triggered a refetch. Root cause: missing `AUTH_CHANGED_EVENT` emission on the onboarding mutations (PR #47).
+- **`ECONNRESET` / `socket hang up` spam on `/auth/me`, `/user/active-scope`, `/scopes/mine`, `/daily`** — Next.js 16's `rewrites()` proxy (undici-backed) pools outgoing connections with ~75s idle; uvicorn's default `--timeout-keep-alive` is 5s, so the proxy reused already-closed sockets. Bumped uvicorn to `--timeout-keep-alive 75` in both the production Dockerfile CMD and `start.sh` (PR #47).
+- **Production login broken after Cloudflare Access removal** — `ds_csrf` cookie set by `api.daily-scholar.com` wasn't readable by JS at `scholar.daily-scholar.com`, so the double-submit-cookie CSRF pattern couldn't work cross-subdomain. CF Access had been masking this by authenticating at the edge. Fixed by collapsing to same-origin via Next.js `rewrites()` proxying `/api/:path*` → `${BACKEND_INTERNAL_URL}/:path*`; cookies now scoped to `scholar.daily-scholar.com`, JS can read them, CSRF + CORS class of bugs goes away (hotfix #46).
+
+### Operations
+
+- **Required Railway env-var change BEFORE the v2.4 image will build correctly:**
+  - **ADD** `BACKEND_INTERNAL_URL=http://backend.railway.internal:8000` on the **frontend** service. Next.js bakes `rewrites()` destinations into the route manifest at build time, so changing it requires a rebuild (same trade-off as the old `NEXT_PUBLIC_API_URL`).
+  - **REMOVE** (or leave empty) `NEXT_PUBLIC_API_URL` on the **frontend** service. Leaving it set would override the `/api` default and bypass the proxy.
+  - Confirm the backend service's private hostname under Settings → Private Networking is `backend.railway.internal`. Adjust if you renamed the service.
+- **New backend env var `COOKIE_DOMAIN`** (opt-in). Read by `_cookie_domain()` in both `backend/api/auth.py` and `backend/middleware/csrf.py`; unset → origin-scoped cookies (the desired behavior under same-origin). Added during commit `e2abd80` as part of the cross-subdomain debugging; left in place as a no-op safety valve. **Production should NOT set it.**
+- **Production Dockerfile rebuild required** — the uvicorn `--timeout-keep-alive 75` flag is baked into the CMD; no live-reload path will pick it up.
+- **Backend service's `api.daily-scholar.com` custom domain** can stay one release as a safety net; delete after v2.4 is verified.
+- **Cookies are now first-party.** `ds_session` + `ds_csrf` set by `scholar.daily-scholar.com` (not the deleted `api.*` host). Old cookies expire naturally; first login on the new build issues fresh ones.
+- **No new migrations, no new pip deps, no new npm deps.**
+- **No new GitHub Actions secrets.** Railway deploy matrix unchanged from v2.2.
+
+### Decisions
+
+- **Same-origin proxy over cross-subdomain CORS + cookie-domain juggling.** Standard pattern; matches what most modern stacks assume; eliminates an entire class of future cross-origin surprises. The cost is the build-time Next.js bake of `rewrites()` destinations, which is the same cost the old `NEXT_PUBLIC_API_URL` already had.
+- **Per-tour reset (`?tour_id=`) as a query param on the existing endpoint**, not a separate route. Same JSON-payload shape, same `KNOWN_TOUR_IDS` validation, same 400 error envelope — lets the inverse of `markTourCompleted` slot into the existing tour-state machinery without a second client helper or a second handler.
+- **Persistent left sidebar over collapsible drawer on desktop.** The active scope is consulted on basically every page; making it a one-click destination from anywhere costs 280px of horizontal real estate but pays it back in friction reduction. Mobile keeps the bottom tab bar (one-tap reach) — the More sheet is the only place the IA hierarchy expands.
+- **Cream paper + Fraunces serif over neutral grey + sans.** "Daily reading" product should look like a journal, not a SaaS dashboard. Editorial palette also makes the active-scope chip's warm gold accent legible without competing for attention.
+
+### Followups
+
+- **PWA install flow** on the new layout — no functional change but worth a smoke check before announcing v2.4.
+- **iOS Safari + Dynamic Island on physical hardware** — still pending from v2.1; v2.4 changes the nav structure so verification should re-run.
+- **`UserMenu.tsx`** is unused by the new layout; safe to delete in a cleanup PR if it stays orphaned.
+- **`TOUR_CHOICES` array duplication** between `Sidebar.tsx` and `MobileTabBar.tsx` (with a comment pointing at backend `KNOWN_TOUR_IDS` as the source of truth) — fine for three entries; revisit if a fourth tour is added (e.g., a DiscoverTour for `/topics/discover`, filed as v2.2 followup).
+- **CORS allowlist + `FRONTEND_URL`** in `backend/main.py` become harmless dead code under same-origin; remove in v2.5 alongside the OAuth work.
+- **OAuth login** — the `feature/oauth-login` branch is still in flight; deferred past v2.4 deliberately so the editorial UI ships independently.
+
 ## [v2.3] — 2026-06-27
 
 Scope library release. **Scope becomes a first-class, shareable, forkable entity** instead of a single hidden per-user setting. Five system-owned starter scopes (ML, Physics, Biology & Life Sciences, Economics & Finance, Climate & Earth Sciences) drive a new onboarding picker for fresh users; existing users get migrated transparently. Public scopes are searchable and forkable; private scopes are shareable via a request/approval workflow mirroring v2.2's invite-code pattern. **One migration (`0012_scopes`), three new tables, one new column, twelve new starter-topic YAMLs, zero new dependencies, zero env-var changes.** Solo mode (`__local__`) and the legacy `/user/scope` shape preserved end-to-end. Full release notes in [docs/releases/v2.3.md](docs/releases/v2.3.md).
