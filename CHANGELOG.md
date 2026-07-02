@@ -1,5 +1,61 @@
 # Changelog
 
+## [v2.5] — 2026-07-02
+
+Settings IA rebuild + AI-assisted scope creation release. **Settings gets a real hierarchy** — Scope, Notifications, Account, Tutorials, and Admin become sibling sections, with Sidebar/MobileTabBar as the single source of cross-section navigation, replacing the scattered per-page "Account →"-style link clusters. **Scope creation gains an AI-drafting path** — a new "Generate scope" wizard (reachable any time from Settings > Scope, not just first-run onboarding) turns a title + description into a draft set of keywords / arXiv categories / key concepts, editable as bubbles rather than raw text, before creating a topic wrapped in a single-topic scope. Also folds in the prior notifications-page redesign (plain-English schedule summaries replacing the raw cron string) and an iOS Safari bottom-nav anchoring fix (#50). **Zero new migrations, zero new dependencies, zero new environment variables.** Full release notes in [docs/releases/v2.5.md](docs/releases/v2.5.md).
+
+### Added
+
+#### Settings information architecture restructure (PR #51)
+
+- **New routes**: `/settings/scope/library`, `/settings/scope/browse`, `/settings/scope/requests` (moved off the old `/scopes/browse` and `/scopes/requests`, plus the combined scope page split into a dedicated library view); `/settings/account/profile`, `/settings/account/password`, `/settings/account/username` (split out of one combined account page); `/settings/tutorials` (new — consolidates the tour-replay picker that used to be independently implemented three times, in `Sidebar.tsx`, `MobileTabBar.tsx`, and the account page's `TourReplayCard`, each maintaining its own copy of the tour list).
+- **Old bare routes redirect**: `/settings/scope` → `/settings/scope/library`, `/settings/account` → `/settings/account/profile`, via Next.js Server Component `redirect()` so old bookmarks/links still land somewhere sensible.
+- **Sidebar + MobileTabBar restructured** to mirror the new IA exactly: Scope, Notifications (promoted out of Account into its own group), Account (split into Profile/Password/Username), Tutorials (single link, replacing the inline tour picker), and Admin (a real nav entry for the first time, gated on `user.role === 'admin'` — `Sidebar()` didn't previously call `useAuth()` at all).
+- Per-page "related link" clusters (Browse public / Access requests / Account / Admin links scattered across scope pages) removed now that nav lists every destination — Sidebar/MobileTabBar are the single source of truth for cross-section navigation.
+
+#### Generate-scope wizard (PR #52)
+
+- **New `/settings/scope/generate` page**: title + description in, calls the existing `generateTopicDraft()` client (hits `POST /onboarding/generate-topic`) to draft keywords/arXiv categories/key concepts, then on approval creates a `Topic` via `POST /topics` and wraps it in a `scope_mode='silo'` `Scope` via `POST /scopes`. The new scope lands in the library but does **not** auto-activate.
+- **`ChipListEditor`** (`frontend/components/ChipListEditor.tsx`, new) — reusable bubble-style editor for a `string[]` field, replacing the raw-textarea convention (`TopicForm.tsx`) for this specific review-and-approve interaction. Click a chip to select it, then Edit/Delete via a small toolbar; a separate "+ Add" chip reveals a text input with autocomplete — recommendations only ever surface in the add flow, never while editing an existing chip.
+- **Suggestion pools** for the chip autocomplete are drawn from the user's visible topic catalog (real keywords/concepts already in use, via the existing `listTopics()`) rather than fabricated, plus a static real arXiv category taxonomy (`frontend/lib/arxivCategories.ts`) merged in for the categories field specifically.
+- "Generate scope" surfaced next to "New scope" in the library page and in Sidebar/MobileTabBar's Scope group.
+- Backend test coverage added: `backend/tests/test_topics.py` (new — `POST /topics` had zero prior coverage despite real ownership/visibility branching logic) and a new `test_silo_with_exactly_one_topic_succeeds` in `test_scopes.py` (every existing silo-mode test previously only asserted rejection, not the actual success path this feature depends on entirely).
+
+#### Human-readable notification schedules (PR #50)
+
+- Each notification card now leads with a plain-English schedule sentence ("Every day at 9:00 AM") built from the underlying cron expression, with the raw cron tucked behind a small info affordance instead of shown as the primary UI. Falls back to a raw, editable cron field if a power user has hand-edited the JSON to something the friendly picker can't represent, so it's never silently overwritten.
+- New `to12h`/`to24h`/`fmt12` helpers power a 12-hour time stepper in place of the old raw `HH:MM` text input.
+
+### Changed
+
+- `NotificationDispatchResult.result` (`frontend/lib/api.ts`) gained `skipped`/`subscriptions` fields — `send_push_to_user()` can nest a `skipped` reason inside `result` (e.g. VAPID unconfigured, no subscriptions) distinct from the top-level `skipped` (the builder itself had nothing due today); the notifications UI previously only checked the top-level field, so a real skip reason could go unreported.
+- `ScopeTour`'s `fire_on_path` and `ActiveScopeChip`'s "Change scope" link updated to the new `/settings/scope/library` path (`useDriverTour` gates on an exact pathname match, not a prefix, so this needed an explicit update rather than relying on prefix-matching).
+- `ScopePickerGuard`/`OnboardingGuard`'s `SKIP_PREFIXES` needed no changes — both already matched `/settings/scope` as a prefix, which still covers every route moved under it.
+
+### Fixed
+
+- **iOS Safari bottom-nav "floating" during scroll** (PR #50) — `MobileTabBar`'s fixed nav lacked its own GPU compositor layer, so iOS Safari rendered it lagging behind page content during momentum scroll (worse while the dynamic toolbar collapses). Fixed with `transform: translateZ(0)` + `WebkitBackfaceVisibility: hidden` to promote it to its own layer.
+
+### Operations
+
+- **Zero new migrations, zero new dependencies (Python or npm), zero new environment variables.** Nav/routing and UI-layer changes only.
+
+### Decisions
+
+- **Generate-scope wizard reuses the onboarding generation endpoint directly** rather than adding a new one — `generate_topic_draft`/`POST /onboarding/generate-topic` were never actually onboarding-gated server-side (only requires a signed-up user), so exposing the existing client (`generateTopicDraft()`) from a new entry point was the whole change.
+- **Suggestions grounded in real catalog data, not fabricated** — keyword/concept autocomplete pulls from the user's actual visible topics rather than inventing a vocabulary; only the arXiv categories field gets a static taxonomy merged in, since that one has a genuine fixed, stable set of valid codes.
+- **`/scopes/picker` kept as a separate route**, not merged into `/settings/scope/new` — it serves a distinct first-run flow gated by `ScopePickerGuard`, not general scope creation.
+- **New scope from the wizard does not auto-activate** — added to the library only; matches forking or picking a starter scope, keeps the "what's currently active" mental model simple.
+- **Frontend test infrastructure bootstrap deferred to its own PR** rather than introduced as a side effect of this release — scoped out in `FUTURE_FEATURES.md` under "Engineering quality" with the specific tests (ChipListEditor interactions, the wizard's two-phase create-flow partial-failure branch) already identified.
+
+### Followups
+
+- **Frontend has no test framework at all** (no Jest/Vitest/Testing Library). See `FUTURE_FEATURES.md` → "Frontend test infrastructure" for the scoped-out plan.
+- **`VAPID_SUBJECT` is commented out in `.env`**, discovered incidentally while running the backend suite for this release (causes 3 pre-existing, unrelated push-subscription test failures — `test_user_isolation.py::TestPushSubscriptionIsolation`). Not touched by this release; worth a one-line uncomment whenever push notifications need to actually work.
+- **Backend `pytest` suite still isn't run in CI** — `.github/workflows/` only runs Alembic migration checks. Noted in `FUTURE_FEATURES.md` as worth bundling with the frontend CI question if/when that lands.
+- **The three-option "Account →" nav-button redesign** (bylines / chips / command-rail mockups) explored earlier in this cycle was superseded by the IA restructure — nav now lists every destination directly, so the per-page link-cluster redesign is no longer needed. Mockups not implemented; can be discarded.
+- **A separate license-change PR** (`feature/update-documentation`, MIT → PolyForm Noncommercial 1.0.0) is queued to merge into `develop` immediately after this release — not included in this diff.
+
 ## [v2.4] — 2026-06-29
 
 Editorial UI + production stability release. **The sticky top nav is replaced with a 280px persistent editorial left sidebar** (cream paper + Fraunces serif + warm gold accent) reorganized into hierarchical groups (Read / Scope / Account / Help) with a pinned active-scope chip at the top of the rail. Mobile keeps the bottom tab bar but reskinned to match, with the More sheet regrouped to mirror the sidebar IA. New "Replay tutorials" picker on both surfaces re-fires a specific product tour via a new optional `?tour_id=` parameter on `PUT /auth/tour-reset`. Folded in: hotfix #46 (same-origin `/api/*` proxy, already shipped to main, unblocks prod login post-Cloudflare-Access removal) and bugfix #47 (iOS Dynamic Island safe-area, post-onboarding redirect loop, uvicorn keep-alive vs Next.js proxy `ECONNRESET`, mobile More sheet polish). **Zero new migrations, zero new dependencies, one new Railway env var (`BACKEND_INTERNAL_URL`), one removed (`NEXT_PUBLIC_API_URL`), one opt-in env var added then immediately rendered moot by same-origin (`COOKIE_DOMAIN`).** Nav-only structural change — every existing page, route, and guard still works. Full release notes in [docs/releases/v2.4.md](docs/releases/v2.4.md).
