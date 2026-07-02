@@ -1,19 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
-import { API_BASE, resetTour } from '@/lib/api';
+import { API_BASE } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
-
-// keep in sync with KNOWN_TOUR_IDS on the backend and the desktop sidebar's
-// TOUR_CHOICES — single source of truth lives in the backend frozenset
-type TourChoice = { id: 'dashboard' | 'scope' | 'topics'; label: string; fire_on_path: string };
-const TOUR_CHOICES: TourChoice[] = [
-  { id: 'dashboard', label: 'Dashboard tour', fire_on_path: '/' },
-  { id: 'scope', label: 'Scope library tour', fire_on_path: '/settings/scope' },
-  { id: 'topics', label: 'Topics tour', fire_on_path: '/topics' },
-];
 
 // inline SVGs kept here so the tab bar is fully self-contained and the layout
 // can stay a server component
@@ -107,9 +98,22 @@ const CloseIcon = () => (
   </svg>
 );
 
-const ChevronLeftIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M15 19l-7-7 7-7" />
+const KeyIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+  </svg>
+);
+
+const AtIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M16 12v1.5a2.5 2.5 0 005 0V12a9 9 0 10-3.5 7.14" />
+  </svg>
+);
+
+const ShieldIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />
   </svg>
 );
 
@@ -137,27 +141,22 @@ type SheetGroup = {
 type SheetItem = {
   label: string;
   icon: ReactNode;
-} & ({ href: string; external?: boolean; onClick?: undefined } | { onClick: () => void; href?: undefined });
+  href: string;
+  external?: boolean;
+};
 
 export default function MobileTabBar() {
   const pathname = usePathname() || '/';
-  const router = useRouter();
-  const { refresh } = useAuth();
+  const { user } = useAuth();
   const [moreOpen, setMoreOpen] = useState(false);
-  // 'menu' = default Help list; 'picker' = swap in the three tour choices
-  // in-place. busy holds the id mid-await for a visible loading hint.
-  const [helpView, setHelpView] = useState<'menu' | 'picker'>('menu');
-  const [busyTour, setBusyTour] = useState<string | null>(null);
 
   // any route not claimed by a tab (e.g., /settings/*) shows as "More" active
   const activeTabIdx = TABS.findIndex((t) => t.match(pathname));
   const moreActive = activeTabIdx === -1;
 
-  // close sheet on route change; also reset the help view so reopening
-  // the sheet always starts on the default list
+  // close sheet on route change
   useEffect(() => {
     setMoreOpen(false);
-    setHelpView('menu');
   }, [pathname]);
 
   // escape key closes the sheet
@@ -170,58 +169,49 @@ export default function MobileTabBar() {
     return () => window.removeEventListener('keydown', onKey);
   }, [moreOpen]);
 
-  async function replayTour(choice: TourChoice) {
-    if (busyTour) return;
-    setBusyTour(choice.id);
-    try {
-      await resetTour(choice.id);
-      await refresh();
-      // sheet closes automatically on the resulting pathname change
-      router.push(choice.fire_on_path);
-    } catch (e) {
-      console.warn(`failed to replay ${choice.id} tour`, e);
-    } finally {
-      setBusyTour(null);
-    }
-  }
-
-  // mirrors the desktop sidebar IA so mobile/desktop stay legible together.
-  // the Help group's items array swaps based on helpView — picker mode
-  // surfaces a small back row + the three tour choices.
-  const helpItems: SheetItem[] = helpView === 'menu'
-    ? [
-        { onClick: () => setHelpView('picker'), label: 'Replay tutorials', icon: <PlayIcon /> },
-        { href: `${API_BASE}/docs`, external: true, label: 'API docs', icon: <ExternalIcon /> },
-      ]
-    : [
-        { onClick: () => { if (!busyTour) setHelpView('menu'); }, label: 'Back', icon: <ChevronLeftIcon /> },
-        ...TOUR_CHOICES.map((choice) => ({
-          onClick: () => replayTour(choice),
-          label: choice.label,
-          icon: <PlayIcon />,
-        })),
-      ];
-
+  // mirrors the desktop sidebar IA (Read tabs above · Scope · Notifications ·
+  // Account · Tutorials · Admin below) so mobile/desktop stay legible together
   const groups: SheetGroup[] = [
     {
       label: 'Scope',
       items: [
-        { href: '/settings/scope', label: 'Library', icon: <LibraryIcon /> },
-        { href: '/scopes/browse', label: 'Browse public', icon: <SearchIcon /> },
-        { href: '/scopes/picker', label: 'New scope', icon: <PlusIcon /> },
-        { href: '/scopes/requests', label: 'Access requests', icon: <InboxIcon /> },
+        { href: '/settings/scope/library', label: 'My scopes', icon: <LibraryIcon /> },
+        { href: '/settings/scope/browse', label: 'Browse public', icon: <SearchIcon /> },
+        { href: '/settings/scope/requests', label: 'Access requests', icon: <InboxIcon /> },
+        { href: '/settings/scope/new', label: 'New scope', icon: <PlusIcon /> },
+      ],
+    },
+    {
+      label: 'Notifications',
+      items: [
+        { href: '/settings/notifications', label: 'Notifications', icon: <NotificationsIcon /> },
       ],
     },
     {
       label: 'Account',
       items: [
-        { href: '/settings/account', label: 'Profile & password', icon: <ProfileIcon /> },
-        { href: '/settings/notifications', label: 'Notifications', icon: <NotificationsIcon /> },
+        { href: '/settings/account/profile', label: 'Profile', icon: <ProfileIcon /> },
+        { href: '/settings/account/password', label: 'Password', icon: <KeyIcon /> },
+        { href: '/settings/account/username', label: 'Username', icon: <AtIcon /> },
       ],
     },
     {
+      label: 'Tutorials',
+      items: [
+        { href: '/settings/tutorials', label: 'Tutorials', icon: <PlayIcon /> },
+      ],
+    },
+    ...(user?.role === 'admin' ? [{
+      label: 'Admin',
+      items: [
+        { href: '/settings/admin', label: 'Admin', icon: <ShieldIcon /> },
+      ] as SheetItem[],
+    }] : []),
+    {
       label: 'Help',
-      items: helpItems,
+      items: [
+        { href: `${API_BASE}/docs`, external: true, label: 'API docs', icon: <ExternalIcon /> },
+      ],
     },
   ];
 
@@ -313,37 +303,13 @@ export default function MobileTabBar() {
                     <span aria-hidden className="h-px flex-1 bg-rule" />
                   </div>
                   {group.items.map((item) => {
-                    const isActive = 'href' in item && item.href !== undefined && !item.external
+                    const isActive = !item.external
                       ? pathname === item.href || pathname.startsWith(item.href + '/')
                       : false;
                     const baseCls = `flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] ${
                       isActive ? 'bg-paper-3 font-semibold text-ink' : 'text-ink-2 hover:bg-paper-3'
                     }`;
-                    if ('onClick' in item && item.onClick) {
-                      // tour-picker rows: match by label so we can show
-                      // a busy hint and disable while the per-tour reset
-                      // round-trips through the backend
-                      const matchingTour = TOUR_CHOICES.find((c) => c.label === item.label);
-                      const loading = matchingTour && busyTour === matchingTour.id;
-                      const disabled = !!busyTour && (matchingTour !== undefined || item.label === 'Back');
-                      return (
-                        <button
-                          key={item.label}
-                          type="button"
-                          onClick={item.onClick}
-                          disabled={disabled}
-                          aria-busy={loading || undefined}
-                          className={`${baseCls} w-full text-left disabled:cursor-not-allowed ${loading ? 'bg-paper-3 text-ink' : ''}`}
-                        >
-                          <span className={loading ? 'text-gold-dark animate-pulse' : 'text-muted'}>{item.icon}</span>
-                          <span>{item.label}</span>
-                          {loading && (
-                            <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-gold-dark">loading</span>
-                          )}
-                        </button>
-                      );
-                    }
-                    if (item.external && item.href) {
+                    if (item.external) {
                       return (
                         <a
                           key={item.label}
