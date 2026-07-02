@@ -189,6 +189,21 @@ class TestCreate:
         )
         assert s.scope_topic_ids == ["dup-t"]
 
+    def test_silo_with_exactly_one_topic_succeeds(self):
+        # every existing silo-mode test above exercises the *rejection*
+        # branches (0 or 2 ids) — this confirms the actual success path
+        # still works, which the generate-scope wizard depends on entirely
+        # (it always creates a scope_mode='silo' scope around exactly one
+        # freshly-created topic).
+        alice = _seed_user("create-silo-happy@example.com")
+        _seed_topic("silo-t1")
+        s = scope_service.create_scope(
+            alice.user_id, name="Silo Scope", scope_mode="silo",
+            scope_topic_ids=["silo-t1"],
+        )
+        assert s.scope_mode == "silo"
+        assert s.scope_topic_ids == ["silo-t1"]
+
 
 # ===========================================================================
 # Service layer — view / edit permissions
