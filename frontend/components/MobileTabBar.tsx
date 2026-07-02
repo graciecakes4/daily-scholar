@@ -117,6 +117,13 @@ const ShieldIcon = () => (
   </svg>
 );
 
+const SparkleIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" />
+    <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z" />
+  </svg>
+);
+
 type Tab = {
   href: string;
   label: string;
@@ -179,6 +186,7 @@ export default function MobileTabBar() {
         { href: '/settings/scope/browse', label: 'Browse public', icon: <SearchIcon /> },
         { href: '/settings/scope/requests', label: 'Access requests', icon: <InboxIcon /> },
         { href: '/settings/scope/new', label: 'New scope', icon: <PlusIcon /> },
+        { href: '/settings/scope/generate', label: 'Generate scope', icon: <SparkleIcon /> },
       ],
     },
     {
