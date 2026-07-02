@@ -230,7 +230,17 @@ export default function MobileTabBar() {
       <nav
         aria-label="Primary"
         className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t border-rule bg-paper-2/95 backdrop-blur"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        style={{
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          // iOS Safari renders `position: fixed` elements without their own
+          // compositor layer as "floating" / lagging behind page content
+          // during momentum scroll (worse while the dynamic toolbar is
+          // collapsing). Promoting the nav to its own GPU layer pins it to
+          // the visual viewport instead of the (stale) layout viewport.
+          transform: 'translateZ(0)',
+          WebkitTransform: 'translateZ(0)',
+          WebkitBackfaceVisibility: 'hidden',
+        }}
       >
         <div className="grid grid-cols-5 h-16">
           {TABS.map((tab, idx) => {

@@ -1067,7 +1067,12 @@ export interface NotificationDispatchResult {
   ok: boolean;
   type?: string;
   payload?: Record<string, unknown>;
-  result?: { sent?: number; removed?: number; failed?: number };
+  // send_push_to_user() reports the fanout counters here — and, when it
+  // short-circuits (VAPID unconfigured, no subscriptions), a `skipped`
+  // reason nested inside this object rather than at the top level.
+  result?: { sent?: number; removed?: number; failed?: number; skipped?: string; subscriptions?: number };
+  // top-level `skipped` is a *different* short-circuit: the builder
+  // itself returned no payload (e.g. nothing due for quiz_nudge today).
   skipped?: string;
   error?: string;
 }
