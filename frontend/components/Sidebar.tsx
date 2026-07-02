@@ -124,6 +124,13 @@ const ShieldIcon = ({ className }: IconProps) => (
   </svg>
 );
 
+const SparkleIcon = ({ className }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z" />
+  </svg>
+);
+
 // hides the sidebar on the bare auth pages — they own the full viewport
 const HIDE_PATH_PREFIXES = ['/login', '/signup', '/account/'];
 
@@ -156,6 +163,7 @@ const SCOPE_ITEMS: NavItem[] = [
   { href: '/settings/scope/browse', label: 'Browse public', icon: <SearchIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/scope/browse') },
   { href: '/settings/scope/requests', label: 'Access requests', icon: <InboxIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/scope/requests') },
   { href: '/settings/scope/new', label: 'New scope', icon: <PlusIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/scope/new') },
+  { href: '/settings/scope/generate', label: 'Generate scope', icon: <SparkleIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/scope/generate') },
 ];
 
 const NOTIFICATIONS_ITEMS: NavItem[] = [

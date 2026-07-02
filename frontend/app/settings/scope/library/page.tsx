@@ -12,8 +12,8 @@
  */
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
 import {
   listMyScopes,
   getActiveScope,
@@ -23,8 +23,9 @@ import {
   type Scope,
 } from '@/lib/api';
 
-export default function MyScopesPage() {
+function MyScopesInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [active, setActive] = useState<Scope | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,6 +51,17 @@ export default function MyScopesPage() {
   useEffect(() => {
     load();
   }, []);
+
+  // the generate-scope wizard redirects here with ?created=<name> since
+  // it doesn't have anywhere else on-brand to show a success message
+  useEffect(() => {
+    const created = searchParams.get('created');
+    if (created) {
+      setSuccess(`"${created}" created. It's in your library — set it active when you're ready.`);
+      router.replace('/settings/scope/library');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   async function handleSetActive(id: number | null) {
     setBusy(true); setError(null); setSuccess(null);
@@ -171,18 +183,28 @@ export default function MyScopesPage() {
           <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
             My scopes ({owned.length})
           </h2>
-          <button
-            type="button"
-            onClick={handleCreate}
-            disabled={busy}
-            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
-          >
-            {busy ? 'Working…' : 'New scope'}
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/settings/scope/generate"
+              className="text-sm px-4 py-2 border border-slate-300 rounded-lg font-medium text-slate-700 hover:bg-slate-50"
+              title="Describe what you want to study — keywords and arXiv categories are drafted for you"
+            >
+              Generate scope
+            </Link>
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={busy}
+              className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+            >
+              {busy ? 'Working…' : 'New scope'}
+            </button>
+          </div>
         </div>
         {owned.length === 0 ? (
           <p className="text-sm text-slate-500 italic">
-            You haven't created any scopes yet. Fork a public starter or create one from scratch.
+            You haven't created any scopes yet. Fork a public starter, generate one from a
+            description, or build one from scratch.
           </p>
         ) : (
           <ul className="space-y-2">
@@ -220,6 +242,14 @@ export default function MyScopesPage() {
         </section>
       )}
     </div>
+  );
+}
+
+export default function MyScopesPage() {
+  return (
+    <Suspense fallback={<div className="text-slate-500">Loading…</div>}>
+      <MyScopesInner />
+    </Suspense>
   );
 }
 
