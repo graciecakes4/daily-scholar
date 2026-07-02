@@ -2,7 +2,7 @@
 
 ## [v2.5] — 2026-07-02
 
-Settings IA rebuild + AI-assisted scope creation release. **Settings gets a real hierarchy** — Scope, Notifications, Account, Tutorials, and Admin become sibling sections, with Sidebar/MobileTabBar as the single source of cross-section navigation, replacing the scattered per-page "Account →"-style link clusters. **Scope creation gains an AI-drafting path** — a new "Generate scope" wizard (reachable any time from Settings > Scope, not just first-run onboarding) turns a title + description into a draft set of keywords / arXiv categories / key concepts, editable as bubbles rather than raw text, before creating a topic wrapped in a single-topic scope. Also folds in the prior notifications-page redesign (plain-English schedule summaries replacing the raw cron string) and an iOS Safari bottom-nav anchoring fix (#50). **Zero new migrations, zero new dependencies, zero new environment variables.** Full release notes in [docs/releases/v2.5.md](docs/releases/v2.5.md).
+Settings IA rebuild + AI-assisted scope creation release. **Settings gets a real hierarchy** — Scope, Notifications, Account, Tutorials, and Admin become sibling sections, with Sidebar/MobileTabBar as the single source of cross-section navigation, replacing the scattered per-page "Account →"-style link clusters. **Scope creation gains an AI-drafting path** — a new "Generate scope" wizard (reachable any time from Settings > Scope, not just first-run onboarding) turns a title + description into a draft set of keywords / arXiv categories / key concepts, editable as bubbles rather than raw text, before creating a topic wrapped in a single-topic scope. Also folds in the prior notifications-page redesign (plain-English schedule summaries replacing the raw cron string), an iOS Safari bottom-nav anchoring fix (#50), and a license change (#53: MIT → PolyForm Noncommercial 1.0.0). **Zero new migrations, zero new dependencies, zero new environment variables.** Full release notes in [docs/releases/v2.5.md](docs/releases/v2.5.md).
 
 ### Added
 
@@ -31,6 +31,7 @@ Settings IA rebuild + AI-assisted scope creation release. **Settings gets a real
 - `NotificationDispatchResult.result` (`frontend/lib/api.ts`) gained `skipped`/`subscriptions` fields — `send_push_to_user()` can nest a `skipped` reason inside `result` (e.g. VAPID unconfigured, no subscriptions) distinct from the top-level `skipped` (the builder itself had nothing due today); the notifications UI previously only checked the top-level field, so a real skip reason could go unreported.
 - `ScopeTour`'s `fire_on_path` and `ActiveScopeChip`'s "Change scope" link updated to the new `/settings/scope/library` path (`useDriverTour` gates on an exact pathname match, not a prefix, so this needed an explicit update rather than relying on prefix-matching).
 - `ScopePickerGuard`/`OnboardingGuard`'s `SKIP_PREFIXES` needed no changes — both already matched `/settings/scope` as a prefix, which still covers every route moved under it.
+- **License switched from MIT to PolyForm Noncommercial 1.0.0** (PR #53) — `LICENSE` replaced in full, `README.md`'s License section updated to match and link to the PolyForm project page. Commercial use now requires permission from the copyright holder. No code changes.
 
 ### Fixed
 
@@ -54,7 +55,7 @@ Settings IA rebuild + AI-assisted scope creation release. **Settings gets a real
 - **`VAPID_SUBJECT` is commented out in `.env`**, discovered incidentally while running the backend suite for this release (causes 3 pre-existing, unrelated push-subscription test failures — `test_user_isolation.py::TestPushSubscriptionIsolation`). Not touched by this release; worth a one-line uncomment whenever push notifications need to actually work.
 - **Backend `pytest` suite still isn't run in CI** — `.github/workflows/` only runs Alembic migration checks. Noted in `FUTURE_FEATURES.md` as worth bundling with the frontend CI question if/when that lands.
 - **The three-option "Account →" nav-button redesign** (bylines / chips / command-rail mockups) explored earlier in this cycle was superseded by the IA restructure — nav now lists every destination directly, so the per-page link-cluster redesign is no longer needed. Mockups not implemented; can be discarded.
-- **A separate license-change PR** (`feature/update-documentation`, MIT → PolyForm Noncommercial 1.0.0) is queued to merge into `develop` immediately after this release — not included in this diff.
+- **License is now noncommercial-only.** Anyone relying on the prior MIT terms for commercial use should be aware of the change; no other action needed.
 
 ## [v2.4] — 2026-06-29
 
