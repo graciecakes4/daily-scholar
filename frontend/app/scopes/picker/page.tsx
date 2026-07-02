@@ -69,6 +69,10 @@ export default function ScopePickerPage() {
       });
       await setActiveScope(fresh.id);
       router.push(`/settings/scope/${fresh.id}`);
+      // note: fresh.id routes straight into the existing [id] editor —
+      // /scopes/picker itself stays a standalone route (not merged into
+      // /settings/scope/new) since it serves a distinct first-run flow
+      // gated by ScopePickerGuard
     } catch (e: any) {
       setError(e?.message || 'Failed to create scope');
       setBusy(false);
@@ -125,7 +129,7 @@ export default function ScopePickerPage() {
         </h2>
         <div className="flex flex-col sm:flex-row gap-3">
           <Link
-            href="/scopes/browse"
+            href="/settings/scope/browse"
             className="flex-1 px-4 py-3 bg-white border border-slate-300 rounded-lg text-sm text-center hover:bg-slate-50"
           >
             Browse all public scopes

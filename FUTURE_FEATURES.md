@@ -127,6 +127,40 @@ Bring the server-side Web Push primitive (already shipped: VAPID + pywebpush + `
 
 ---
 
+## Engineering quality
+
+### Frontend test infrastructure · proposed
+
+Bootstrap the first frontend test framework in this repo (Vitest + React Testing Library) and land the coverage that was scoped but deliberately deferred when the AI-generated "Generate scope" wizard shipped (`/settings/scope/generate`, `components/ChipListEditor.tsx`).
+
+**Why.** The frontend has zero test infrastructure today — no Jest/Vitest, no Testing Library, no config, no prior test files anywhere under `frontend/`. While building the generate-scope wizard, two pieces of new logic were flagged as worth covering: `ChipListEditor` (a bubble editor with select/edit/delete/add/autocomplete — five interacting pieces of state, easy to silently regress on a later refactor) and the wizard's two-phase create flow (create a Topic, then wrap it in a Scope — the partial-failure branch where the topic saves but the scope doesn't is the actual data-integrity-sensitive part of the feature). Adding a whole new toolchain wasn't something to do as a side effect of a UI-polish request, so it's captured here to land as its own deliberate PR instead.
+
+**Scope (in).**
+
+- Add `vitest`, `@testing-library/react`, `@testing-library/user-event`, `jsdom` as devDependencies; a `vitest.config.ts` wired to the existing Next.js/TS path aliases (`@/`); a `test` script in `frontend/package.json`.
+- `ChipListEditor` interaction tests: click-to-select/deselect a chip; Edit (select → change text → Save updates in place, Cancel reverts without calling `onChange`); Delete (removes the item, clears selection); Add (typing + Add/Enter appends, input stays open for rapid multi-add, rejects empty/whitespace and case-insensitive duplicates); suggestion filtering (case-insensitive, excludes already-added items, caps at 8, clicking commits); keyboard nav (ArrowUp/ArrowDown move the highlighted suggestion, Enter commits the highlighted suggestion or falls back to typed text, Escape closes the add row).
+- `dedupe()` helper (`frontend/app/settings/scope/generate/page.tsx`) — case-insensitive dedupe, preserves first-seen casing and order.
+- Generate-scope wizard's `handleCreate`, with `createTopic`/`createScope` mocked: happy path redirects to `/settings/scope/library?created=<name>`; topic-creation failure never attempts scope creation and re-enables retry; topic-succeeds-but-scope-fails shows the distinct "topic was saved to your catalog" message (this exact wording is a promise to the user and needs to stay correct).
+
+**Scope (out — defer to followups).**
+
+- Full page-level snapshot tests — brittle, low signal.
+- End-to-end/Playwright coverage — bigger lift than this warrants; no e2e infra exists either.
+- Testing the static `ARXIV_CATEGORIES` taxonomy list — nothing meaningfully breaks if it goes stale.
+- Retrofitting tests onto other existing frontend pages/components — this entry is scoped to what the generate-scope feature introduced, not a general "add frontend tests" initiative.
+
+**Open questions.**
+
+- **Vitest vs. Jest?** Leaning Vitest — faster to wire into the existing Next.js/TS setup with fewer transform-config headaches, and it's the more common default for newer Next.js projects. No strong reason to pick Jest instead absent a preference for its longer track record.
+- **Should this be the moment frontend tests start running in CI?** There's currently no frontend CI job at all. Worth deciding alongside — adding tests that nothing ever runs automatically defeats the point.
+
+**Dependencies.**
+
+- None blocking — can land independently at any time.
+- Loosely related: the backend's `pytest` suite (`backend/tests/`, comprehensive) is also not invoked by CI today — `.github/workflows/` only runs Alembic migration checks. If a CI job gets added for frontend tests, worth bundling in a fix for that gap too, since it's the same category of "tests exist but nothing runs them automatically."
+
+---
+
 ## Process notes
 
 When promoting an entry to **scheduled**, copy it to the relevant `docs/releases/vX.md` "Coming next" section and update the status here. When promoting to **shipped**, move the substantive detail to the `CHANGELOG.md` entry for that release and leave only a one-line pointer here for one release cycle, then delete.

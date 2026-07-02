@@ -55,7 +55,7 @@ export default function ScopeTour() {
   useDriverTour({
     tour_id: TOUR_ID,
     version: TOUR_VERSION,
-    fire_on_path: '/settings/scope',
+    fire_on_path: '/settings/scope/library',
     steps: STEPS,
   });
   return null;

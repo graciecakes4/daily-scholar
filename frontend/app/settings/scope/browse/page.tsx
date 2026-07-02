@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * /scopes/browse — browse public scopes from other users and starter scopes
- * from the system catalog.
+ * /settings/scope/browse — browse public scopes from other users and starter
+ * scopes from the system catalog.
  *
  * Two ways to start using a public scope:
  *   • Fork → makes a private copy in your library that you can edit
@@ -91,22 +91,12 @@ export default function ScopeBrowsePage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-baseline justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Browse public scopes</h1>
-          <p className="text-slate-600 mt-1">
-            Starter scopes and public scopes shared by other users. Fork one to
-            edit, or use it directly to track the owner's changes live.
-          </p>
-        </div>
-        <nav className="text-sm flex gap-4 ml-auto">
-          <Link href="/settings/scope" className="text-sky-700 hover:underline">
-            ← My library
-          </Link>
-          <Link href="/scopes/requests" className="text-sky-700 hover:underline">
-            Access requests →
-          </Link>
-        </nav>
+      <header>
+        <h1 className="text-3xl font-bold text-slate-900">Browse public scopes</h1>
+        <p className="text-slate-600 mt-1">
+          Starter scopes and public scopes shared by other users. Fork one to
+          edit, or use it directly to track the owner's changes live.
+        </p>
       </header>
 
       {error && (

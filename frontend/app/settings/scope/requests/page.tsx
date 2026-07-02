@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * /scopes/requests — access-request inbox.
+ * /settings/scope/requests — access-request inbox.
  *
  * Two sections:
  *   • Incoming — requests targeted at scopes I own. Pending ones have
@@ -86,21 +86,11 @@ export default function AccessRequestsPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-baseline justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Access requests</h1>
-          <p className="text-slate-600 mt-1">
-            Approve or deny requests for your private scopes, and track the requests you've sent.
-          </p>
-        </div>
-        <nav className="text-sm flex gap-4 ml-auto">
-          <Link href="/settings/scope" className="text-sky-700 hover:underline">
-            ← My library
-          </Link>
-          <Link href="/scopes/browse" className="text-sky-700 hover:underline">
-            Browse public →
-          </Link>
-        </nav>
+      <header>
+        <h1 className="text-3xl font-bold text-slate-900">Access requests</h1>
+        <p className="text-slate-600 mt-1">
+          Approve or deny requests for your private scopes, and track the requests you've sent.
+        </p>
       </header>
 
       {error && (

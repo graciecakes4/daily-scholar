@@ -112,7 +112,7 @@ export default function ActiveScopeChip() {
           <span>{topicCount} {topicCount === 1 ? 'topic' : 'topics'}{editedLabel ? ` · ${editedLabel}` : ''}</span>
         </div>
         <Link
-          href="/settings/scope"
+          href="/settings/scope/library"
           className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-gold-dark hover:text-ink transition-colors"
         >
           Change scope
