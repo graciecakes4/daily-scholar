@@ -175,5 +175,4 @@ Existing users are migrated transparently by `scripts/migrate_to_scope_library.p
 
 ## License
 
-MIT — see [LICENSE](LICENSE). You're free to fork, modify, and run your own instance. For security reports, see [SECURITY.md](SECURITY.md).
-MIT — see [LICENSE](LICENSE). You're free to fork, modify, and run your own instance. For security reports, see [SECURITY.md](SECURITY.md).
+[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — see [LICENSE](LICENSE). You're free to fork, modify, and run your own instance for noncommercial use. Commercial use requires permission from the copyright holder. For security reports, see [SECURITY.md](SECURITY.md).
