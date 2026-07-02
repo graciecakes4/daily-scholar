@@ -61,18 +61,11 @@ export default function AdminSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-baseline justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Admin</h1>
-          <p className="text-slate-600 mt-1">
-            Approve new signups and manage invite codes.
-          </p>
-        </div>
-        <nav className="text-sm">
-          <Link href="/settings/scope" className="text-sky-700 hover:underline">
-            ← Settings
-          </Link>
-        </nav>
+      <header>
+        <h1 className="text-3xl font-bold text-slate-900">Admin</h1>
+        <p className="text-slate-600 mt-1">
+          Approve new signups and manage invite codes.
+        </p>
       </header>
 
       <div className="border-b border-slate-200">
