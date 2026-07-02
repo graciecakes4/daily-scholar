@@ -161,7 +161,7 @@ export default function ScopeEditorPage() {
           scope_mode: mode,
           scope_topic_ids: mode === 'all' ? [] : selected,
         });
-        router.push('/settings/scope');
+        router.push('/settings/scope/library');
         return;
       }
       await updateScopeById(scopeId!, {
@@ -171,7 +171,7 @@ export default function ScopeEditorPage() {
         scope_mode: mode,
         scope_topic_ids: mode === 'all' ? [] : selected,
       });
-      router.push('/settings/scope');
+      router.push('/settings/scope/library');
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -203,7 +203,7 @@ export default function ScopeEditorPage() {
     if (!confirm(`Delete "${scope.name}"? This cannot be undone.`)) return;
     try {
       await deleteScope(scope.id);
-      router.push('/settings/scope');
+      router.push('/settings/scope/library');
     } catch (e: any) {
       setError(e.message);
     }
@@ -239,7 +239,7 @@ export default function ScopeEditorPage() {
         <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
           {error ?? 'Scope not found.'}
         </div>
-        <Link href="/settings/scope" className="text-sky-700 hover:underline text-sm">
+        <Link href="/settings/scope/library" className="text-sky-700 hover:underline text-sm">
           ← Back to library
         </Link>
       </div>
@@ -262,7 +262,7 @@ export default function ScopeEditorPage() {
     <div className="space-y-6">
       <header className="flex items-baseline justify-between gap-4 flex-wrap">
         <div className="min-w-0">
-          <Link href="/settings/scope" className="text-sky-700 hover:underline text-sm">
+          <Link href="/settings/scope/library" className="text-sky-700 hover:underline text-sm">
             ← Library
           </Link>
           <h1 className="text-3xl font-bold text-slate-900 mt-1 truncate">
