@@ -4,8 +4,11 @@
  * Sidebar — the persistent left rail (option b · editorial sidebar).
  *
  * 280px wide, hidden under md: (mobile falls back to MobileTabBar).
- * Mounts the ActiveScopeChip at the top, then four named groups
- * (Read · Scope · Account · Help), and a user chip in the footer.
+ * Mounts the ActiveScopeChip at the top, then named groups mirroring the
+ * settings IA (Read · Scope · Notifications · Account · Tutorials ·
+ * Admin), and a user chip in the footer. This nav is the single source
+ * of truth for cross-section navigation — individual settings pages no
+ * longer carry their own "related page" link clusters.
  *
  * Active state is computed from usePathname() — matches the deepest
  * prefix so /papers/123 still highlights "Papers".
@@ -14,19 +17,9 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { API_BASE, resetTour } from '@/lib/api';
+import { API_BASE } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import ActiveScopeChip from './ActiveScopeChip';
-
-// the three tours users can replay — id matches KNOWN_TOUR_IDS on the
-// backend, fire_on_path mirrors useDriverTour's gate so navigating there
-// re-fires the tour the moment its tour_state goes back to 0
-type TourChoice = { id: 'dashboard' | 'scope' | 'topics'; label: string; fire_on_path: string };
-const TOUR_CHOICES: TourChoice[] = [
-  { id: 'dashboard', label: 'Dashboard tour', fire_on_path: '/' },
-  { id: 'scope', label: 'Scope library tour', fire_on_path: '/settings/scope' },
-  { id: 'topics', label: 'Topics tour', fire_on_path: '/topics' },
-];
 
 // inline icon components — kept here so the sidebar stays self-contained
 // and svg paths match the mockup exactly
@@ -112,9 +105,22 @@ const LogoutIcon = ({ className }: IconProps) => (
   </svg>
 );
 
-const ChevronLeftIcon = ({ className }: IconProps) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+const KeyIcon = ({ className }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+  </svg>
+);
+
+const AtIcon = ({ className }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7}>
+    <circle cx="12" cy="12" r="4" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M16 12v1.5a2.5 2.5 0 005 0V12a9 9 0 10-3.5 7.14" />
+  </svg>
+);
+
+const ShieldIcon = ({ className }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />
   </svg>
 );
 
@@ -146,15 +152,28 @@ const READ_ITEMS: NavItem[] = [
 ];
 
 const SCOPE_ITEMS: NavItem[] = [
-  { href: '/settings/scope', label: 'Library', icon: <LibraryIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/scope'), dataTour: 'settings' },
-  { href: '/scopes/browse', label: 'Browse public', icon: <SearchIcon className="h-4 w-4" />, isActive: isRoutePrefix('/scopes/browse') },
-  { href: '/scopes/picker', label: 'New scope', icon: <PlusIcon className="h-4 w-4" />, isActive: isRoutePrefix('/scopes/picker') },
-  { href: '/scopes/requests', label: 'Access requests', icon: <InboxIcon className="h-4 w-4" />, isActive: isRoutePrefix('/scopes/requests') },
+  { href: '/settings/scope/library', label: 'My scopes', icon: <LibraryIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/scope/library'), dataTour: 'settings' },
+  { href: '/settings/scope/browse', label: 'Browse public', icon: <SearchIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/scope/browse') },
+  { href: '/settings/scope/requests', label: 'Access requests', icon: <InboxIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/scope/requests') },
+  { href: '/settings/scope/new', label: 'New scope', icon: <PlusIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/scope/new') },
+];
+
+const NOTIFICATIONS_ITEMS: NavItem[] = [
+  { href: '/settings/notifications', label: 'Notifications', icon: <BellIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/notifications') },
 ];
 
 const ACCOUNT_ITEMS: NavItem[] = [
-  { href: '/settings/account', label: 'Profile & password', icon: <ProfileIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/account') },
-  { href: '/settings/notifications', label: 'Notifications', icon: <BellIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/notifications') },
+  { href: '/settings/account/profile', label: 'Profile', icon: <ProfileIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/account/profile') },
+  { href: '/settings/account/password', label: 'Password', icon: <KeyIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/account/password') },
+  { href: '/settings/account/username', label: 'Username', icon: <AtIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/account/username') },
+];
+
+const TUTORIALS_ITEMS: NavItem[] = [
+  { href: '/settings/tutorials', label: 'Tutorials', icon: <PlayIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/tutorials') },
+];
+
+const ADMIN_ITEMS: NavItem[] = [
+  { href: '/settings/admin', label: 'Admin', icon: <ShieldIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/admin') },
 ];
 
 function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
@@ -275,13 +294,13 @@ function UserChip() {
           className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-lg border border-rule bg-paper-2 shadow-lg"
         >
           <Link
-            href="/settings/account"
+            href="/settings/account/profile"
             onClick={() => setMenuOpen(false)}
             role="menuitem"
             className="flex items-center gap-2 px-3 py-2 text-[13px] text-ink-2 hover:bg-paper-3"
           >
             <ProfileIcon className="h-4 w-4 text-muted" />
-            Profile & password
+            Profile & account
           </Link>
           <button
             type="button"
@@ -298,99 +317,9 @@ function UserChip() {
   );
 }
 
-function HelpGroup() {
-  const router = useRouter();
-  const { refresh } = useAuth();
-  // 'menu' shows the default Help list; 'picker' swaps in the per-tour
-  // choices in-place. busy holds the id mid-await so the row can show
-  // a soft loading hint and we can ignore double-clicks.
-  const [view, setView] = useState<'menu' | 'picker'>('menu');
-  const [busy, setBusy] = useState<string | null>(null);
-
-  async function replay(choice: TourChoice) {
-    if (busy) return;
-    setBusy(choice.id);
-    try {
-      // clear the seen-version for this one tour, then refresh /auth/me
-      // so useDriverTour sees tour_state[id] === 0 on the next page mount
-      await resetTour(choice.id);
-      await refresh();
-      router.push(choice.fire_on_path);
-    } catch (e) {
-      console.warn(`failed to replay ${choice.id} tour`, e);
-    } finally {
-      setBusy(null);
-      setView('menu');
-    }
-  }
-
-  return (
-    <div className="mb-4">
-      <GroupLabel>Help</GroupLabel>
-      <div className="flex flex-col gap-px">
-        {view === 'menu' ? (
-          <>
-            <button
-              type="button"
-              onClick={() => setView('picker')}
-              aria-haspopup="menu"
-              aria-expanded={false}
-              className="group relative flex items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-left text-[13.5px] font-medium text-ink-2 hover:bg-paper-3 hover:text-ink transition-colors"
-            >
-              <PlayIcon className="h-4 w-4 text-muted group-hover:text-ink" />
-              <span>Replay tutorials</span>
-            </button>
-            <a
-              href={`${API_BASE}/docs`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group relative flex items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-[13.5px] font-medium text-ink-2 hover:bg-paper-3 hover:text-ink transition-colors"
-            >
-              <ExternalIcon className="h-4 w-4 text-muted group-hover:text-ink" />
-              <span>API docs</span>
-            </a>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => { if (!busy) setView('menu'); }}
-              disabled={!!busy}
-              className="group relative flex items-center gap-2 rounded-[7px] px-2.5 py-1 text-left font-mono text-[10px] uppercase tracking-[0.12em] text-muted hover:text-ink transition-colors disabled:opacity-60"
-            >
-              <ChevronLeftIcon className="h-3 w-3" />
-              <span>Pick a tutorial</span>
-            </button>
-            {TOUR_CHOICES.map((choice) => {
-              const loading = busy === choice.id;
-              return (
-                <button
-                  key={choice.id}
-                  type="button"
-                  onClick={() => replay(choice)}
-                  disabled={!!busy}
-                  aria-busy={loading}
-                  className={`group relative ml-3 flex items-center gap-2.5 rounded-[7px] px-2.5 py-1.5 text-left text-[13px] font-medium transition-colors ${
-                    loading ? 'bg-paper-3 text-ink' : 'text-ink-2 hover:bg-paper-3 hover:text-ink'
-                  } disabled:cursor-not-allowed`}
-                >
-                  <PlayIcon className={`h-3.5 w-3.5 ${loading ? 'text-gold-dark animate-pulse' : 'text-muted group-hover:text-ink'}`} />
-                  <span className="truncate">{choice.label}</span>
-                  {loading && (
-                    <span className="ml-auto font-mono text-[10px] uppercase tracking-wider text-gold-dark">loading</span>
-                  )}
-                </button>
-              );
-            })}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function Sidebar() {
   const pathname = usePathname() || '/';
+  const { user } = useAuth();
 
   if (HIDE_PATH_PREFIXES.some((p) => pathname.startsWith(p))) {
     return null;
@@ -432,6 +361,15 @@ export default function Sidebar() {
       </div>
 
       <div className="mb-4">
+        <GroupLabel>Notifications</GroupLabel>
+        <div className="flex flex-col gap-px">
+          {NOTIFICATIONS_ITEMS.map((item) => (
+            <NavLink key={item.href} item={item} pathname={pathname} />
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-4">
         <GroupLabel>Account</GroupLabel>
         <div className="flex flex-col gap-px">
           {ACCOUNT_ITEMS.map((item) => (
@@ -440,9 +378,36 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <HelpGroup />
+      <div className="mb-4">
+        <GroupLabel>Tutorials</GroupLabel>
+        <div className="flex flex-col gap-px">
+          {TUTORIALS_ITEMS.map((item) => (
+            <NavLink key={item.href} item={item} pathname={pathname} />
+          ))}
+        </div>
+      </div>
+
+      {user?.role === 'admin' && (
+        <div className="mb-4">
+          <GroupLabel>Admin</GroupLabel>
+          <div className="flex flex-col gap-px">
+            {ADMIN_ITEMS.map((item) => (
+              <NavLink key={item.href} item={item} pathname={pathname} />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-auto border-t border-rule pt-4">
+        <a
+          href={`${API_BASE}/docs`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mb-2 flex items-center gap-2 px-1 text-[12px] font-medium text-muted hover:text-ink transition-colors"
+        >
+          <ExternalIcon className="h-3.5 w-3.5" />
+          API docs
+        </a>
         <UserChip />
       </div>
     </aside>
