@@ -71,7 +71,7 @@
     {
       "name": "Scope settings",
       "short_name": "Scope",
-      "url": "/settings/scope",
+      "url": "/settings/scope/library",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
