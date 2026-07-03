@@ -1,5 +1,40 @@
 # Changelog
 
+## [v2.5.1] — 2026-07-03
+
+Small polish release. **Admin-generated invite codes gain an optional custom-text option** — left blank, still a random `secrets.token_urlsafe` code as before; typed in, validated (3–32 chars, letters/digits/-/_) and used as-is. **The dashboard's stats bar is redesigned** to match the editorial theme (Fraunces numerals, roman-numeral eyebrows, hairline rule borders) instead of standing out as a leftover blue/indigo gradient, and **a flexbox bug clipping the sidebar's "in scope" card down to a sliver is fixed**. Also corrects stale deploy-config comments in `frontend/railway.toml`. **Zero new migrations, zero new dependencies, zero new environment variables.** Full release notes in [docs/releases/v2.5.1.md](docs/releases/v2.5.1.md).
+
+### Added
+
+#### Custom invite codes (PR #56)
+
+- New optional "Custom code" text input next to the Create button on `/settings/admin`'s Invite codes tab. Left blank, unchanged random-code behavior; typed in, validated and used as-is.
+- `generate_invite_code()` (`backend/services/invite_codes.py`) gains an optional `custom_code` param — validates charset/length (3–32 chars: letters, digits, `-`, `_`) and checks for a collision, no retry-on-collision (a silently different code than what the admin typed would be worse than an error). New `InviteCodeInvalid` / `InviteCodeTaken` exceptions map to `400`/`409` in `backend/api/admin_invites.py`.
+- `CreateInviteBody` (both the Pydantic model and the frontend `CreateInviteBody` type in `frontend/lib/api.ts`) gains an optional `code` field.
+
+### Changed
+
+- **Dashboard stats bar redesigned** (`frontend/app/page.tsx`, PR #57) — replaced the `bg-gradient-to-r from-blue-600 to-indigo-600` band with four bordered `bg-paper-2` "numbered cards" (Streak / Read / Kept / Accuracy), each with an italic roman-numeral eyebrow and a large Fraunces numeral; the streak card is the visual hero with a rust-to-gold top accent. `FireIcon` gained an optional `className` prop so it could be recolored/resized for the smaller card icon. Three directions were explored as local (gitignored) HTML mockups before picking this one.
+- **`frontend/railway.toml` deploy comments corrected** (PR #55) — updated to describe the actual v2.4+ same-origin `/api/*` proxy shape (`BACKEND_INTERNAL_URL` required, `NEXT_PUBLIC_API_URL` an optional escape hatch requiring `COOKIE_DOMAIN` if used) instead of the stale pre-v2.4 `NEXT_PUBLIC_API_URL`-required guidance. No behavior change.
+
+### Fixed
+
+- **Sidebar "in scope" card could clip down to a ~26px sliver** (`frontend/components/ActiveScopeChip.tsx`, PR #55, PR #56) — the card is a flex item inside the flex-column sidebar and also has `overflow-hidden` (to clip its diagonal-hatch background to the rounded corners); setting `overflow` to anything but `visible` on a flex item removes its automatic minimum-size floor, so it was the one item that could shrink below its own content whenever the rail's total content exceeded the viewport, clipping the scope name/topic count/"Change scope" link down to just the "IN SCOPE" label. Fixed by adding `shrink-0` to all three render states. Made independently in both PR #55 and PR #56; the resulting merge conflict (same class, different attribute order) was trivially resolved.
+
+### Operations
+
+- **Zero new migrations, zero new dependencies (Python or npm), zero new environment variables.** Invite codes reuse the existing `InviteCode` model/column; the stats bar and sidebar fix are presentational only.
+
+### Decisions
+
+- **No retry-on-collision for custom invite codes.** Unlike the random-code generator's 5-attempt uniqueness retry, a requested custom code that's already taken returns a `409` rather than silently substituting a different code — the admin explicitly asked for that text.
+- **Observatory-styled stats bar mockup kept as a future theme candidate, not discarded or shipped as default.** See Followups.
+
+### Followups
+
+- **Observatory theme as a user-selectable preference** — the dark amber "night observatory" stats-bar mockup explored alongside the shipped design is a candidate for a proper alternate visual theme (a persisted `users.theme`-style preference plus a toggle in `/settings/account`), not just a one-off palette swap. Marked with a `TODO(design)` comment in `frontend/app/page.tsx`; not built yet.
+- **No live "code already taken" check before submit** on the custom invite code field — the `409` only surfaces after clicking Create. Fine given how rarely admins would hit a real collision; a live-availability check is a small nice-to-have if usage grows.
+
 ## [v2.5] — 2026-07-02
 
 Settings IA rebuild + AI-assisted scope creation release. **Settings gets a real hierarchy** — Scope, Notifications, Account, Tutorials, and Admin become sibling sections, with Sidebar/MobileTabBar as the single source of cross-section navigation, replacing the scattered per-page "Account →"-style link clusters. **Scope creation gains an AI-drafting path** — a new "Generate scope" wizard (reachable any time from Settings > Scope, not just first-run onboarding) turns a title + description into a draft set of keywords / arXiv categories / key concepts, editable as bubbles rather than raw text, before creating a topic wrapped in a single-topic scope. Also folds in the prior notifications-page redesign (plain-English schedule summaries replacing the raw cron string), an iOS Safari bottom-nav anchoring fix (#50), and a license change (#53: MIT → PolyForm Noncommercial 1.0.0). **Zero new migrations, zero new dependencies, zero new environment variables.** Full release notes in [docs/releases/v2.5.md](docs/releases/v2.5.md).

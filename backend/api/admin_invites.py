@@ -20,6 +20,8 @@ from ..auth import lookup_user_by_user_id, require_admin
 from ..database import DEFAULT_USER_ID
 from ..services.audit_log import EventType, TargetType, log_event
 from ..services.invite_codes import (
+    InviteCodeInvalid,
+    InviteCodeTaken,
     generate_invite_code,
     list_invite_codes,
     revoke_invite_code,
@@ -54,6 +56,10 @@ class CreateInviteBody(BaseModel):
         ge=1,
         le=1000,
         description="How many signups can redeem this code (default 1 = single-use).",
+    )
+    code: Optional[str] = Field(
+        default=None,
+        description="Custom code text. Omit or leave blank to auto-generate a random one.",
     )
 
 
@@ -147,11 +153,20 @@ def create_invite(
     if body.expires_in_days is not None:
         expires_at = datetime.utcnow() + timedelta(days=body.expires_in_days)
 
-    row = generate_invite_code(
-        created_by_user_id=admin_user.id,
-        expires_at=expires_at,
-        max_uses=body.max_uses,
-    )
+    # blank/whitespace-only string from the admin UI means "no preference"
+    custom_code = body.code.strip() if body.code and body.code.strip() else None
+
+    try:
+        row = generate_invite_code(
+            created_by_user_id=admin_user.id,
+            expires_at=expires_at,
+            max_uses=body.max_uses,
+            custom_code=custom_code,
+        )
+    except InviteCodeInvalid as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except InviteCodeTaken as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
     log_event(
         event_type=EventType.INVITE_CREATE,

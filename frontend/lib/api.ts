@@ -1250,6 +1250,8 @@ export interface CreateInviteBody {
   expires_in_days?: number;
   /** Default 1 (single-use). */
   max_uses?: number;
+  /** Custom code text. Omit to auto-generate a random one. */
+  code?: string;
 }
 
 export async function listInvites(includeRevoked = true): Promise<{ invites: InviteSummary[] }> {
