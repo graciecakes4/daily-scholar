@@ -32,8 +32,8 @@ const ArchiveIcon = () => (
   </svg>
 );
 
-const FireIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+const FireIcon = ({ className = 'w-5 h-5' }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
   </svg>
 );
@@ -249,28 +249,61 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      {/* Stats Bar — 2x2 grid on mobile, single row on md+ to keep four stats
-          on screen without overflowing narrow viewports */}
+      {/* Stats Bar — "numbered cards" editorial treatment (see
+          mockups/stats_bar_option2_numbered_cards.html for the source design
+          and the two sibling alternatives it was chosen over). 2x2 grid on
+          mobile, single row on md+ to keep four stats on screen without
+          overflowing narrow viewports.
+
+          TODO(design): mockups/stats_bar_option3_observatory.html (dark,
+          amber-glow "night observatory" palette) was explored alongside this
+          and liked enough to revisit — turn it into a user-selectable
+          alternate visual palette (a "theme" preference on the account, not
+          just for this bar) rather than a one-off swap. Needs a persisted
+          preference (e.g. a users.theme column + a toggle in
+          /settings/account) and this component reading that preference to
+          pick a variant. Not built yet — shipping the editorial default now. */}
       {userStats && (
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-4 text-white">
-          <div className="grid grid-cols-2 gap-3 md:flex md:items-center md:justify-between md:flex-wrap md:gap-4">
-            <div className="flex items-center gap-2 min-w-0">
-              <FireIcon />
-              <span className="font-bold text-lg">{userStats.streaks.current}</span>
-              <span className="text-blue-100 text-sm truncate">day streak</span>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="group relative overflow-hidden rounded bg-paper-2 border border-rule px-4 pt-4 pb-3.5 transition-all duration-200 ease-out hover:border-gold hover:-translate-y-px">
+            <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-rust to-gold" />
+            <div className="flex items-center gap-1.5 font-serif italic text-[10px] font-medium uppercase tracking-[0.12em] text-gold-dark">
+              <FireIcon className="w-3 h-3 text-rust" />
+              I · Streak
             </div>
-            <div className="text-blue-100 text-sm min-w-0 truncate">
-              <span className="text-white font-semibold">{userStats.lifetime.papers_seen}</span> papers seen
+            <div className="font-serif font-medium text-[34px] leading-tight tracking-[-0.02em] text-ink mt-2 mb-0.5">
+              {userStats.streaks.current}<span className="text-[15px] font-sans font-medium text-muted ml-1">days</span>
             </div>
-            <div className="text-blue-100 text-sm min-w-0 truncate">
-              <span className="text-white font-semibold">{userStats.lifetime.papers_archived}</span> archived
+            <div className="text-[11.5px] text-ink-2">
+              best run <span className="text-gold-dark font-semibold">{userStats.streaks.longest} days</span>
             </div>
-            <div className="text-blue-100 text-sm min-w-0 truncate">
-              <span className="text-white font-semibold">{userStats.lifetime.quiz_accuracy}%</span> quiz accuracy
+          </div>
+
+          <div className="relative overflow-hidden rounded bg-paper-2 border border-rule px-4 pt-4 pb-3.5 transition-all duration-200 ease-out hover:border-gold hover:-translate-y-px">
+            <div className="absolute top-0 left-0 w-full h-[3px] bg-rule" />
+            <div className="font-serif italic text-[10px] font-medium uppercase tracking-[0.12em] text-muted">II · Read</div>
+            <div className="font-serif font-medium text-[34px] leading-tight tracking-[-0.02em] text-ink mt-2 mb-0.5">
+              {userStats.lifetime.papers_seen}
             </div>
-            <div className="col-span-2 text-sm text-blue-100 md:col-auto">
-              Best: {userStats.streaks.longest} days
+            <div className="text-[11.5px] text-ink-2 truncate">papers seen to date</div>
+          </div>
+
+          <div className="relative overflow-hidden rounded bg-paper-2 border border-rule px-4 pt-4 pb-3.5 transition-all duration-200 ease-out hover:border-gold hover:-translate-y-px">
+            <div className="absolute top-0 left-0 w-full h-[3px] bg-rule" />
+            <div className="font-serif italic text-[10px] font-medium uppercase tracking-[0.12em] text-muted">III · Kept</div>
+            <div className="font-serif font-medium text-[34px] leading-tight tracking-[-0.02em] text-ink mt-2 mb-0.5">
+              {userStats.lifetime.papers_archived}
             </div>
+            <div className="text-[11.5px] text-ink-2 truncate">archived for later</div>
+          </div>
+
+          <div className="relative overflow-hidden rounded bg-paper-2 border border-rule px-4 pt-4 pb-3.5 transition-all duration-200 ease-out hover:border-gold hover:-translate-y-px">
+            <div className="absolute top-0 left-0 w-full h-[3px] bg-rule" />
+            <div className="font-serif italic text-[10px] font-medium uppercase tracking-[0.12em] text-muted">IV · Accuracy</div>
+            <div className="font-serif font-medium text-[34px] leading-tight tracking-[-0.02em] text-ink mt-2 mb-0.5">
+              {userStats.lifetime.quiz_accuracy}<span className="text-[15px] font-sans font-medium text-muted ml-1">%</span>
+            </div>
+            <div className="text-[11.5px] text-ink-2 truncate">across recent quizzes</div>
           </div>
         </div>
       )}
