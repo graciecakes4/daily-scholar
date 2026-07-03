@@ -4,14 +4,28 @@
 # Builds from frontend/Dockerfile (multi-stage; build via webpack so @serwist
 # can hook the bundler; final image is just `node server.js` on Alpine).
 #
-# REQUIRED service Variables (set in Railway UI → Service → Variables):
-#   NEXT_PUBLIC_API_URL = https://api.daily-scholar.com
+# Since commit ef2c8f1 ("Same-origin proxy"), the browser calls the backend
+# through Next.js's own `/api/*` rewrite (see next.config.js + lib/api.ts)
+# instead of hitting the backend's public URL directly. This keeps frontend
+# and backend same-origin from the browser's point of view, so cookies
+# (session + CSRF double-submit) round-trip with no CORS allowlist and no
+# cross-subdomain cookie-domain gymnastics.
+#
+# REQUIRED service Variable (set in Railway UI → Service → Variables):
+#   BACKEND_INTERNAL_URL = http://backend.railway.internal:8000
+#     Where Next.js's server-side rewrite forwards `/api/*` to. Must be set
+#     at BUILD time (next.config.js's rewrites() resolves it during
+#     `next build`), so changing it requires a rebuild, not just a redeploy.
+#
+# OPTIONAL escape hatch — leave unset in the standard deploy:
+#   NEXT_PUBLIC_API_URL
+#     Only set this if the browser bundle needs to call an external API
+#     host directly, bypassing the same-origin proxy above. Doing so also
+#     requires setting COOKIE_DOMAIN on the backend to the shared parent
+#     domain (e.g. ".daily-scholar.com"), or the CSRF double-submit cookie
+#     won't be readable across subdomains and every mutating request 403s.
 #     Inlined into the client JS bundle at `next build` time via the
-#     Dockerfile's `ARG NEXT_PUBLIC_API_URL`. The Dockerfile now hard-fails
-#     the build when this is empty, so a misconfigured deploy errors at
-#     image-build time instead of silently serving a broken frontend that
-#     fetches `http://localhost:8000`. Railway automatically forwards all
-#     service variables as --build-arg when the Dockerfile declares the ARG.
+#     Dockerfile's `ARG NEXT_PUBLIC_API_URL`, which defaults to empty.
 
 [build]
 builder = "DOCKERFILE"
