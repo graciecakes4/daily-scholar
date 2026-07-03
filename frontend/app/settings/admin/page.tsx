@@ -233,6 +233,7 @@ function InvitesTab() {
   const [creating, setCreating] = useState(false);
   const [expiresInDays, setExpiresInDays] = useState<string>('');     // '' = no expiry
   const [maxUses, setMaxUses] = useState<number>(1);
+  const [customCode, setCustomCode] = useState<string>('');           // '' = auto-generate
   const [copied, setCopied] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
@@ -257,7 +258,9 @@ function InvitesTab() {
     setError(null);
     try {
       const expires = expiresInDays.trim() ? Number(expiresInDays) : undefined;
-      await createInvite({ expires_in_days: expires, max_uses: maxUses });
+      const code = customCode.trim() || undefined;
+      await createInvite({ expires_in_days: expires, max_uses: maxUses, code });
+      setCustomCode('');
       await refresh();
     } catch (e: any) {
       setError(e?.message || 'Create failed');
@@ -322,12 +325,23 @@ function InvitesTab() {
               className="w-24 px-3 py-1.5 border border-slate-300 rounded text-sm"
             />
           </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Custom code</label>
+            <input
+              type="text"
+              placeholder="leave blank for random"
+              value={customCode}
+              onChange={e => setCustomCode(e.target.value)}
+              maxLength={32}
+              className="w-48 px-3 py-1.5 border border-slate-300 rounded text-sm font-mono"
+            />
+          </div>
           <button
             type="submit"
             disabled={creating}
             className="px-4 py-1.5 bg-slate-900 text-white rounded text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
           >
-            {creating ? 'Generating…' : 'Generate'}
+            {creating ? 'Creating…' : 'Create'}
           </button>
         </div>
       </form>
