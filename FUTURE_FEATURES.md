@@ -1,6 +1,12 @@
-# Future Features
+# Future Features — Tracker
 
 Tracker for substantial features under consideration for Daily Scholar. Not a backlog — small bugs and polish go in GitHub Issues. This file is for things that need scoping conversation before they're issue-ready: where the architectural shape, dependencies, or open questions matter more than the line-by-line work.
+
+**Conventions:**
+
+- `[ ]` = scope item not yet decided/built, `[x]` = decided or landed
+- Phase-level status shown in the phase brief — don't check off scope items until the design question they depend on is actually resolved
+- Italic text after an item is a contextual note; edit freely
 
 **Status legend:**
 
@@ -13,151 +19,158 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 ---
 
-## Auth + identity
+## Status overview
 
-### Login interface · proposed
+- **Phase 1 · Login & Identity**: in-progress — signup/login/session auth is live; self-serve password reset is the one real gap left.
+- **Phase 2 · Admin Controls**: in-progress — role gate + a 4-tab admin console (approvals/invites/users/audit) shipped; topic-ops and cache/stats admin surfaces are still missing.
+- **Phase 3 · Push Notifications Surface**: in-progress — settings page, per-type scheduling, and dead-subscription cleanup all shipped and more general than scoped; the actual "enable push" subscribe button isn't wired into any page yet.
+- **Phase 4 · Frontend Test Infrastructure**: proposed — confirmed nothing has been built here yet.
 
-In-app login UI replacing or augmenting the Cloudflare Access gate.
+---
 
-**Why.** Cloudflare Access works for the closed beta cohort (~30 users on the free tier, email-policy gated), but it's a deal-breaker for the wider audience: every new tester needs me to add their email to the Access policy, and the CF Access login flow has its own UX that bears no relation to Daily Scholar's. A native login lets users self-serve onboarding (with invite codes or open registration, TBD) and gives me a place to surface user-facing settings that don't fit Access (display name, push prefs, etc.).
+## Phase 1 · Login & Identity
 
-**Scope (in).**
+> **Phase brief.** Native login UI replacing or augmenting the Cloudflare Access gate. CF Access works for the closed beta (~30 users, email-policy gated) but doesn't scale to a wider audience — every new tester needs a manual email add, and the CF login flow has no relation to Daily Scholar's UX. A real login unlocks self-serve onboarding and a place to surface user settings CF Access can't (display name, push prefs, etc.). **Status: in-progress** — core auth (`backend/api/auth.py`, `backend/database.py`, alembic `0003`/`0005`/`0006`/`0009`) is live; it coexists with Cloudflare Access rather than replacing it (see resolved open question below).
 
-- Email + password registration + login, password hashing via `passlib[argon2]`.
-- Session management — cookie-based with a secure HttpOnly session cookie, NOT JWT (avoids needing a refresh-token dance for a personal-scale app).
-- `/auth/login`, `/auth/register`, `/auth/logout`, `/auth/forgot-password` Next.js pages.
-- New `User` SQL model with `id` (replacing the `__local__` / email-header sentinel pattern), `email`, `password_hash`, `display_name`, `created_at`, `last_login_at`, `is_active`. Existing nine user-scoped tables migrate their `user_id` columns from string to FK on the new `users.id`.
-- Migration helper: `scripts/migrate_email_user_ids_to_users_table.py` — for every distinct `user_id` in the existing nine tables, INSERT a corresponding `users` row (password_hash NULL → user must reset before next login), then rewrite all FKs.
+- [x] **li1** Email + password registration + login
+  *Shipped in `backend/api/auth.py` (`/auth/signup`, `/auth/login`). Hashing uses bcrypt via `passlib` (`backend/services/auth_security.py`), not Argon2 as originally scoped — the `CryptContext` is deliberately set up so swapping to argon2id later is a deprecation-list change, not a rewrite.*
+- [x] **li2** Cookie-based session management
+  *Shipped: `ds_session` cookie (HttpOnly + secure, `backend/api/auth.py::_set_session_cookie`) backed by an opaque, revocable `sessions` table (`backend/database.py::Session`) rather than a signed itsdangerous token. Same "no JWT, no refresh-token dance" goal, DB-backed instead.*
+- [x] **li3a** Login / register / logout pages
+  *Shipped as `frontend/app/login` and `frontend/app/signup` (register). Logout is a POST action wired into `UserMenu`/`Sidebar` rather than its own route — no dedicated page needed for it.*
+- [ ] **li3b** `/auth/forgot-password` page
+  *Not built. `admin_accounts.py::reset_password` lets an admin force-reset a user's password, but there's no user-initiated, self-serve reset flow — blocked on the SMTP question below.*
+- [x] **li4** New `User` SQL model
+  *Shipped (`backend/database.py::User`) — matches the scoped shape (`email`, `user_id`, `password_hash`, `status`, `role`, timestamps) plus two extras not originally scoped: `onboarded` and `tour_state` (JSON) for the onboarding wizard.*
+- [ ] **li5** Migration helper: `migrate_email_user_ids_to_users_table.py`
+  *Turned out unnecessary as scoped. Alembic `0005_users_and_sessions.py` notes the existing 9 user-scoped tables already stored `user_id` as a plain string (email or handle), so nothing needed backfilling or re-keying — the `users` table was added additively instead. `scripts/reassign_user_id.py` covers the separate, narrower concern of a user changing their handle post-signup.*
 
-**Scope (out — defer to followups).**
+**Open questions**
 
-- OAuth (Google / GitHub / Apple Sign-In). Captured separately under [OAuth providers · proposed](#oauth-providers--proposed) (which doesn't exist yet; promote when this lands).
-- Email verification flow. Initial release lets users register without verifying email; verification ships in a followup.
-- Magic-link login. Strictly password to start.
+- [x] Coexist with Cloudflare Access, or replace it? *Resolved: coexist — the opposite of this doc's original "replace" lean. `backend/auth.py`'s resolution chain checks the session cookie first, then falls through to the CF Access header → CF JWT → local-dev override → `__local__` sentinel, so CF-Access-only deployments still work.*
+- [x] Invite-only or open registration? *Resolved: invite-only, and stricter than scoped. Signup requires a valid `invite_code` (unless `OPEN_SIGNUP=1` for local dev) AND lands in `pending` status requiring a separate admin-approval step (`admin_approvals.py`) before the account can do anything.*
+- [ ] Password reset transport — which SMTP provider? *Still open — no SMTP/Resend/email dependency anywhere in `requirements.txt` or `backend/`. This is what's blocking li3b.*
+
+**Out of scope (deferred to followups)** — unchanged, none of these are built:
+
+- OAuth (Google / GitHub / Apple Sign-In) — its own future entry once Login lands.
+- Email verification flow.
+- Magic-link login.
 - TOTP / WebAuthn second factor.
 
-**Open questions.**
+**Dependencies**
 
-- **Coexist with Cloudflare Access, or replace it?** Coexist (CF Access at the edge + native login behind it) gives belt-and-braces but is a confusing double-login UX. Replace (turn off CF Access, native login is the only gate) is cleaner but means the origin firewall becomes the only barrier between the public internet and the backend — needs solid rate limiting on `/auth/*` and a more aggressive lockout policy than the current "trust CF Access" posture justifies. Lean: replace, with CF as a CDN/WAF layer (rules-only, not Access).
-- **Invite-only or open registration?** Beta cohort suggests invite-only with a code minted by an admin (`flask invite create` analog). Public release could relax. Mirror the FriendZone invite-request flow if needed.
-- **Password reset transport.** SMTP via an existing provider (Resend / Postmark / SES)? Adds a new env var pair + a dependency. Lean: Resend (`resend-python`), free tier covers personal-scale.
-
-**Dependencies.**
-
-- New backend deps: `passlib[argon2]`, `itsdangerous` (signed session tokens), `resend` or chosen email SDK.
-- New env vars: `SESSION_SECRET_KEY` (Fernet-rotatable), `SMTP_*` or `RESEND_API_KEY`, `REGISTRATION_MODE` (`open|invite_only`).
-- New migration. The `user_id` → `users.id` FK rewrite is the load-bearing piece; everything else is additive.
-- Coordinated with [Admin controls · proposed](#admin-controls--proposed) — the admin gate becomes practical only once users are first-class.
+- `passlib` is present, but with the `bcrypt` scheme rather than the `argon2` extra originally scoped; `itsdangerous` was never added since sessions are DB-backed instead of signed tokens; no email SDK dependency yet (blocks li3b).
+- The FK-rewrite migration piece turned out to be moot — see li5.
 
 ---
 
-## Admin + ops
+## Phase 2 · Admin Controls
 
-### Admin controls · proposed
+> **Phase brief.** In-app admin role + a small admin UI for ops tasks that today require shell access or direct DB writes (cache busts, topic re-bootstraps, user-activity debugging). `/admin/*` endpoints exist server-side but have no in-app role check — gated only by Cloudflare Access. **Status: in-progress** — the role gate and a 4-tab admin console shipped; topic-ops and cache/stats surfaces haven't.
 
-In-app admin role + a small admin UI for the operations that today require shell access or direct DB writes.
+- [x] **ad1** `users.role` column (`'user' | 'admin'`, default `'user'`)
+  *Shipped (`backend/database.py::User.role`). Seeded via `scripts/create_admin.py` rather than a `flask admin grant` command — this stack is FastAPI, not Flask.*
+- [x] **ad2** `require_admin` dependency
+  *Shipped in `backend/auth.py::require_admin`, applied across `admin.py`, `admin_accounts.py`, `admin_approvals.py`, `admin_invites.py`, `admin_audit.py`.*
+- [x] **ad3** `/admin/users`-equivalent page
+  *Shipped as the "Users" tab in `frontend/app/settings/admin/page.tsx` — list/search, per-user stats (`GET /admin/users/{id}/stats`), and soft-disable via a status change to `suspended` (string status field rather than a boolean `is_active`, same effect).*
+- [ ] **ad4** `/admin/topics` page
+  *Backend half shipped, frontend half isn't. `POST /topics/import-yaml`, `POST /topics/export-yaml`, and an `include_orphaned` query param all exist and are `require_admin`-gated in `backend/api/topics.py` — but no admin UI page calls any of them yet; they're only reachable by hitting the API directly.*
+- [ ] **ad5** `/admin/cache` + `/admin/stats` pages
+  *Not built. No cache-busting endpoint or system-wide stats endpoint exists in the backend, and nothing in the admin console references cache state or global counts.*
+- [x] **ad6** Admin-only nav surface
+  *Shipped — `Sidebar.tsx`, `UserMenu.tsx`, and `MobileTabBar.tsx` all gate the admin link on `user.role === 'admin'`.*
 
-**Why.** `/admin/*` endpoints exist server-side but have no in-app role check — they're gated only by Cloudflare Access (per the existing memory: "don't open `/admin/*` to the beta cohort until a role/group gate lands"). Plus a handful of recurring ops chores (cache bust, force topic regen, re-bootstrap topics from YAML, view user activity for debugging) currently require me to SSH or `flask shell` against the prod DB, which is slow and easy to typo.
+**Open questions**
 
-**Scope (in).**
+- [ ] Should admin actions push-notify the affected user (e.g. "an admin disabled your account")? *Still open — no such notification kind exists yet.*
 
-- `users.role` column (`'user' | 'admin'`, default `'user'`). Seeded admins via `flask admin grant <email>` CLI.
-- New `require_admin` FastAPI dependency that wraps `get_current_user_id` and 403s on non-admin. Applied to every existing `/admin/*` endpoint.
-- New Next.js admin pages under `/admin/`:
-  - `/admin/users` — list, search by email, view per-user stats, soft-disable (`is_active=False`).
-  - `/admin/topics` — bulk re-bootstrap from YAML, force YAML export, view orphaned topics.
-  - `/admin/cache` — bust today's `daily_content_cache` for one user or globally; surface the most recent failure logs (the `__generation_failed__` sentinel exposes the exception class).
-  - `/admin/stats` — system-wide counts (papers seen / archived, quizzes taken, push subscriptions active), recent errors from container logs.
-- Admin-only nav surface in the existing top bar, only rendered when `currentUser.role === 'admin'`.
+**Out of scope (deferred to followups)**
 
-**Scope (out — defer to followups).**
+- Audit log of admin actions — **actually shipped anyway.** `AdminAuditEvent` (`backend/database.py`) + `admin_audit.py` + the "Audit log" tab is a full append-only log of approve/reject/role-change/status-change/invite events. This doc had deferred it "until admin headcount > 1"; it landed bundled into the same admin-console work instead.
+- Multi-tenant admin (org-scoped vs. system admins) — still out.
+- Impersonation / "view as user" mode — still out.
 
-- Audit log of admin actions (who did what when). Mention in followups; add if admin headcount ever exceeds one.
-- Multi-tenant admin (organization-scoped admins vs. system admins). Premature for the foreseeable cohort size.
-- Impersonation / "view as user" mode. Useful for debugging but a sharp security primitive; defer until specifically needed.
+**Dependencies**
 
-**Open questions.**
-
-- **Does this require [Login interface](#login-interface--proposed) to ship first?** Yes — there's no notion of "this user is an admin" without a `users` table. Sequence accordingly.
-- **Should admin actions fire push notifications to the affected user (e.g., "an admin disabled your account")?** Probably not for v1; admins acting on users is a sensitive interaction and the right UX isn't obvious. Capture as a followup if it comes up.
-
-**Dependencies.**
-
-- Blocked by [Login interface · proposed](#login-interface--proposed) — `users.role` requires the `users` table.
-- Same migration / sequencing as the login work; can land in the same release.
+- Blocked by Phase 1 — now satisfied; Phase 1's `users` table shipped.
 
 ---
 
-## Engagement + notifications
+## Phase 3 · Push Notifications Surface
 
-### Push notifications surface · proposed
+> **Phase brief.** The server-side Web Push primitive already shipped (VAPID + pywebpush + `push_subscriptions` table + service-worker registration) but nothing called it — no opt-in UI, no per-event granularity, no scheduled trigger. **Status: in-progress** — everything except the actual subscribe-button UI is wired end-to-end, and the notification-type system that shipped is considerably more general than what was originally scoped.
 
-Bring the server-side Web Push primitive (already shipped: VAPID + pywebpush + `push_subscriptions` table + service-worker registration in Serwist) to a user-managed UI surface, plus the scheduled daily-content push.
+- [ ] **pn1** `/settings/push` subscription UI
+  *Scaffolded, not wired up. `frontend/hooks/useWebPush.ts` fully implements permission request → `pushManager.subscribe()` → `POST /push/subscribe`, graceful-503 handling for an unconfigured deployment, and even a `sendTest()` helper — but no page or component in the app actually calls this hook yet. It's currently dead code.*
+- [x] **pn2** Per-event notification toggles
+  *Shipped, as a more general system than scoped. Instead of three fixed booleans (`push_daily_paper` / `push_topic_review` / `push_quiz_ready`), `backend/services/notifications.py` ships a registry (`study_reminder`, `paper_drop`, `weekly_status`, `quiz_nudge`), each with its own enable flag **and** a user-editable cron schedule, rendered at `/settings/notifications`.*
+- [x] **pn3** Scheduled push wire-up
+  *Shipped, further along than scoped. `backend/services/scheduler.py` runs a static nightly daily-content job plus one dynamic APScheduler job per (user, enabled notification type), reloaded whenever `/notifications/settings` is mutated — not just a single flag check inside one nightly job.*
+- [x] **pn4** Subscription lifecycle hygiene
+  *Shipped in `backend/services/push_sender.py` — a `WebPushException` with status 404 or 410 deletes the `push_subscriptions` row inline.*
 
-**Why.** The plumbing exists end-to-end but there's no UI for users to opt in / out, no per-event-type granularity, and no scheduled trigger that fires the daily push when new content lands. The current state is "the code can send push, nothing actually does."
+**Open questions**
 
-**Scope (in).**
+- [x] Does this need Login (Phase 1) first? *Resolved: no. Push subscriptions still key off the plain `user_id` string and are unaffected by the users-table work.*
+- [ ] iOS 16.4+ install requirement messaging — still open, and moot until pn1 actually ships a subscribe UI to put the messaging in.
+- [ ] VAPID key rotation story — not documented; `docs/DEPLOY.md` only notes using different VAPID keys per environment, not the "rotation invalidates every subscription" caveat.
 
-- **Subscription UI.** New `/settings/push` page in the frontend with a single "enable push" toggle that calls `Notification.requestPermission()` + `serviceWorker.pushManager.subscribe()` and POSTs the subscription to `/push/subscribe`. Existing endpoint returns 503 today until `VAPID_PUBLIC_KEY` is set — surface that gracefully ("push isn't configured on this deployment") instead of a generic error.
-- **Per-event toggles.** New `push_preferences` columns or JSONB on `user_settings`:
-  - `push_daily_paper` (default `true`) — fires when today's paper is generated.
-  - `push_topic_review` (default `true`) — fires when today's topic review is generated, IF separate from the paper (currently they're combined).
-  - `push_quiz_ready` (default `false`) — fires when a quiz is regenerated. Quiet by default since the user usually triggers it.
-- **Scheduled push wire-up.** Hook the existing APScheduler nightly daily-content job to `send_push_to_user(user_id, payload)` for every user with `push_daily_paper=True` and at least one active push subscription. Payload: title from `DailyContent.paper.title[:140]`, deep-link to `/`. Currently the `send_push_to_user` helper exists but isn't called.
-- **Subscription lifecycle hygiene.** On a push delivery returning 410 Gone (subscription expired or unsubscribed), soft-delete the row from `push_subscriptions` in the same request. Without this, dead subscriptions accumulate and slow down every fanout.
+**Out of scope (deferred to followups)**
 
-**Scope (out — defer to followups).**
+- Per-topic push toggles — still out.
+- Quiet hours / Do Not Disturb window — still out.
+- Push notification grouping on iOS — still out.
+- "Try a test push" button — **partially shipped anyway**: `POST /push/test` exists in `backend/api/push.py` and `sendTest()` is implemented in `useWebPush.ts`, ahead of the UI that would surface it.
 
-- Per-topic push toggles ("notify me only when the paper matches Topic X"). Useful but requires UI for picking topics, and the scope selector already serves the same intent for paper discovery itself.
-- Quiet hours / Do Not Disturb window per user. Mention in followups; add if anyone complains about 06:00 EST pings.
-- Push notification grouping on iOS (multiple new-paper notifications collapsing into one). Out of scope until the per-event-type fanout actually multiplies.
-- "Try a test push" button in the settings page. Nice-to-have for debugging; not load-bearing.
+**Dependencies**
 
-**Open questions.**
-
-- **Does this require [Login interface](#login-interface--proposed) to ship first?** No — push subscriptions are already keyed by `user_id` (which today is the CF Access email or `__local__` sentinel). The scheduled-push fanout works fine against today's identity model. But: integrating with the login surface (a "manage push from your account page" link) is cleaner once Login lands.
-- **iOS 16.4+ install requirement.** Web Push on iOS only works if the PWA is installed via "Add to Home Screen." Need to detect this and message clearly in `/settings/push` so iOS users on Safari-in-browser aren't confused when the toggle does nothing.
-- **VAPID key rotation story.** Rotating `VAPID_PUBLIC_KEY` invalidates every active subscription (browser stores the public key when it subscribes; mismatched key = drop). Document this as a one-way operation in `docs/DEPLOY.md` and only rotate on a known-key-compromise.
-
-**Dependencies.**
-
-- No new env vars beyond the existing `VAPID_*` triplet.
-- No new external deps (`pywebpush` already pinned).
-- Migration is small: `user_settings` JSONB or three boolean columns (lean JSONB for forward-compat — adding new toggle types later is `.update()` instead of `op.add_column()`).
+- No new env vars beyond the existing `VAPID_*` triplet; no new external deps (`pywebpush` already pinned).
+- Migration used JSON on `user_settings.notification_settings`, matching the "lean JSONB over fixed booleans" call.
 
 ---
 
-## Engineering quality
+## Phase 4 · Frontend Test Infrastructure
 
-### Frontend test infrastructure · proposed
+> **Phase brief.** Zero frontend test infra today — no Jest/Vitest, no Testing Library, no config, no prior test files under `frontend/`. Bootstraps the first framework and lands coverage scoped-but-deferred while building the generate-scope wizard (`/settings/scope/generate`, `ChipListEditor.tsx`). **Status: proposed** — confirmed still nothing built here.
 
-Bootstrap the first frontend test framework in this repo (Vitest + React Testing Library) and land the coverage that was scoped but deliberately deferred when the AI-generated "Generate scope" wizard shipped (`/settings/scope/generate`, `components/ChipListEditor.tsx`).
+- [ ] **ft1** Test tooling setup
+  *Not started — no `vitest`, `@testing-library/*`, or `jsdom` in `frontend/package.json`; no `vitest.config.ts`.*
+- [ ] **ft2** `ChipListEditor` interaction tests
+  *Not started — the component itself exists (`frontend/components/ChipListEditor.tsx`), but has zero tests.*
+- [ ] **ft3** `dedupe()` helper tests
+  *Not started — the helper exists (`frontend/app/settings/scope/generate/page.tsx`), but has zero tests.*
+- [ ] **ft4** Generate-scope wizard `handleCreate` tests
+  *Not started.*
 
-**Why.** The frontend has zero test infrastructure today — no Jest/Vitest, no Testing Library, no config, no prior test files anywhere under `frontend/`. While building the generate-scope wizard, two pieces of new logic were flagged as worth covering: `ChipListEditor` (a bubble editor with select/edit/delete/add/autocomplete — five interacting pieces of state, easy to silently regress on a later refactor) and the wizard's two-phase create flow (create a Topic, then wrap it in a Scope — the partial-failure branch where the topic saves but the scope doesn't is the actual data-integrity-sensitive part of the feature). Adding a whole new toolchain wasn't something to do as a side effect of a UI-polish request, so it's captured here to land as its own deliberate PR instead.
+**Open questions**
 
-**Scope (in).**
+- [ ] Vitest vs. Jest? *Lean: Vitest — faster to wire into the existing Next.js/TS setup with fewer transform-config headaches, and the more common default for newer Next.js projects.*
+- [ ] Should this be the moment frontend tests start running in CI? *There's no frontend CI job at all today — adding tests nothing runs automatically defeats the point, worth deciding alongside.*
 
-- Add `vitest`, `@testing-library/react`, `@testing-library/user-event`, `jsdom` as devDependencies; a `vitest.config.ts` wired to the existing Next.js/TS path aliases (`@/`); a `test` script in `frontend/package.json`.
-- `ChipListEditor` interaction tests: click-to-select/deselect a chip; Edit (select → change text → Save updates in place, Cancel reverts without calling `onChange`); Delete (removes the item, clears selection); Add (typing + Add/Enter appends, input stays open for rapid multi-add, rejects empty/whitespace and case-insensitive duplicates); suggestion filtering (case-insensitive, excludes already-added items, caps at 8, clicking commits); keyboard nav (ArrowUp/ArrowDown move the highlighted suggestion, Enter commits the highlighted suggestion or falls back to typed text, Escape closes the add row).
-- `dedupe()` helper (`frontend/app/settings/scope/generate/page.tsx`) — case-insensitive dedupe, preserves first-seen casing and order.
-- Generate-scope wizard's `handleCreate`, with `createTopic`/`createScope` mocked: happy path redirects to `/settings/scope/library?created=<name>`; topic-creation failure never attempts scope creation and re-enables retry; topic-succeeds-but-scope-fails shows the distinct "topic was saved to your catalog" message (this exact wording is a promise to the user and needs to stay correct).
-
-**Scope (out — defer to followups).**
+**Out of scope (deferred to followups)**
 
 - Full page-level snapshot tests — brittle, low signal.
-- End-to-end/Playwright coverage — bigger lift than this warrants; no e2e infra exists either.
+- End-to-end / Playwright coverage — bigger lift than this warrants; no e2e infra exists either.
 - Testing the static `ARXIV_CATEGORIES` taxonomy list — nothing meaningfully breaks if it goes stale.
-- Retrofitting tests onto other existing frontend pages/components — this entry is scoped to what the generate-scope feature introduced, not a general "add frontend tests" initiative.
+- Retrofitting tests onto other existing frontend pages/components — scoped to what the generate-scope feature introduced, not a general "add frontend tests" initiative.
 
-**Open questions.**
-
-- **Vitest vs. Jest?** Leaning Vitest — faster to wire into the existing Next.js/TS setup with fewer transform-config headaches, and it's the more common default for newer Next.js projects. No strong reason to pick Jest instead absent a preference for its longer track record.
-- **Should this be the moment frontend tests start running in CI?** There's currently no frontend CI job at all. Worth deciding alongside — adding tests that nothing ever runs automatically defeats the point.
-
-**Dependencies.**
+**Dependencies**
 
 - None blocking — can land independently at any time.
-- Loosely related: the backend's `pytest` suite (`backend/tests/`, comprehensive) is also not invoked by CI today — `.github/workflows/` only runs Alembic migration checks. If a CI job gets added for frontend tests, worth bundling in a fix for that gap too, since it's the same category of "tests exist but nothing runs them automatically."
+- Loosely related: the backend's `pytest` suite (`backend/tests/`, comprehensive) also isn't invoked by CI today — `.github/workflows/` only runs Alembic migration checks. Worth bundling a fix for that gap if a frontend CI job gets added, since it's the same category of problem.
+
+---
+
+## Phase 5 · Frontend Design
+
+> **Phase brief.** Update front end visuals. **Status: proposed** — confirmed still nothing built here.
+
+- [ ] **fd1** Add new fonts
+  *Not started*
+- [ ] **fd2** Add user selected themes
+  *Not started*
 
 ---
 
@@ -165,4 +178,4 @@ Bootstrap the first frontend test framework in this repo (Vitest + React Testing
 
 When promoting an entry to **scheduled**, copy it to the relevant `docs/releases/vX.md` "Coming next" section and update the status here. When promoting to **shipped**, move the substantive detail to the `CHANGELOG.md` entry for that release and leave only a one-line pointer here for one release cycle, then delete.
 
-When deferring an entry, add a **Gating condition:** line that names the specific signal that would unblock it (e.g., "WHEN admin headcount > 1" or "WHEN a beta tester asks for it"). Don't defer without a gate — it's how the tracker stays meaningful instead of becoming a graveyard.
+When deferring an entry, add a **Gating condition:** line naming the specific signal that would unblock it (e.g. "WHEN admin headcount > 1" or "WHEN a beta tester asks for it"). Don't defer without a gate — it's how the tracker stays meaningful instead of becoming a graveyard.
