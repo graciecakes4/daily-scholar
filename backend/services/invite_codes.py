@@ -14,6 +14,7 @@ code can't be double-redeemed by two concurrent signups.
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import datetime
@@ -29,6 +30,11 @@ logger = logging.getLogger(__name__)
 # 12 urlsafe chars from 9 bytes ≈ 70 bits of entropy — unguessable, and
 # short enough to share over text/voice without trauma.
 INVITE_CODE_BYTES = 9
+
+# Custom codes are admin-typed, so keep the charset friendly to read aloud
+# and safe to embed in a URL query param without escaping. Matches the
+# `code` column's String(32) width.
+CUSTOM_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{3,32}$")
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +62,14 @@ class InviteCodeExhausted(InviteCodeError):
     """The code's uses has reached max_uses."""
 
 
+class InviteCodeInvalid(ValueError):
+    """A requested custom code fails the charset/length check."""
+
+
+class InviteCodeTaken(ValueError):
+    """A requested custom code is already in use by another row."""
+
+
 # ---------------------------------------------------------------------------
 # Generate
 # ---------------------------------------------------------------------------
@@ -71,16 +85,52 @@ def generate_invite_code(
     *,
     expires_at: Optional[datetime] = None,
     max_uses: int = 1,
+    custom_code: Optional[str] = None,
 ) -> InviteCode:
     """
-    Mint a new invite code. Retries on the (astronomically unlikely)
-    chance the random string collides with an existing code.
+    Mint a new invite code.
+
+    If `custom_code` is given (e.g. the admin typed one into the "create"
+    box), it's validated and used as-is — raising `InviteCodeInvalid` on
+    bad charset/length or `InviteCodeTaken` on a collision. We don't retry
+    on collision here: silently handing back a different code than the
+    admin asked for would be more confusing than a clear error.
+
+    Otherwise a random urlsafe code is generated, retrying on the
+    (astronomically unlikely) chance it collides with an existing code.
     """
     if max_uses < 1:
         raise ValueError("max_uses must be >= 1")
 
     session = get_session()
     try:
+        if custom_code is not None:
+            candidate = custom_code.strip()
+            if not CUSTOM_CODE_RE.match(candidate):
+                raise InviteCodeInvalid(
+                    "Custom code must be 3-32 characters: letters, numbers, - or _"
+                )
+            existing = (
+                session.query(InviteCode)
+                .filter(InviteCode.code == candidate)
+                .first()
+            )
+            if existing is not None:
+                raise InviteCodeTaken(f"Invite code '{candidate}' is already in use")
+            row = InviteCode(
+                code=candidate,
+                created_by_user_id=created_by_user_id,
+                created_at=datetime.utcnow(),
+                expires_at=expires_at,
+                max_uses=max_uses,
+                uses=0,
+            )
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            session.expunge(row)
+            return row
+
         # tiny retry loop in case secrets ever returns a dup (won't happen at
         # this entropy, but loops are cheap and the alternative is a 500)
         for _ in range(5):
