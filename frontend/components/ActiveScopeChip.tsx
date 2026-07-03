@@ -67,14 +67,14 @@ export default function ActiveScopeChip() {
 
   if (state === 'loading' || state === 'error') {
     // reserve roughly the same height so the rail doesn't jump on hydrate
-    return <div className="mx-1.5 mb-5 h-[88px] rounded-[10px] bg-paper-2/60 border border-rule/60 animate-pulse" aria-hidden />;
+    return <div className="shrink-0 mx-1.5 mb-5 h-[88px] rounded-[10px] bg-paper-2/60 border border-rule/60 animate-pulse" aria-hidden />;
   }
 
   if (state === 'empty') {
     return (
       <Link
         href="/scopes/picker"
-        className="group relative mx-1.5 mb-5 block rounded-[10px] border border-rule bg-paper-2 px-3.5 pt-3 pb-3.5 hover:bg-paper-3 transition-colors"
+        className="group relative shrink-0 mx-1.5 mb-5 block rounded-[10px] border border-rule bg-paper-2 px-3.5 pt-3 pb-3.5 hover:bg-paper-3 transition-colors"
       >
         <div className="font-serif text-[10px] font-medium uppercase tracking-[0.18em] text-muted">No active scope</div>
         <div className="font-serif text-[15px] font-semibold leading-tight mt-0.5 text-ink">Pick a scope to begin</div>
@@ -94,7 +94,7 @@ export default function ActiveScopeChip() {
   const editedLabel = editedStamp ? `edited ${editedStamp}` : '';
 
   return (
-    <div className="relative mx-1.5 mb-5 overflow-hidden rounded-[10px] border border-rule px-3.5 py-3"
+    <div className="relative shrink-0 mx-1.5 mb-5 overflow-hidden rounded-[10px] border border-rule px-3.5 py-3"
          style={{ background: 'linear-gradient(180deg, #FBF6EB, #F1E8D2)' }}>
       {/* diagonal hatching — same trick as the mockup */}
       <div
