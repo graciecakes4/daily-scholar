@@ -42,7 +42,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   *Not built. `admin_accounts.py::reset_password` lets an admin force-reset a user's password, but there's no user-initiated, self-serve reset flow — blocked on the SMTP question below.*
 - [x] **li4** New `User` SQL model
   *Shipped (`backend/database.py::User`) — matches the scoped shape (`email`, `user_id`, `password_hash`, `status`, `role`, timestamps) plus two extras not originally scoped: `onboarded` and `tour_state` (JSON) for the onboarding wizard.*
-- [ ] **li5** Migration helper: `migrate_email_user_ids_to_users_table.py`
+- [--] **li5** Migration helper: `migrate_email_user_ids_to_users_table.py`
   *Turned out unnecessary as scoped. Alembic `0005_users_and_sessions.py` notes the existing 9 user-scoped tables already stored `user_id` as a plain string (email or handle), so nothing needed backfilling or re-keying — the `users` table was added additively instead. `scripts/reassign_user_id.py` covers the separate, narrower concern of a user changing their handle post-signup.*
 
 **Open questions**
@@ -102,7 +102,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 > **Phase brief.** The server-side Web Push primitive already shipped (VAPID + pywebpush + `push_subscriptions` table + service-worker registration) but nothing called it — no opt-in UI, no per-event granularity, no scheduled trigger. **Status: in-progress** — everything except the actual subscribe-button UI is wired end-to-end, and the notification-type system that shipped is considerably more general than what was originally scoped.
 
-- [ ] **pn1** `/settings/push` subscription UI
+- [x] **pn1** `/settings/push` subscription UI
   *Scaffolded, not wired up. `frontend/hooks/useWebPush.ts` fully implements permission request → `pushManager.subscribe()` → `POST /push/subscribe`, graceful-503 handling for an unconfigured deployment, and even a `sendTest()` helper — but no page or component in the app actually calls this hook yet. It's currently dead code.*
 - [x] **pn2** Per-event notification toggles
   *Shipped, as a more general system than scoped. Instead of three fixed booleans (`push_daily_paper` / `push_topic_review` / `push_quiz_ready`), `backend/services/notifications.py` ships a registry (`study_reminder`, `paper_drop`, `weekly_status`, `quiz_nudge`), each with its own enable flag **and** a user-editable cron schedule, rendered at `/settings/notifications`.*
@@ -114,7 +114,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 **Open questions**
 
 - [x] Does this need Login (Phase 1) first? *Resolved: no. Push subscriptions still key off the plain `user_id` string and are unaffected by the users-table work.*
-- [ ] iOS 16.4+ install requirement messaging — still open, and moot until pn1 actually ships a subscribe UI to put the messaging in.
+- [x] iOS 16.4+ install requirement messaging — still open, and moot until pn1 actually ships a subscribe UI to put the messaging in.
 - [ ] VAPID key rotation story — not documented; `docs/DEPLOY.md` only notes using different VAPID keys per environment, not the "rotation invalidates every subscription" caveat.
 
 **Out of scope (deferred to followups)**
@@ -163,14 +163,59 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 ---
 
-## Phase 5 · Frontend Design
+## Phase 5 · Frontend UI Enhancements
 
-> **Phase brief.** Update front end visuals. **Status: proposed** — confirmed still nothing built here.
+> **Phase brief.** Update front end ui and ux. **Status: proposed** — confirmed still nothing built here.
 
-- [ ] **fd1** Add new fonts
+- [ ] **fd0** Integrations
   *Not started*
-- [ ] **fd2** Add user selected themes
+  - [ ] notebooklm
+  - [ ] llm chat
+  - [ ] Notion integration
+  - [ ] Obsidian integration
+  - [ ] Roam integration
+  - [ ] Logseq integration
+  - [ ] Zotero integration
+  - [ ] Mendeley integration
+- [ ] **fd1** additional notification settings
   *Not started*
+  - [ ] Per-topic push toggles
+  - [ ] Quiet hours / Do Not Disturb window
+  - [ ] Push notification grouping on iOS
+- [ ] **fd2** Add new fonts
+  *Not started*
+  - Add Merriweather font
+  - Add Source Sans 3 font
+  - Add settings to `/settings/display`
+- [ ] **fd3** Add user selected themes
+  *Not started*
+  - Dark/light mode
+  - observatory (see `mockups/stats_bar_option3_observatory.html`)
+  - Font size options
+    - small
+    - medium
+    - large
+    - extra large
+  - Themes
+    - pastel
+    - muted
+    - high contrast
+    - pride
+    - colorful accents
+      - red
+      - blue
+      - green
+      - purple
+      - orange
+    - black and white
+    - random
+  - Add settings to `/settings/display`
+  - Make sure themes work on all pages
+- [ ] **fd4** improve stats
+  - add more stats
+  - add interactive tiles
+  - add interactive charts
+  - add more granular levels
 
 ---
 
