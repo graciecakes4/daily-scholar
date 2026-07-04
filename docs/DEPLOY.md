@@ -12,6 +12,7 @@ Turn your fork into a hosted PWA: install on your phone, push notifications, dat
 | PDF + upload storage | Backblaze B2 (`STORAGE_BACKEND=b2`) | presigned URLs through CF |
 | Auth | Cloudflare Access (Zero Trust free tier) | injects `Cf-Access-Authenticated-User-Email` header |
 | Web Push | self-signed VAPID, fanout from `push_sender.py` | direct to browser push endpoints |
+| Password-reset email | SMTP (`SMTP_*` env vars) | `backend/services/email.py` |
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system diagram.
 
@@ -57,8 +58,8 @@ End-to-end deploy of the production stack with a **dev + prod environment split*
      - Postgres plugin attached to the backend service
    - Tip: you can clone the dev env's service config to prod after you've validated dev, instead of setting both up by hand twice.
    - For each environment's backend, paste env vars (skip `DATABASE_URL` — auto-injected; skip `FRONTEND_URL` — set to that env's CF hostname):
-     - **Same in both**: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `CLAUDE_MODEL`, `LLM_TASK_*`, `STORAGE_BACKEND`, `B2_*`
-     - **DIFFERENT in each**: `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` — regenerate a separate keypair for dev so push subscriptions don't cross-pollinate between envs (a device subscribed in dev would otherwise receive prod's pushes too). `FRONTEND_URL` matches the env's CF hostname.
+     - **Same in both**: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `CLAUDE_MODEL`, `LLM_TASK_*`, `STORAGE_BACKEND`, `B2_*`, `SMTP_*` (one mailbox/relay shared across envs is fine — reset emails aren't secret, just per-user)
+     - **DIFFERENT in each**: `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` — regenerate a separate keypair for dev so push subscriptions don't cross-pollinate between envs (a device subscribed in dev would otherwise receive prod's pushes too). `FRONTEND_URL` matches the env's CF hostname — also the base URL password-reset links point at, so a wrong value here sends dev users to prod's reset page or vice versa.
    - Note each service's public hostname under Settings → Networking (`*.up.railway.app`).
 
 2. **Cloudflare DNS + Access (two apps, one per env)**

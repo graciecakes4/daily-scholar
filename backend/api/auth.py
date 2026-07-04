@@ -48,8 +48,14 @@ from ..services.auth_security import (
 from ..services.auth_sessions import (
     create_session,
     lookup_session_user,
+    revoke_all_sessions_for_user,
     revoke_other_sessions_for_user,
     revoke_session,
+)
+from ..services.password_reset import (
+    ResetTokenInvalid,
+    confirm_reset,
+    request_reset,
 )
 from ..services.invite_codes import (
     InviteCodeError,
@@ -433,6 +439,19 @@ class ChangeUsernameBody(BaseModel):
     new_user_id: str = Field(min_length=3, max_length=30)
 
 
+class ForgotPasswordBody(BaseModel):
+    """Body for POST /auth/forgot-password — step 1 of the self-serve reset."""
+
+    email: str
+
+
+class ResetPasswordBody(BaseModel):
+    """Body for POST /auth/reset-password — step 2 of the self-serve reset."""
+
+    token: str
+    new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
+
+
 def _require_authed_user(ds_session: Optional[str]) -> User:
     """
     Resolve the session cookie to an active User row, or raise 401/403.
@@ -522,6 +541,68 @@ def change_my_username(
         raise HTTPException(status_code=400, detail=str(e))
 
     return {"ok": True, "changed": True, "new_user_id": new_uid, "rows_moved": counts}
+
+
+# ---------------------------------------------------------------------------
+# Self-serve password reset (li3b)
+# ---------------------------------------------------------------------------
+
+
+_FORGOT_PASSWORD_GENERIC_MESSAGE = (
+    "If an account exists for that email, we've sent a link to reset your password."
+)
+
+
+@auth_router.post("/forgot-password")
+def forgot_password(body: ForgotPasswordBody) -> dict:
+    """
+    Self-serve password reset, step 1: request a reset link by email.
+
+    Looks up `body.email` and, if it belongs to an active account,
+    emails a single-use reset link (backend/services/password_reset.py
+    + backend/services/email.py, SMTP-configured via the SMTP_* settings
+    in backend/config.py). Always returns the exact same generic
+    message regardless of whether the email matched anything — that's
+    what keeps this endpoint from being usable to enumerate which
+    emails have accounts.
+
+    Rate-limited in backend/middleware/rate_limit.py (this is still a
+    brute-force/flooding surface even though it no longer leaks
+    match/mismatch, same category as /auth/login).
+    """
+    email = body.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email is required")
+
+    request_reset(email)
+    return {"ok": True, "message": _FORGOT_PASSWORD_GENERIC_MESSAGE}
+
+
+@auth_router.post("/reset-password")
+def reset_password_self_service(body: ResetPasswordBody) -> dict:
+    """
+    Self-serve password reset, step 2: consume the token minted by
+    /auth/forgot-password and set a new password.
+
+    Revokes every session for the user afterward — same as the admin
+    force-reset path (admin_accounts.py::reset_password) — since a
+    password reset should end every other logged-in device, not just
+    the one performing the reset.
+    """
+    try:
+        user_id_int = confirm_reset(body.token, body.new_password)
+    except ResetTokenInvalid as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        # hash_password validates length; surface that as a 400 instead of 500
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        revoke_all_sessions_for_user(user_id_int)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("reset_password_self_service: session revoke failed for user %s: %s", user_id_int, e)
+
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

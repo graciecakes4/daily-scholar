@@ -1228,6 +1228,34 @@ export async function resetTour(
 }
 
 // -----------------------------------------------------------------------------
+// Self-serve password reset (li3b)
+// -----------------------------------------------------------------------------
+//
+// Step 1 emails a reset link (SMTP, backend/services/email.py) if the
+// address belongs to an active account. The response is always the same
+// generic message regardless of whether it matched anything, so there's
+// nothing for the frontend to branch on here — just show the message.
+
+export async function requestPasswordReset(
+  email: string,
+): Promise<{ ok: boolean; message: string }> {
+  return fetchAPI('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function confirmPasswordReset(
+  token: string,
+  new_password: string,
+): Promise<{ ok: boolean }> {
+  return fetchAPI('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, new_password }),
+  });
+}
+
+// -----------------------------------------------------------------------------
 // Admin: invite codes (Phase B)
 // -----------------------------------------------------------------------------
 

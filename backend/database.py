@@ -675,6 +675,39 @@ class Session(Base):
 
 
 # =============================================================================
+# PASSWORD RESET — self-serve forgot-password flow (li3b)
+# =============================================================================
+#
+# POST /auth/forgot-password looks up the account by email and, if it's
+# active, emails a link containing a single-use PasswordResetToken via
+# backend/services/email.py (SMTP, configured by the SMTP_* settings in
+# backend/config.py). Proof of controlling the inbox IS the identity
+# check — there's no separate admin-review fallback because there's no
+# ambiguous case to fall back from: the endpoint always returns the same
+# generic response regardless of whether the email matched anything.
+
+
+class PasswordResetToken(Base):
+    """
+    Single-use, short-lived token minted by POST /auth/forgot-password
+    and emailed to the account's address. Consumed by POST
+    /auth/reset-password to set a new password; `used_at` prevents
+    replay and `expires_at` bounds how long an unused token is live for.
+    """
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # urlsafe random via the same generate_session_token() helper sessions
+    # use; 64 chars = ~48 bytes of entropy.
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+
+
+# =============================================================================
 # SCOPES — Saved, shareable views over the topics table (Phase E)
 # =============================================================================
 #
