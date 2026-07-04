@@ -25,6 +25,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 - **Phase 2 · Admin Controls**: in-progress — role gate + a 7-tab admin console (approvals/invites/users/audit/topics/cache/stats) shipped. Cache-bust is per-user only for now — see Phase 6 for the planned multi-select + global-clear follow-up.
 - **Phase 3 · Push Notifications Surface**: in-progress — settings page, per-type scheduling, and dead-subscription cleanup all shipped and more general than scoped; the actual "enable push" subscribe button isn't wired into any page yet.
 - **Phase 4 · Frontend Test Infrastructure**: proposed — confirmed nothing has been built here yet.
+- **Phase 5 · Frontend UI Enhancements**: in-progress — fd3's foundation (theme + font-size plumbing, three themes, `/settings/display`) shipped; fd3's longer theme list and fd0/fd1/fd2/fd4 are all still not started. See fd3 entry for the split.
 
 ---
 
@@ -165,7 +166,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 ## Phase 5 · Frontend UI Enhancements
 
-> **Phase brief.** Update front end ui and ux. **Status: proposed** — confirmed still nothing built here.
+> **Phase brief.** Update front end ui and ux. **Status: in-progress** — fd3's foundation slice shipped (see below); fd0/fd1/fd2/fd4 and the rest of fd3 are still not started.
 
 - [ ] **fd0** Integrations
   *Not started*
@@ -188,15 +189,16 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   - Add Source Sans 3 font
   - Add settings to `/settings/display`
 - [ ] **fd3** Add user selected themes
-  *Not started*
-  - Dark/light mode
-  - observatory (see `mockups/stats_bar_option3_observatory.html`)
-  - Font size options
-    - small
-    - medium
-    - large
-    - extra large
-  - Themes
+  *Foundation shipped; the longer theme list is still open — kept unchecked
+  at the fd3 level since it isn't fully landed. One theme selector (per the
+  scoping call above), not a separate light/dark toggle + style layer.*
+  - [x] Theme + font-size plumbing — `UserSettings.display_settings` JSON column (alembic `0014`), `backend/services/display.py` registry + get/update helpers, `backend/api/display.py` (`GET/PUT /display/settings`, `GET /display/themes`, `GET /display/font-sizes`). Colors in `tailwind.config.js` now resolve through CSS variables (`rgb(var(--x) / <alpha-value>)`) instead of literal hex, so a theme swap is a `data-theme` attribute change on `<html>` — no rebuild. Learned the hard way that a bare `var(--x)` hex string builds without error but silently drops any Tailwind utility using a `/NN` opacity modifier (`bg-rust/5`, `border-moss/25`, etc. all over the app) — fixed by storing each CSS variable as space-separated R G B components instead.
+  - [x] Dark/light mode — `[data-theme="dark"]` in `globals.css`, same editorial fonts and layout, recolored for low light.
+  - [x] observatory (see `mockups/stats_bar_option3_observatory.html`) —`[data-theme="observatory"]`, near-black instrument-panel palette +Bodoni Moda display face (added to the existing Google Fonts `@import`).
+  - [x] Font size options (small / medium / large / extra large) —`[data-font-size="..."]` sets the `<html>` root font-size (15/17/19/21px); every rem-based Tailwind utility scales from it, no per-component changes.
+  - [x] Add settings to `/settings/display` — theme cards + font-size picker, live-previews on click, `Save` persists. Nav entry added to `Sidebar.tsx` and `MobileTabBar.tsx` under a new "Appearance" group.
+  - [x] Make sure themes work on all pages — the first pass of this claim was wrong: ~29 files (login/signup/onboarding, dashboard, papers, quiz, topics, admin console, most of settings/scope, a few shared components) predated the editorial reskin and still hardcoded the legacy Tailwind palette (`bg-white`, `text-slate-*`, plus `rose`/`emerald`/`amber`/`blue`/`purple`/`violet`/`red`/`green`/`yellow`/`orange` for badges and buttons — ~1,000 occurrences total). A user caught it live: the `/settings/scope/browse` cards stayed white while the rest of the app went dark under observatory. Converted all 29 files to the theme tokens via a scripted, reviewed mapping (neutrals → `paper`/`ink`/`muted`/`rule`; rose+red → `rust`; emerald+green → `moss`; amber/yellow/orange + blue/indigo/purple/violet → `gold`, since the editorial palette only has three accents). Caught and fixed two real regressions the mechanical pass introduced along the way: (1) several base/hover shade pairs (e.g. `bg-white` + `hover:bg-slate-50`, `text-slate-400` + `hover:text-slate-600`, `bg-emerald-600` + `hover:bg-emerald-700`) collapsed onto the same token, silently killing the hover effect — fixed by giving each pair distinct targets, and by using `hover:brightness-90` (a filter, not a fixed color) for the "-600 base / -700 hover" solid-button idiom instead of inventing new hex constants. Verified via `tsc --noEmit`, a direct Tailwind CLI compile (confirming every generated class — including the opacity- and hover-modified ones — actually resolves), and a scripted scan for any remaining same-token base/hover pairs (zero found). One accepted, disclosed limitation: a couple of dashboard tabs that previously used three distinct accent colors (blue/emerald/purple) now share `gold` for two of them, since the editorial palette has no fourth accent — cosmetic, not a contrast/functionality issue. Not independently visually verified in a browser (sandbox can't run a full `next build` — Google Fonts fetch is network-blocked here); worth a `npm run dev` skim before merging, especially the admin console (the largest diff, ~280 replacements). **Follow-up (caught via a real screenshot):** the color sweep above only fixes elements that had a *wrong* color class — it doesn't add one where none existed. 57 native `<input>`/`<select>`/`<textarea>` elements across 19 files (login/signup/reset-password/onboarding, admin console, topic forms, scope generate/edit, ChipListEditor) had `border-rule` styling but no `bg-*`/`text-*` class at all, so they rendered with the browser's default white background and black text regardless of theme — visible as stark white text boxes and dropdowns under dark/observatory. Fixed by adding `bg-paper text-ink` to each (scripted insertion, verified against `tsc` + a Tailwind compile). Also added `color-scheme: light` (`:root`) / `color-scheme: dark` (`[data-theme="dark"]` and `[data-theme="observatory"]`) to `globals.css`, since a `<select>`'s open dropdown popup and a date-input's calendar picker are OS-drawn and mostly ignore page CSS — `color-scheme` is the one lever that reaches them.
+  - [ ] Themes — *not started, registry ready for it (append to `THEMES` in `backend/services/display.py` + a matching `[data-theme="..."]` block)*
     - pastel
     - muted
     - high contrast
@@ -209,8 +211,6 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
       - orange
     - black and white
     - random
-  - Add settings to `/settings/display`
-  - Make sure themes work on all pages
 - [ ] **fd4** improve stats
   - add more stats
   - add interactive tiles

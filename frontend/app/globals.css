@@ -1,6 +1,8 @@
 /* font stack — fraunces drives editorial display type, ibm plex mono powers
-   the small mono badges + byline, inter remains body/ui */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,30..100;1,9..144,400..600,30..100&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+   the small mono badges + byline, inter remains body/ui. bodoni moda is the
+   observatory theme's display face (Phase 5 / fd3) — loaded here too so
+   switching data-theme never triggers a network fetch. */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,30..100;1,9..144,400..600,30..100&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -11,32 +13,112 @@
   --font-serif: 'Fraunces', Georgia, serif;
   --font-mono: 'IBM Plex Mono', 'JetBrains Mono', monospace;
 
-  /* editorial paper palette — mirrored in tailwind.config.js so utility
-     classes (bg-paper, text-ink, border-rule, etc.) compose with these */
-  --paper: #F2EBDD;
-  --paper-2: #FBF6EB;
-  --paper-3: #ECE2CC;
-  --ink: #1B1610;
-  --ink-2: #3A332A;
-  --muted: #7E7060;
-  --rule: #DBD0B9;
-  --gold: #B5862B;
-  --gold-dark: #8A6519;
-  --rust: #8E3A28;
-  --moss: #4F6B3C;
+  /* editorial paper palette (default theme) — mirrored in tailwind.config.js
+     so utility classes (bg-paper, text-ink, border-rule, etc.) compose with
+     these. Phase 5 / fd3: overridden per-theme below via [data-theme="..."]
+     on <html>; :root stays the "editorial" values so anything that renders
+     before ThemeProvider hydrates still looks correct (no FOUC).
+
+     Values are space-separated R G B components (not hex) — tailwind.config.js
+     wraps them as rgb(var(--x) / <alpha-value>), which is what actually lets
+     Tailwind's opacity modifiers (bg-rust/5, border-rule/60, etc.) keep
+     working. A plain var(--x) hex string builds fine for solid-color
+     utilities but silently drops any utility that uses a /NN opacity
+     modifier — learned the hard way when bg-rust/5 and border-moss/25
+     vanished from the compiled CSS during the fd3 foundation pass. */
+  --paper: 242 235 221;
+  --paper-2: 251 246 235;
+  --paper-3: 236 226 204;
+  --ink: 27 22 16;
+  --ink-2: 58 51 42;
+  --muted: 126 112 96;
+  --rule: 219 208 185;
+  --gold: 181 134 43;
+  --gold-dark: 138 101 25;
+  --rust: 142 58 40;
+  --moss: 79 107 60;
+
+  /* base <html> font-size the font-size picker scales — see
+     [data-font-size="..."] below. Every Tailwind rem-based utility
+     cascades from this, so no component classes need to change. */
+  font-size: 17px;
+
+  /* hints the browser's own native form chrome (a <select>'s open dropdown
+     popup, a date-input's calendar picker, native scrollbars) to render
+     light — the closed box itself is handled by the bg-paper/text-ink
+     classes on the element, but that popup content is OS-drawn and mostly
+     ignores page CSS unless this is set. */
+  color-scheme: light;
 }
+
+/* ---------------------------------------------------------------------
+   Phase 5 / fd3 — theme variants. Same token names as :root above; a
+   theme block only needs to override what actually differs. `dark` keeps
+   the editorial fonts, just recolored; `observatory` is the fuller
+   departure from mockups/stats_bar_option3_observatory.html — near-black
+   instrument panel, amber glow, Bodoni Moda display numerals.
+   Remaining fd3 scope (pastel/muted/high-contrast/pride/accents/b&w/
+   random) lands as additional [data-theme="..."] blocks here later —
+   the registry in backend/services/display.py is the other half.
+   --------------------------------------------------------------------- */
+
+[data-theme="dark"] {
+  --paper: 28 24 18;
+  --paper-2: 35 30 23;
+  --paper-3: 42 36 27;
+  --ink: 242 235 221;
+  --ink-2: 216 203 180;
+  --muted: 156 143 121;
+  --rule: 58 51 42;
+  --gold: 217 165 63;
+  --gold-dark: 181 134 43;
+  --rust: 201 97 74;
+  --moss: 110 154 91;
+  color-scheme: dark;
+}
+
+[data-theme="observatory"] {
+  --font-serif: 'Bodoni Moda', Georgia, serif;
+
+  --paper: 12 11 9;
+  --paper-2: 21 19 16;
+  --paper-3: 27 24 21;
+  --ink: 237 230 216;
+  --ink-2: 201 187 166;
+  --muted: 141 133 119;
+  color-scheme: dark;
+  --rule: 44 40 34;
+  --gold: 232 163 61;
+  --gold-dark: 181 119 42;
+  --rust: 181 87 58;
+  --moss: 107 143 90;
+}
+
+/* ---------------------------------------------------------------------
+   Phase 5 / fd3 — font-size options. Scales every rem-based Tailwind
+   utility from the root, so no per-component work is needed beyond this.
+   --------------------------------------------------------------------- */
+
+html[data-font-size="small"] { font-size: 15px; }
+html[data-font-size="medium"] { font-size: 17px; }
+html[data-font-size="large"] { font-size: 19px; }
+html[data-font-size="xlarge"] { font-size: 21px; }
 
 body {
   font-family: var(--font-inter);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: var(--paper);
-  color: var(--ink);
+  background: rgb(var(--paper));
+  color: rgb(var(--ink));
   min-height: 100vh;
-  /* gentle radial warm-glow on the page — sits under the noise overlay */
+  /* gentle radial glow, tinted from the active theme's own accent/danger
+     tokens (rather than fixed hex) so it reads correctly in every theme —
+     Phase 5 / fd3. */
   background-image:
-    radial-gradient(circle at 20% 0%, rgba(181, 134, 43, 0.06), transparent 50%),
-    radial-gradient(circle at 100% 100%, rgba(142, 58, 40, 0.05), transparent 40%);
+    radial-gradient(circle at 20% 0%, rgb(var(--gold) / 0.06), transparent 50%),
+    radial-gradient(circle at 100% 100%, rgb(var(--rust) / 0.05), transparent 40%);
+  /* smooth cross-fade when the user switches theme/font-size */
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* faint paper noise via inline svg — pinned to the viewport so panning
@@ -73,12 +155,12 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--rule);
+  background: rgb(var(--rule));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
+  background: rgb(var(--muted));
 }
 
 /* Custom utilities */

@@ -92,20 +92,20 @@ export default function ScopeBrowsePage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-slate-900">Browse public scopes</h1>
-        <p className="text-slate-600 mt-1">
+        <h1 className="font-serif italic text-3xl font-bold text-ink">Browse public scopes</h1>
+        <p className="text-muted mt-1">
           Starter scopes and public scopes shared by other users. Fork one to
           edit, or use it directly to track the owner's changes live.
         </p>
       </header>
 
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded-xl px-4 py-2 text-sm">
           {error}
         </div>
       )}
       {success && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-moss/5 border border-moss/25 text-moss rounded-xl px-4 py-2 text-sm">
           {success}
         </div>
       )}
@@ -117,16 +117,16 @@ export default function ScopeBrowsePage() {
           placeholder="Search by name or description…"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          className="w-full px-4 py-2 border border-slate-300 rounded text-sm"
+          className="w-full px-4 py-2 border border-rule rounded-xl bg-paper text-ink text-sm"
         />
       </div>
 
       {/* results */}
       <section className="space-y-3">
         {loading ? (
-          <p className="text-sm text-slate-500">Searching…</p>
+          <p className="text-sm text-muted">Searching…</p>
         ) : !results || results.length === 0 ? (
-          <p className="text-sm text-slate-500 italic">
+          <p className="text-sm text-muted italic">
             No public scopes match. Try a different search.
           </p>
         ) : (
@@ -163,34 +163,34 @@ function PublicScopeRow({
 }) {
   const isStarter = scope.owner_user_id === null;
   return (
-    <li className="bg-white border border-slate-200 rounded-lg p-4 flex items-start gap-3 flex-wrap">
+    <li className="bg-paper-2 border border-rule rounded-2xl p-4 flex items-start gap-3 flex-wrap shadow-[0_14px_34px_-18px_rgba(27,22,16,.18)]">
       <div className="flex-grow min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <Link
             href={`/settings/scope/${scope.id}`}
-            className="font-medium text-slate-900 hover:underline truncate"
+            className="font-medium text-ink hover:underline truncate"
           >
             {scope.name}
           </Link>
           {isStarter ? (
-            <span className="text-xs bg-violet-50 text-violet-700 border border-violet-200 rounded px-1.5 py-0.5">
+            <span className="text-xs bg-gold/10 text-gold-dark border border-gold/30 rounded px-1.5 py-0.5">
               starter
             </span>
           ) : (
-            <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded px-1.5 py-0.5">
+            <span className="text-xs bg-moss/10 text-moss border border-moss/30 rounded px-1.5 py-0.5">
               public
             </span>
           )}
           {scope.forked_from_scope_id && (
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-muted">
               forked from #{scope.forked_from_scope_id}
             </span>
           )}
         </div>
         {scope.description && (
-          <p className="text-sm text-slate-600 mt-1">{scope.description}</p>
+          <p className="text-sm text-ink-2 mt-1">{scope.description}</p>
         )}
-        <div className="text-xs text-slate-500 mt-1">
+        <div className="text-xs text-muted mt-1">
           <span className="font-mono">{scope.scope_mode}</span>
           {' · '}
           {scope.scope_topic_ids.length} topic(s)
@@ -201,7 +201,7 @@ function PublicScopeRow({
           type="button"
           onClick={onUseDirectly}
           disabled={busy}
-          className="text-sm px-3 py-1.5 bg-slate-100 text-slate-700 rounded hover:bg-slate-200 disabled:opacity-50"
+          className="text-sm px-3 py-1.5 bg-paper-3 text-ink-2 rounded-full hover:bg-rule/60 disabled:opacity-50"
           title="Use this scope as-is — owner's edits propagate live, but you can't change it"
         >
           Use directly
@@ -210,7 +210,7 @@ function PublicScopeRow({
           type="button"
           onClick={onFork}
           disabled={busy}
-          className="text-sm px-3 py-1.5 bg-slate-900 text-white rounded hover:bg-slate-700 disabled:opacity-50"
+          className="text-sm px-3 py-1.5 bg-gold-dark text-white rounded-full hover:bg-[#734f14] disabled:opacity-50"
         >
           {busy ? 'Working…' : 'Fork'}
         </button>
@@ -249,12 +249,12 @@ function RequestByIdSection({
   }
 
   return (
-    <section className="bg-slate-50 border border-slate-200 rounded-lg p-5 space-y-3">
+    <section className="bg-paper-2 border border-rule rounded-2xl p-5 space-y-3">
       <div>
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+        <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-muted">
           Request access by ID
         </h2>
-        <p className="text-xs text-slate-500 mt-1">
+        <p className="text-xs text-muted mt-1">
           For private scopes that aren't in public search. If someone gave you a
           scope ID, paste it here and the owner will see your request.
         </p>
@@ -265,7 +265,7 @@ function RequestByIdSection({
           placeholder="Scope ID"
           value={id}
           onChange={e => setId(e.target.value)}
-          className="px-3 py-2 border border-slate-300 rounded text-sm w-32 bg-white"
+          className="px-3 py-2 border border-rule rounded-xl text-sm w-32 bg-paper text-ink"
         />
         <input
           type="text"
@@ -273,13 +273,13 @@ function RequestByIdSection({
           value={message}
           onChange={e => setMessage(e.target.value)}
           maxLength={2000}
-          className="flex-grow px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+          className="flex-grow px-3 py-2 border border-rule rounded-xl text-sm bg-paper text-ink"
         />
         <button
           type="button"
           onClick={submit}
           disabled={busy || !id.trim()}
-          className="text-sm px-4 py-2 bg-slate-900 text-white rounded hover:bg-slate-700 disabled:opacity-50"
+          className="text-sm px-4 py-2 bg-gold-dark text-white rounded-full hover:bg-[#734f14] disabled:opacity-50"
         >
           {busy ? 'Sending…' : 'Request access'}
         </button>

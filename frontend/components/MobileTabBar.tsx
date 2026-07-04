@@ -124,6 +124,15 @@ const SparkleIcon = () => (
   </svg>
 );
 
+const PaletteIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <path d="M12 3a9 9 0 100 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-.9.7-1.5 1.5-1.5H16a4 4 0 004-4c0-4.4-3.6-8-8-8z" />
+    <circle cx="7.5" cy="10.5" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="11" cy="7" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="8" r="1.2" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 type Tab = {
   href: string;
   label: string;
@@ -201,6 +210,12 @@ export default function MobileTabBar() {
         { href: '/settings/account/profile', label: 'Profile', icon: <ProfileIcon /> },
         { href: '/settings/account/password', label: 'Password', icon: <KeyIcon /> },
         { href: '/settings/account/username', label: 'Username', icon: <AtIcon /> },
+      ],
+    },
+    {
+      label: 'Appearance',
+      items: [
+        { href: '/settings/display', label: 'Display', icon: <PaletteIcon /> },
       ],
     },
     {

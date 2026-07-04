@@ -81,25 +81,25 @@ export default function AccessRequestsPage() {
   }
 
   if (loading && incoming.length === 0 && outgoing.length === 0) {
-    return <div className="text-slate-500">Loading…</div>;
+    return <div className="text-muted">Loading…</div>;
   }
 
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-slate-900">Access requests</h1>
-        <p className="text-slate-600 mt-1">
+        <h1 className="text-3xl font-bold text-ink">Access requests</h1>
+        <p className="text-ink-2 mt-1">
           Approve or deny requests for your private scopes, and track the requests you've sent.
         </p>
       </header>
 
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded-lg px-4 py-2 text-sm">
           {error}
         </div>
       )}
       {success && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-moss/5 border border-moss/25 text-moss rounded-lg px-4 py-2 text-sm">
           {success}
         </div>
       )}
@@ -107,13 +107,13 @@ export default function AccessRequestsPage() {
       {/* incoming */}
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2 flex-wrap">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
             Incoming ({incoming.length})
           </h2>
           <StatusFilterTabs value={incomingFilter} onChange={setIncomingFilter} />
         </div>
         {incoming.length === 0 ? (
-          <p className="text-sm text-slate-500 italic">
+          <p className="text-sm text-muted italic">
             No {incomingFilter === 'all' ? '' : incomingFilter + ' '}requests right now.
           </p>
         ) : (
@@ -134,13 +134,13 @@ export default function AccessRequestsPage() {
       {/* outgoing */}
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2 flex-wrap">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
             Outgoing ({outgoing.length})
           </h2>
           <StatusFilterTabs value={outgoingFilter} onChange={setOutgoingFilter} />
         </div>
         {outgoing.length === 0 ? (
-          <p className="text-sm text-slate-500 italic">
+          <p className="text-sm text-muted italic">
             You haven't requested access to anything{outgoingFilter !== 'all' ? ` (${outgoingFilter})` : ''}.
           </p>
         ) : (
@@ -171,8 +171,8 @@ function StatusFilterTabs({
           onClick={() => onChange(opt)}
           className={`px-2 py-1 rounded ${
             value === opt
-              ? 'bg-slate-900 text-white'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              ? 'bg-gold-dark text-white'
+              : 'bg-paper-3 text-ink-2 hover:bg-rule'
           }`}
         >
           {opt}
@@ -192,27 +192,27 @@ function IncomingRow({
 }) {
   const pending = req.status === 'pending';
   return (
-    <li className="bg-white border border-slate-200 rounded-lg p-4 flex items-start gap-3 flex-wrap">
+    <li className="bg-paper-2 border border-rule rounded-lg p-4 flex items-start gap-3 flex-wrap">
       <div className="flex-grow min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <Link
             href={`/settings/scope/${req.scope_id}`}
-            className="font-medium text-slate-900 hover:underline truncate"
+            className="font-medium text-ink hover:underline truncate"
           >
             {scopeName || `Scope #${req.scope_id}`}
           </Link>
           <StatusBadge status={req.status} />
         </div>
-        <p className="text-sm text-slate-700 mt-1">
-          <code className="text-xs bg-slate-100 px-1 py-0.5 rounded">
+        <p className="text-sm text-ink-2 mt-1">
+          <code className="text-xs bg-paper-3 px-1 py-0.5 rounded">
             {req.requester_user_id}
           </code>
           {' requested access'}
           {req.message && (
-            <>: <span className="text-slate-600">&ldquo;{req.message}&rdquo;</span></>
+            <>: <span className="text-ink-2">&ldquo;{req.message}&rdquo;</span></>
           )}
         </p>
-        <div className="text-xs text-slate-500 mt-1">
+        <div className="text-xs text-muted mt-1">
           {new Date(req.created_at).toLocaleString()}
           {req.decided_at && (
             <> · decided {new Date(req.decided_at).toLocaleString()}</>
@@ -225,7 +225,7 @@ function IncomingRow({
             type="button"
             onClick={() => onDecide('deny')}
             disabled={busy}
-            className="text-sm px-3 py-1.5 text-rose-600 hover:bg-rose-50 rounded disabled:opacity-50"
+            className="text-sm px-3 py-1.5 text-rust hover:bg-rust/5 rounded disabled:opacity-50"
           >
             Deny
           </button>
@@ -233,7 +233,7 @@ function IncomingRow({
             type="button"
             onClick={() => onDecide('approve')}
             disabled={busy}
-            className="text-sm px-3 py-1.5 bg-slate-900 text-white rounded hover:bg-slate-700 disabled:opacity-50"
+            className="text-sm px-3 py-1.5 bg-gold-dark text-white rounded hover:bg-[#734f14] disabled:opacity-50"
           >
             {busy ? 'Working…' : 'Approve'}
           </button>
@@ -246,27 +246,27 @@ function IncomingRow({
 function OutgoingRow({ req }: { req: ScopeAccessRequest }) {
   const viewable = req.status === 'approved';
   return (
-    <li className="bg-white border border-slate-200 rounded-lg p-4 flex items-start gap-3 flex-wrap">
+    <li className="bg-paper-2 border border-rule rounded-lg p-4 flex items-start gap-3 flex-wrap">
       <div className="flex-grow min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           {viewable ? (
             <Link
               href={`/settings/scope/${req.scope_id}`}
-              className="font-medium text-slate-900 hover:underline"
+              className="font-medium text-ink hover:underline"
             >
               Scope #{req.scope_id}
             </Link>
           ) : (
-            <span className="font-medium text-slate-900">Scope #{req.scope_id}</span>
+            <span className="font-medium text-ink">Scope #{req.scope_id}</span>
           )}
           <StatusBadge status={req.status} />
         </div>
         {req.message && (
-          <p className="text-sm text-slate-600 mt-1">
+          <p className="text-sm text-ink-2 mt-1">
             Your message: &ldquo;{req.message}&rdquo;
           </p>
         )}
-        <div className="text-xs text-slate-500 mt-1">
+        <div className="text-xs text-muted mt-1">
           requested {new Date(req.created_at).toLocaleString()}
           {req.decided_at && (
             <> · decided {new Date(req.decided_at).toLocaleString()}</>
@@ -279,9 +279,9 @@ function OutgoingRow({ req }: { req: ScopeAccessRequest }) {
 
 function StatusBadge({ status }: { status: AccessRequestStatus }) {
   const styles: Record<AccessRequestStatus, string> = {
-    pending:  'bg-amber-50 text-amber-700 border-amber-200',
-    approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    denied:   'bg-rose-50 text-rose-700 border-rose-200',
+    pending:  'bg-gold/5 text-gold-dark border-gold/30',
+    approved: 'bg-moss/5 text-moss border-moss/25',
+    denied:   'bg-rust/5 text-rust border-rust/25',
   };
   return (
     <span className={`text-xs border rounded px-1.5 py-0.5 ${styles[status]}`}>

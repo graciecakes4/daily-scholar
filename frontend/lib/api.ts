@@ -1117,6 +1117,49 @@ export async function listNotificationJobs(): Promise<{
 }
 
 // -----------------------------------------------------------------------------
+// Display preferences (Phase 5 / fd3, foundation slice)
+// -----------------------------------------------------------------------------
+
+export interface ThemeMeta {
+  key: string;
+  label: string;
+  description: string;
+  dark: boolean;
+}
+
+export interface FontSizeMeta {
+  key: string;
+  label: string;
+  root_px: number;
+}
+
+export interface DisplaySettings {
+  theme: string;
+  font_size: string;
+}
+
+export async function listThemes(): Promise<{ themes: ThemeMeta[] }> {
+  return fetchAPI('/display/themes');
+}
+
+export async function listFontSizes(): Promise<{ font_sizes: FontSizeMeta[] }> {
+  return fetchAPI('/display/font-sizes');
+}
+
+export async function getDisplaySettings(): Promise<DisplaySettings> {
+  return fetchAPI('/display/settings');
+}
+
+export async function updateDisplaySettings(
+  settings: DisplaySettings,
+): Promise<DisplaySettings> {
+  return fetchAPI('/display/settings', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  });
+}
+
+// -----------------------------------------------------------------------------
 // In-app auth (Phase A)
 // -----------------------------------------------------------------------------
 

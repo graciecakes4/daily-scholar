@@ -55,7 +55,7 @@ export default function AdminSettingsPage() {
   const [tab, setTab] = useState<Tab>('approvals');
   const currentUserId = user?.user_id ?? null;
 
-  if (loading) return <div className="text-slate-500">Loading…</div>;
+  if (loading) return <div className="text-muted">Loading…</div>;
 
   if (!user) {
     return (
@@ -71,13 +71,13 @@ export default function AdminSettingsPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-slate-900">Admin</h1>
-        <p className="text-slate-600 mt-1">
+        <h1 className="text-3xl font-bold text-ink">Admin</h1>
+        <p className="text-ink-2 mt-1">
           Approve new signups and manage invite codes.
         </p>
       </header>
 
-      <div className="border-b border-slate-200">
+      <div className="border-b border-rule">
         <nav className="-mb-px flex gap-1">
           <TabButton active={tab === 'approvals'} onClick={() => setTab('approvals')}>
             Pending approvals
@@ -125,8 +125,8 @@ function TabButton({
       onClick={onClick}
       className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
         active
-          ? 'border-slate-900 text-slate-900'
-          : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+          ? 'border-ink text-ink'
+          : 'border-transparent text-muted hover:text-ink-2 hover:border-rule'
       }`}
     >
       {children}
@@ -136,10 +136,10 @@ function TabButton({
 
 function NotAuthorized({ message }: { message: string }) {
   return (
-    <div className="max-w-md mx-auto mt-12 bg-white border border-slate-200 rounded-lg p-6 text-center space-y-3">
-      <h1 className="text-xl font-bold text-slate-900">Not authorized</h1>
-      <p className="text-sm text-slate-600">{message}</p>
-      <Link href="/" className="inline-block px-4 py-2 bg-slate-900 text-white rounded text-sm">
+    <div className="max-w-md mx-auto mt-12 bg-paper-2 border border-rule rounded-lg p-6 text-center space-y-3">
+      <h1 className="text-xl font-bold text-ink">Not authorized</h1>
+      <p className="text-sm text-ink-2">{message}</p>
+      <Link href="/" className="inline-block px-4 py-2 bg-gold-dark text-white rounded text-sm">
         Back to app
       </Link>
     </div>
@@ -194,23 +194,23 @@ function ApprovalsTab() {
     }
   }
 
-  if (loading) return <div className="text-slate-500">Loading pending users…</div>;
+  if (loading) return <div className="text-muted">Loading pending users…</div>;
 
   return (
     <section className="space-y-3">
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded px-3 py-2 text-sm">{error}</div>
       )}
 
       {items.length === 0 ? (
-        <div className="text-sm text-slate-500 italic">No pending approvals.</div>
+        <div className="text-sm text-muted italic">No pending approvals.</div>
       ) : (
         <ul className="space-y-2">
           {items.map(u => (
-            <li key={u.id} className="bg-white border border-slate-200 rounded-lg p-4 flex items-center justify-between gap-3 flex-wrap">
+            <li key={u.id} className="bg-paper-2 border border-rule rounded-lg p-4 flex items-center justify-between gap-3 flex-wrap">
               <div className="min-w-0">
-                <div className="font-medium text-slate-900 truncate">{u.email}</div>
-                <div className="text-xs text-slate-500 truncate">
+                <div className="font-medium text-ink truncate">{u.email}</div>
+                <div className="text-xs text-muted truncate">
                   user_id: <code>{u.user_id}</code> · waiting {formatWaiting(u.waiting_seconds)}
                 </div>
               </div>
@@ -218,14 +218,14 @@ function ApprovalsTab() {
                 <button
                   onClick={() => onApprove(u.id)}
                   disabled={busyId !== null}
-                  className="px-3 py-1.5 bg-emerald-600 text-white rounded text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
+                  className="px-3 py-1.5 bg-moss text-white rounded text-sm font-medium hover:brightness-90 disabled:opacity-50"
                 >
                   Approve
                 </button>
                 <button
                   onClick={() => onReject(u.id)}
                   disabled={busyId !== null}
-                  className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded text-sm hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 disabled:opacity-50"
+                  className="px-3 py-1.5 bg-paper-2 border border-rule text-ink-2 rounded text-sm hover:bg-rust/5 hover:border-rust/25 hover:text-rust disabled:opacity-50"
                 >
                   Reject
                 </button>
@@ -316,15 +316,15 @@ function InvitesTab() {
   return (
     <section className="space-y-4">
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded px-3 py-2 text-sm">{error}</div>
       )}
 
       {/* generate */}
-      <form onSubmit={onCreate} className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Generate code</h2>
+      <form onSubmit={onCreate} className="bg-paper-2 border border-rule rounded-lg p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">Generate code</h2>
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Expires in (days)</label>
+            <label className="block text-xs text-muted mb-1">Expires in (days)</label>
             <input
               type="number"
               min={1}
@@ -332,35 +332,35 @@ function InvitesTab() {
               placeholder="never"
               value={expiresInDays}
               onChange={e => setExpiresInDays(e.target.value)}
-              className="w-32 px-3 py-1.5 border border-slate-300 rounded text-sm"
+              className="bg-paper text-ink w-32 px-3 py-1.5 border border-rule rounded text-sm"
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Max uses</label>
+            <label className="block text-xs text-muted mb-1">Max uses</label>
             <input
               type="number"
               min={1}
               max={1000}
               value={maxUses}
               onChange={e => setMaxUses(Math.max(1, Number(e.target.value) || 1))}
-              className="w-24 px-3 py-1.5 border border-slate-300 rounded text-sm"
+              className="bg-paper text-ink w-24 px-3 py-1.5 border border-rule rounded text-sm"
             />
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Custom code</label>
+            <label className="block text-xs text-muted mb-1">Custom code</label>
             <input
               type="text"
               placeholder="leave blank for random"
               value={customCode}
               onChange={e => setCustomCode(e.target.value)}
               maxLength={32}
-              className="w-48 px-3 py-1.5 border border-slate-300 rounded text-sm font-mono"
+              className="bg-paper text-ink w-48 px-3 py-1.5 border border-rule rounded text-sm font-mono"
             />
           </div>
           <button
             type="submit"
             disabled={creating}
-            className="px-4 py-1.5 bg-slate-900 text-white rounded text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+            className="px-4 py-1.5 bg-gold-dark text-white rounded text-sm font-medium hover:bg-[#734f14] disabled:opacity-50"
           >
             {creating ? 'Creating…' : 'Create'}
           </button>
@@ -369,16 +369,16 @@ function InvitesTab() {
 
       {/* list */}
       {loading ? (
-        <div className="text-slate-500">Loading invites…</div>
+        <div className="text-muted">Loading invites…</div>
       ) : invites.length === 0 ? (
-        <div className="text-sm text-slate-500 italic">No invite codes yet.</div>
+        <div className="text-sm text-muted italic">No invite codes yet.</div>
       ) : (
         <ul className="space-y-2">
           {invites.map(inv => (
-            <li key={inv.id} className="bg-white border border-slate-200 rounded-lg p-4 space-y-2">
+            <li key={inv.id} className="bg-paper-2 border border-rule rounded-lg p-4 space-y-2">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 min-w-0">
-                  <code className="font-mono text-sm bg-slate-100 px-2 py-1 rounded select-all truncate">
+                  <code className="font-mono text-sm bg-paper-3 px-2 py-1 rounded select-all truncate">
                     {inv.code}
                   </code>
                   <button
@@ -394,13 +394,13 @@ function InvitesTab() {
                   <button
                     onClick={() => onRevoke(inv.id)}
                     disabled={busyId !== null}
-                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded text-xs hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 disabled:opacity-50"
+                    className="px-3 py-1.5 bg-paper-2 border border-rule text-ink-2 rounded text-xs hover:bg-rust/5 hover:border-rust/25 hover:text-rust disabled:opacity-50"
                   >
                     Revoke
                   </button>
                 )}
               </div>
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-muted">
                 {inv.uses} / {inv.max_uses} used
                 {inv.expires_at ? ` · expires ${new Date(inv.expires_at).toLocaleString()}` : ' · never expires'}
                 {inv.revoked_at ? ` · revoked ${new Date(inv.revoked_at).toLocaleString()}` : ''}
@@ -416,10 +416,10 @@ function InvitesTab() {
 
 function StateBadge({ state }: { state: InviteState }) {
   const styles: Record<InviteState, string> = {
-    available: 'bg-emerald-100 text-emerald-800',
-    exhausted: 'bg-slate-200 text-slate-700',
-    expired: 'bg-amber-100 text-amber-800',
-    revoked: 'bg-rose-100 text-rose-800',
+    available: 'bg-moss/10 text-moss',
+    exhausted: 'bg-rule text-ink-2',
+    expired: 'bg-gold/10 text-gold-dark',
+    revoked: 'bg-rust/10 text-rust',
   };
   return (
     <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${styles[state]}`}>
@@ -490,39 +490,39 @@ function UsersTab({ currentUserId }: { currentUserId: string | null }) {
   return (
     <section className="space-y-4">
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded px-3 py-2 text-sm">{error}</div>
       )}
 
       {/* filters */}
-      <div className="bg-white border border-slate-200 rounded-lg p-3 flex flex-wrap items-center gap-3">
-        <label className="text-xs text-slate-500">Status</label>
+      <div className="bg-paper-2 border border-rule rounded-lg p-3 flex flex-wrap items-center gap-3">
+        <label className="text-xs text-muted">Status</label>
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value as '' | UserStatus)}
-          className="text-sm border border-slate-300 rounded px-2 py-1"
+          className="bg-paper text-ink text-sm border border-rule rounded px-2 py-1"
         >
           <option value="">All</option>
           <option value="active">Active</option>
           <option value="pending">Pending</option>
           <option value="suspended">Suspended</option>
         </select>
-        <label className="text-xs text-slate-500 ml-2">Role</label>
+        <label className="text-xs text-muted ml-2">Role</label>
         <select
           value={roleFilter}
           onChange={e => setRoleFilter(e.target.value as '' | UserRole)}
-          className="text-sm border border-slate-300 rounded px-2 py-1"
+          className="bg-paper text-ink text-sm border border-rule rounded px-2 py-1"
         >
           <option value="">All</option>
           <option value="user">User</option>
           <option value="admin">Admin</option>
         </select>
-        <span className="text-xs text-slate-400 ml-auto">{accounts.length} user(s)</span>
+        <span className="text-xs text-muted ml-auto">{accounts.length} user(s)</span>
       </div>
 
       {loading ? (
-        <div className="text-slate-500">Loading…</div>
+        <div className="text-muted">Loading…</div>
       ) : accounts.length === 0 ? (
-        <div className="text-sm text-slate-500 italic">No users match.</div>
+        <div className="text-sm text-muted italic">No users match.</div>
       ) : (
         <ul className="space-y-2">
           {accounts.map(u => {
@@ -533,11 +533,11 @@ function UsersTab({ currentUserId }: { currentUserId: string | null }) {
             return (
               <li
                 key={u.id}
-                className="bg-white border border-slate-200 rounded-lg p-4 flex items-center justify-between gap-3 flex-wrap"
+                className="bg-paper-2 border border-rule rounded-lg p-4 flex items-center justify-between gap-3 flex-wrap"
               >
                 <div className="min-w-0 flex-grow">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-slate-900 truncate">{u.email}</span>
+                    <span className="font-medium text-ink truncate">{u.email}</span>
                     <RoleBadge role={u.role} />
                     <StatusBadge status={u.status} />
                     {isSelf && (
@@ -546,12 +546,12 @@ function UsersTab({ currentUserId }: { currentUserId: string | null }) {
                       </span>
                     )}
                     {!u.onboarded && u.status === 'active' && (
-                      <span className="text-[10px] uppercase tracking-wide bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
+                      <span className="text-[10px] uppercase tracking-wide bg-gold/10 text-gold-dark px-1.5 py-0.5 rounded font-semibold">
                         un-onboarded
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-slate-500 truncate">
+                  <div className="text-xs text-muted truncate">
                     user_id: <code>{u.user_id}</code> · created {new Date(u.created_at).toLocaleDateString()}
                     {u.last_login_at && (
                       <> · last login {new Date(u.last_login_at).toLocaleDateString()}</>
@@ -561,7 +561,7 @@ function UsersTab({ currentUserId }: { currentUserId: string | null }) {
 
                 <div className="flex items-center gap-2 shrink-0">
                   {isPending ? (
-                    <span className="text-xs text-slate-400 italic">use Approvals tab</span>
+                    <span className="text-xs text-muted italic">use Approvals tab</span>
                   ) : (
                     <>
                       {u.role === 'user' ? (
@@ -569,7 +569,7 @@ function UsersTab({ currentUserId }: { currentUserId: string | null }) {
                           type="button"
                           onClick={() => onRole(u, 'admin')}
                           disabled={busyId !== null}
-                          className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded text-xs hover:bg-slate-50 disabled:opacity-50"
+                          className="px-3 py-1.5 bg-paper-2 border border-rule text-ink-2 rounded text-xs hover:bg-paper disabled:opacity-50"
                         >
                           Promote
                         </button>
@@ -578,7 +578,7 @@ function UsersTab({ currentUserId }: { currentUserId: string | null }) {
                           type="button"
                           onClick={() => onRole(u, 'user')}
                           disabled={busyId !== null}
-                          className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded text-xs hover:bg-slate-50 disabled:opacity-50"
+                          className="px-3 py-1.5 bg-paper-2 border border-rule text-ink-2 rounded text-xs hover:bg-paper disabled:opacity-50"
                         >
                           Demote
                         </button>
@@ -588,7 +588,7 @@ function UsersTab({ currentUserId }: { currentUserId: string | null }) {
                         onClick={() => setResetTarget(u)}
                         disabled={busyId !== null || isSelf}
                         title={isSelf ? 'Use Settings → Account to change your own password' : 'Set a new temporary password'}
-                        className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded text-xs hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white"
+                        className="px-3 py-1.5 bg-paper-2 border border-rule text-ink-2 rounded text-xs hover:bg-paper disabled:opacity-50 disabled:hover:bg-paper-2"
                       >
                         Reset password
                       </button>
@@ -598,7 +598,7 @@ function UsersTab({ currentUserId }: { currentUserId: string | null }) {
                           onClick={() => onStatus(u, 'suspended')}
                           disabled={busyId !== null || isSelf}
                           title={isSelf ? "Can't suspend yourself" : 'Suspend this account'}
-                          className="px-3 py-1.5 bg-white border border-rose-300 text-rose-700 rounded text-xs hover:bg-rose-50 disabled:opacity-50 disabled:hover:bg-white"
+                          className="px-3 py-1.5 bg-paper-2 border border-rust/25 text-rust rounded text-xs hover:bg-rust/5 disabled:opacity-50 disabled:hover:bg-paper-2"
                         >
                           Suspend
                         </button>
@@ -607,7 +607,7 @@ function UsersTab({ currentUserId }: { currentUserId: string | null }) {
                           type="button"
                           onClick={() => onStatus(u, 'active')}
                           disabled={busyId !== null}
-                          className="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
+                          className="px-3 py-1.5 bg-moss text-white rounded text-xs font-medium hover:brightness-90 disabled:opacity-50"
                         >
                           Reactivate
                         </button>
@@ -683,18 +683,18 @@ function ResetPasswordModal({
       <form
         onSubmit={onSubmit}
         onClick={e => e.stopPropagation()}
-        className="bg-white rounded-lg shadow-xl max-w-md w-full p-5 space-y-4"
+        className="bg-paper-2 rounded-lg shadow-xl max-w-md w-full p-5 space-y-4"
       >
         <header>
-          <h2 className="text-lg font-semibold text-slate-900">Reset password</h2>
-          <p className="text-sm text-slate-600 mt-1">
+          <h2 className="text-lg font-semibold text-ink">Reset password</h2>
+          <p className="text-sm text-ink-2 mt-1">
             Set a new temporary password for <strong>{target.email}</strong>.
             They'll be signed out of every device and need to log in with this password.
           </p>
         </header>
 
         <div className="space-y-1">
-          <label htmlFor="rp-pw" className="text-sm font-medium text-slate-700">New password</label>
+          <label htmlFor="rp-pw" className="text-sm font-medium text-ink-2">New password</label>
           <input
             id="rp-pw"
             type="text"
@@ -703,20 +703,20 @@ function ResetPasswordModal({
             minLength={8}
             value={pw}
             onChange={e => setPw(e.target.value)}
-            className={`w-full px-3 py-2 border rounded text-sm font-mono focus:outline-none ${
-              tooShort ? 'border-rose-400 focus:border-rose-600' : 'border-slate-300 focus:border-slate-900'
+            className={`bg-paper text-ink w-full px-3 py-2 border rounded text-sm font-mono focus:outline-none ${
+              tooShort ? 'border-rust/30 focus:border-rust/40' : 'border-rule focus:border-ink'
             }`}
             placeholder="at least 8 chars"
           />
           <PasswordStrength password={pw} />
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted">
             Showing in plaintext so you can share it. Make it long + memorable;
             tell the user to change it on first login.
           </p>
         </div>
 
         <div className="space-y-1">
-          <label htmlFor="rp-conf" className="text-sm font-medium text-slate-700">Confirm</label>
+          <label htmlFor="rp-conf" className="text-sm font-medium text-ink-2">Confirm</label>
           <input
             id="rp-conf"
             type="text"
@@ -724,29 +724,29 @@ function ResetPasswordModal({
             required
             value={confirm}
             onChange={e => setConfirm(e.target.value)}
-            className={`w-full px-3 py-2 border rounded text-sm font-mono focus:outline-none ${
-              mismatch ? 'border-rose-400 focus:border-rose-600' : 'border-slate-300 focus:border-slate-900'
+            className={`bg-paper text-ink w-full px-3 py-2 border rounded text-sm font-mono focus:outline-none ${
+              mismatch ? 'border-rust/30 focus:border-rust/40' : 'border-rule focus:border-ink'
             }`}
           />
-          {mismatch && <p className="text-xs text-rose-700">Doesn't match.</p>}
+          {mismatch && <p className="text-xs text-rust">Doesn't match.</p>}
         </div>
 
         {copied && (
-          <p className="text-xs text-emerald-700">Copied to clipboard. Share it out-of-band.</p>
+          <p className="text-xs text-moss">Copied to clipboard. Share it out-of-band.</p>
         )}
 
         <div className="flex items-center justify-end gap-2 pt-2">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-50"
+            className="px-4 py-2 bg-paper-2 border border-rule text-ink-2 rounded text-sm hover:bg-paper"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={disabled}
-            className="px-4 py-2 bg-rose-600 text-white rounded text-sm font-medium hover:bg-rose-700 disabled:opacity-50"
+            className="px-4 py-2 bg-rust text-white rounded text-sm font-medium hover:brightness-90 disabled:opacity-50"
           >
             {busy ? 'Resetting…' : 'Reset + log them out'}
           </button>
@@ -758,7 +758,7 @@ function ResetPasswordModal({
 
 function RoleBadge({ role }: { role: UserRole }) {
   return role === 'admin' ? (
-    <span className="text-[10px] uppercase tracking-wide bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded font-semibold">
+    <span className="text-[10px] uppercase tracking-wide bg-rule text-ink px-1.5 py-0.5 rounded font-semibold">
       admin
     </span>
   ) : null;
@@ -766,9 +766,9 @@ function RoleBadge({ role }: { role: UserRole }) {
 
 function StatusBadge({ status }: { status: UserStatus }) {
   const map: Record<UserStatus, string> = {
-    active: 'bg-emerald-100 text-emerald-800',
-    pending: 'bg-amber-100 text-amber-800',
-    suspended: 'bg-rose-100 text-rose-800',
+    active: 'bg-moss/10 text-moss',
+    pending: 'bg-gold/10 text-gold-dark',
+    suspended: 'bg-rust/10 text-rust',
   };
   return (
     <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${map[status]}`}>
@@ -843,18 +843,18 @@ function AuditTab() {
   return (
     <section className="space-y-4">
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded px-3 py-2 text-sm">{error}</div>
       )}
 
       {/* filters */}
-      <div className="bg-white border border-slate-200 rounded-lg p-3 space-y-3">
+      <div className="bg-paper-2 border border-rule rounded-lg p-3 space-y-3">
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
-            <label className="text-xs text-slate-500 block">Event</label>
+            <label className="text-xs text-muted block">Event</label>
             <select
               value={eventTypeFilter}
               onChange={e => setEventTypeFilter(e.target.value as '' | AuditEventType)}
-              className="text-sm border border-slate-300 rounded px-2 py-1"
+              className="bg-paper text-ink text-sm border border-rule rounded px-2 py-1"
             >
               <option value="">All events</option>
               {eventTypes.map(t => (
@@ -863,51 +863,51 @@ function AuditTab() {
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-slate-500 block">Actor</label>
+            <label className="text-xs text-muted block">Actor</label>
             <input
               type="text"
               value={actorFilter}
               onChange={e => setActorFilter(e.target.value)}
               placeholder="email or handle"
-              className="text-sm border border-slate-300 rounded px-2 py-1 w-48"
+              className="bg-paper text-ink text-sm border border-rule rounded px-2 py-1 w-48"
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-slate-500 block">Target</label>
+            <label className="text-xs text-muted block">Target</label>
             <input
               type="text"
               value={targetFilter}
               onChange={e => setTargetFilter(e.target.value)}
               placeholder="user_id or invite code"
-              className="text-sm border border-slate-300 rounded px-2 py-1 w-48"
+              className="bg-paper text-ink text-sm border border-rule rounded px-2 py-1 w-48"
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-slate-500 block">Since</label>
+            <label className="text-xs text-muted block">Since</label>
             <input
               type="date"
               value={sinceFilter}
               onChange={e => setSinceFilter(e.target.value)}
-              className="text-sm border border-slate-300 rounded px-2 py-1"
+              className="bg-paper text-ink text-sm border border-rule rounded px-2 py-1"
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-slate-500 block">Until</label>
+            <label className="text-xs text-muted block">Until</label>
             <input
               type="date"
               value={untilFilter}
               onChange={e => setUntilFilter(e.target.value)}
-              className="text-sm border border-slate-300 rounded px-2 py-1"
+              className="bg-paper text-ink text-sm border border-rule rounded px-2 py-1"
             />
           </div>
           <button
             type="button"
             onClick={clearFilters}
-            className="text-xs text-slate-500 hover:text-slate-700 hover:underline px-2 py-1"
+            className="text-xs text-muted hover:text-ink-2 hover:underline px-2 py-1"
           >
             Clear
           </button>
-          <span className="text-xs text-slate-400 ml-auto">
+          <span className="text-xs text-muted ml-auto">
             {total.toLocaleString()} event{total === 1 ? '' : 's'}
           </span>
         </div>
@@ -915,9 +915,9 @@ function AuditTab() {
 
       {/* table */}
       {loading ? (
-        <div className="text-slate-500">Loading…</div>
+        <div className="text-muted">Loading…</div>
       ) : events.length === 0 ? (
-        <div className="text-sm text-slate-500 italic">No events match.</div>
+        <div className="text-sm text-muted italic">No events match.</div>
       ) : (
         <ul className="space-y-2">
           {events.map(ev => {
@@ -925,7 +925,7 @@ function AuditTab() {
             return (
               <li
                 key={ev.id}
-                className="bg-white border border-slate-200 rounded-lg p-3 space-y-2"
+                className="bg-paper-2 border border-rule rounded-lg p-3 space-y-2"
               >
                 <button
                   type="button"
@@ -935,24 +935,24 @@ function AuditTab() {
                   <div className="min-w-0 flex-grow">
                     <div className="flex items-center gap-2 flex-wrap">
                       <EventBadge type={ev.event_type} />
-                      <span className="text-sm text-slate-700">
+                      <span className="text-sm text-ink-2">
                         <strong>{ev.actor_user_id_string}</strong>{' '}
-                        <span className="text-slate-500">{eventVerb(ev.event_type)}</span>{' '}
+                        <span className="text-muted">{eventVerb(ev.event_type)}</span>{' '}
                         <strong className="font-mono text-xs">{ev.target_label || ev.target_id || '—'}</strong>
                       </span>
                     </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
+                    <div className="text-xs text-muted mt-0.5">
                       {new Date(ev.created_at).toLocaleString()} · #{ev.id}
                     </div>
                   </div>
-                  <span className="text-xs text-slate-400 shrink-0">
+                  <span className="text-xs text-muted shrink-0">
                     {isExpanded ? '▾' : '▸'}
                   </span>
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t border-slate-100 pt-2">
-                    <pre className="text-xs bg-slate-50 border border-slate-200 rounded p-2 overflow-x-auto font-mono">
+                  <div className="border-t border-rule pt-2">
+                    <pre className="text-xs bg-paper border border-rule rounded p-2 overflow-x-auto font-mono">
 {JSON.stringify(ev.metadata, null, 2)}
                     </pre>
                   </div>
@@ -970,18 +970,18 @@ function AuditTab() {
             type="button"
             disabled={page <= 0}
             onClick={() => setPage(p => Math.max(0, p - 1))}
-            className="text-sm px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded hover:bg-slate-50 disabled:opacity-40"
+            className="text-sm px-3 py-1.5 bg-paper-2 border border-rule text-ink-2 rounded hover:bg-paper disabled:opacity-40"
           >
             ← Newer
           </button>
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted">
             Page {page + 1} of {maxPage + 1}
           </span>
           <button
             type="button"
             disabled={page >= maxPage}
             onClick={() => setPage(p => Math.min(maxPage, p + 1))}
-            className="text-sm px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded hover:bg-slate-50 disabled:opacity-40"
+            className="text-sm px-3 py-1.5 bg-paper-2 border border-rule text-ink-2 rounded hover:bg-paper disabled:opacity-40"
           >
             Older →
           </button>
@@ -1014,14 +1014,14 @@ const EVENT_VERBS: Record<AuditEventType, string> = {
 };
 
 const EVENT_STYLES: Record<AuditEventType, string> = {
-  'user.approve': 'bg-emerald-100 text-emerald-800',
-  'user.reject': 'bg-rose-100 text-rose-800',
-  'user.role_change': 'bg-violet-100 text-violet-800',
-  'user.suspend': 'bg-rose-100 text-rose-800',
-  'user.reactivate': 'bg-emerald-100 text-emerald-800',
+  'user.approve': 'bg-moss/10 text-moss',
+  'user.reject': 'bg-rust/10 text-rust',
+  'user.role_change': 'bg-gold/10 text-gold-dark',
+  'user.suspend': 'bg-rust/10 text-rust',
+  'user.reactivate': 'bg-moss/10 text-moss',
   'invite.create': 'bg-sky-100 text-sky-800',
-  'invite.revoke': 'bg-slate-200 text-slate-700',
-  'cache.bust': 'bg-amber-100 text-amber-800',
+  'invite.revoke': 'bg-rule text-ink-2',
+  'cache.bust': 'bg-gold/10 text-gold-dark',
 };
 
 function eventLabel(type: AuditEventType): string {
@@ -1034,7 +1034,7 @@ function eventVerb(type: AuditEventType): string {
 
 function EventBadge({ type }: { type: AuditEventType }) {
   return (
-    <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${EVENT_STYLES[type] ?? 'bg-slate-100 text-slate-700'}`}>
+    <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${EVENT_STYLES[type] ?? 'bg-paper-3 text-ink-2'}`}>
       {eventLabel(type)}
     </span>
   );
@@ -1098,13 +1098,13 @@ function CacheTab() {
 
   return (
     <section className="space-y-4">
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-2">
         Force a user's daily content to regenerate from scratch — for "my content looks
         stuck/wrong" support tickets. Safe to do any time; it's disposable cache, not source data.
       </p>
 
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded px-3 py-2 text-sm">{error}</div>
       )}
       {notice && (
         <div className="bg-sky-50 border border-sky-200 text-sky-800 rounded px-3 py-2 text-sm">{notice}</div>
@@ -1115,23 +1115,23 @@ function CacheTab() {
         value={query}
         onChange={e => setQuery(e.target.value)}
         placeholder="Search by email or handle…"
-        className="w-full max-w-sm px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:border-slate-900"
+        className="bg-paper text-ink w-full max-w-sm px-3 py-2 border border-rule rounded text-sm focus:outline-none focus:border-ink"
       />
 
       {loading ? (
-        <div className="text-slate-500">Loading users…</div>
+        <div className="text-muted">Loading users…</div>
       ) : filtered.length === 0 ? (
-        <div className="text-sm text-slate-500 italic">No users match.</div>
+        <div className="text-sm text-muted italic">No users match.</div>
       ) : (
         <ul className="space-y-2">
           {filtered.map(a => (
             <li
               key={a.id}
-              className="bg-white border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap"
+              className="bg-paper-2 border border-rule rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap"
             >
               <div className="min-w-0">
-                <div className="font-medium text-slate-900 truncate">{a.email}</div>
-                <div className="text-xs text-slate-500 truncate">
+                <div className="font-medium text-ink truncate">{a.email}</div>
+                <div className="text-xs text-muted truncate">
                   user_id: <code>{a.user_id}</code>
                 </div>
               </div>
@@ -1139,7 +1139,7 @@ function CacheTab() {
                 type="button"
                 onClick={() => onBust(a)}
                 disabled={busyId !== null}
-                className="px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded text-xs hover:bg-amber-50 disabled:opacity-50 shrink-0"
+                className="px-3 py-1.5 bg-paper-2 border border-gold/30 text-gold-dark rounded text-xs hover:bg-gold/5 disabled:opacity-50 shrink-0"
               >
                 {busyId === a.user_id ? 'Clearing…' : 'Bust cache'}
               </button>
@@ -1161,16 +1161,16 @@ function CacheTab() {
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-4">
-      <div className="text-2xl font-bold text-slate-900">{value}</div>
-      <div className="text-xs text-slate-500 mt-1">{label}</div>
+    <div className="bg-paper-2 border border-rule rounded-lg p-4">
+      <div className="text-2xl font-bold text-ink">{value}</div>
+      <div className="text-xs text-muted mt-1">{label}</div>
     </div>
   );
 }
 
 /** Horizontal bar, width proportional to value/max. */
 function BarRow({
-  label, value, max, displayValue, barClassName = 'bg-slate-900',
+  label, value, max, displayValue, barClassName = 'bg-gold-dark',
 }: {
   label: string;
   value: number;
@@ -1182,10 +1182,10 @@ function BarRow({
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between text-xs">
-        <span className="text-slate-700 truncate pr-2">{label}</span>
-        <span className="text-slate-500 shrink-0">{displayValue ?? value}</span>
+        <span className="text-ink-2 truncate pr-2">{label}</span>
+        <span className="text-muted shrink-0">{displayValue ?? value}</span>
       </div>
-      <div className="h-2 w-full bg-slate-100 rounded overflow-hidden">
+      <div className="h-2 w-full bg-paper-3 rounded overflow-hidden">
         <div className={`h-full rounded ${barClassName}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
@@ -1201,7 +1201,7 @@ function TrendBars({
   labelSuffix?: string;
 }) {
   if (points.length === 0) {
-    return <div className="text-sm text-slate-500 italic">No activity in this window.</div>;
+    return <div className="text-sm text-muted italic">No activity in this window.</div>;
   }
   const max = Math.max(...points.map(p => Number(p[valueKey]) || 0), 1);
   return (
@@ -1213,7 +1213,7 @@ function TrendBars({
           <div
             key={i}
             title={`${p.date}: ${v}${labelSuffix}`}
-            className="flex-1 bg-slate-800 hover:bg-slate-600 rounded-t min-w-[2px]"
+            className="flex-1 bg-ink-2 hover:bg-muted rounded-t min-w-[2px]"
             style={{ height: `${heightPct}%` }}
           />
         );
@@ -1223,9 +1223,9 @@ function TrendBars({
 }
 
 function accuracyColor(accuracy: number): string {
-  if (accuracy >= 80) return 'bg-emerald-500';
-  if (accuracy >= 60) return 'bg-amber-500';
-  return 'bg-rose-500';
+  if (accuracy >= 80) return 'bg-moss';
+  if (accuracy >= 60) return 'bg-gold';
+  return 'bg-rust';
 }
 
 function StatsTab() {
@@ -1250,9 +1250,9 @@ function StatsTab() {
     })();
   }, []);
 
-  if (loading) return <div className="text-slate-500">Loading stats…</div>;
+  if (loading) return <div className="text-muted">Loading stats…</div>;
   if (error) {
-    return <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>;
+    return <div className="bg-rust/5 border border-rust/25 text-rust rounded px-3 py-2 text-sm">{error}</div>;
   }
   if (!overview || !quiz) return null;
 
@@ -1262,7 +1262,7 @@ function StatsTab() {
     <div className="space-y-8">
       {/* ---- usage overview ---- */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Usage overview</h2>
+        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">Usage overview</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Active users" value={overview.users.active} />
           <StatCard label="Pending approval" value={overview.users.pending} />
@@ -1273,15 +1273,15 @@ function StatsTab() {
           <StatCard label="Papers archived" value={overview.content.papers_archived} />
           <StatCard label="Quizzes taken" value={overview.content.quizzes_taken} />
         </div>
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <div className="text-xs text-slate-500 mb-2">Signups, last 30 days</div>
+        <div className="bg-paper-2 border border-rule rounded-lg p-4">
+          <div className="text-xs text-muted mb-2">Signups, last 30 days</div>
           <TrendBars points={overview.signup_trend} valueKey="signups" labelSuffix=" signup(s)" />
         </div>
       </section>
 
       {/* ---- quiz performance ---- */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Quiz performance</h2>
+        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">Quiz performance</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Quizzes taken" value={quiz.total_quizzes} />
           <StatCard label="Questions answered" value={quiz.total_questions_answered} />
@@ -1289,27 +1289,27 @@ function StatsTab() {
           <StatCard label="Avg / median score" value={`${quiz.average_score}% / ${quiz.median_score}%`} />
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
-          <div className="text-xs text-slate-500">Score distribution (by quiz)</div>
+        <div className="bg-paper-2 border border-rule rounded-lg p-4 space-y-3">
+          <div className="text-xs text-muted">Score distribution (by quiz)</div>
           <div className="space-y-2">
-            <BarRow label="0–59%" value={quiz.score_distribution['0-59']} max={scoreBucketMax} barClassName="bg-rose-500" />
-            <BarRow label="60–79%" value={quiz.score_distribution['60-79']} max={scoreBucketMax} barClassName="bg-amber-500" />
-            <BarRow label="80–100%" value={quiz.score_distribution['80-100']} max={scoreBucketMax} barClassName="bg-emerald-500" />
+            <BarRow label="0–59%" value={quiz.score_distribution['0-59']} max={scoreBucketMax} barClassName="bg-rust" />
+            <BarRow label="60–79%" value={quiz.score_distribution['60-79']} max={scoreBucketMax} barClassName="bg-gold" />
+            <BarRow label="80–100%" value={quiz.score_distribution['80-100']} max={scoreBucketMax} barClassName="bg-moss" />
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <div className="text-xs text-slate-500 mb-2">Average score, last 30 days</div>
+        <div className="bg-paper-2 border border-rule rounded-lg p-4">
+          <div className="text-xs text-muted mb-2">Average score, last 30 days</div>
           <TrendBars points={quiz.score_trend} valueKey="avg_percentage" labelSuffix="% avg" />
         </div>
 
         <div className="grid sm:grid-cols-2 gap-3">
-          <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
-            <div className="text-xs text-slate-500">
+          <div className="bg-paper-2 border border-rule rounded-lg p-4 space-y-3">
+            <div className="text-xs text-muted">
               By topic — worst first ({quiz.by_topic.length} topic{quiz.by_topic.length === 1 ? '' : 's'})
             </div>
             {quiz.by_topic.length === 0 ? (
-              <div className="text-sm text-slate-500 italic">No quiz data yet.</div>
+              <div className="text-sm text-muted italic">No quiz data yet.</div>
             ) : (
               <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                 {quiz.by_topic.map(t => (
@@ -1326,10 +1326,10 @@ function StatsTab() {
             )}
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
-            <div className="text-xs text-slate-500">By difficulty</div>
+          <div className="bg-paper-2 border border-rule rounded-lg p-4 space-y-3">
+            <div className="text-xs text-muted">By difficulty</div>
             {quiz.by_difficulty.length === 0 ? (
-              <div className="text-sm text-slate-500 italic">No quiz data yet.</div>
+              <div className="text-sm text-muted italic">No quiz data yet.</div>
             ) : (
               <div className="space-y-2">
                 {quiz.by_difficulty.map(d => (
@@ -1372,19 +1372,19 @@ function Leaderboard({
   metric: (e: { user_id: string; email: string; quizzes_taken: number; accuracy: number }) => string;
 }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-2">
-      <div className="text-xs text-slate-500">{title}</div>
+    <div className="bg-paper-2 border border-rule rounded-lg p-4 space-y-2">
+      <div className="text-xs text-muted">{title}</div>
       {entries.length === 0 ? (
-        <div className="text-sm text-slate-500 italic">Not enough data yet.</div>
+        <div className="text-sm text-muted italic">Not enough data yet.</div>
       ) : (
         <ol className="space-y-1.5">
           {entries.map((e, i) => (
             <li key={e.user_id} className="flex items-center justify-between text-sm gap-2">
               <span className="flex items-center gap-2 min-w-0">
-                <span className="text-xs text-slate-400 w-4 shrink-0">{i + 1}</span>
+                <span className="text-xs text-muted w-4 shrink-0">{i + 1}</span>
                 <span className="truncate">{e.email}</span>
               </span>
-              <span className="text-slate-500 shrink-0">{metric(e)}</span>
+              <span className="text-muted shrink-0">{metric(e)}</span>
             </li>
           ))}
         </ol>
@@ -1463,16 +1463,16 @@ function TopicsTab() {
   return (
     <section className="space-y-4">
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded px-3 py-2 text-sm">{error}</div>
       )}
       {notice && (
         <div className="bg-sky-50 border border-sky-200 text-sky-800 rounded px-3 py-2 text-sm">{notice}</div>
       )}
 
-      <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-center gap-3">
+      <div className="bg-paper-2 border border-rule rounded-lg p-4 flex flex-wrap items-center gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Sync with config/topics/*.yaml</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-sm font-semibold text-ink">Sync with config/topics/*.yaml</h2>
+          <p className="text-xs text-muted mt-0.5">
             Import re-reads the YAML files on disk into the database. Export writes the current
             database state back out to YAML — do this before committing any UI-made topic changes.
           </p>
@@ -1482,7 +1482,7 @@ function TopicsTab() {
             type="button"
             onClick={onImport}
             disabled={busy}
-            className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-50 disabled:opacity-50"
+            className="px-3 py-1.5 bg-paper-2 border border-rule text-ink-2 rounded text-sm hover:bg-paper disabled:opacity-50"
           >
             {busy ? 'Working…' : 'Import from YAML'}
           </button>
@@ -1490,15 +1490,15 @@ function TopicsTab() {
             type="button"
             onClick={onExport}
             disabled={busy}
-            className="px-3 py-1.5 bg-slate-900 text-white rounded text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+            className="px-3 py-1.5 bg-gold-dark text-white rounded text-sm font-medium hover:bg-[#734f14] disabled:opacity-50"
           >
             {busy ? 'Working…' : 'Export to YAML'}
           </button>
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg p-3 flex items-center gap-3">
-        <label className="flex items-center gap-2 text-sm text-slate-700">
+      <div className="bg-paper-2 border border-rule rounded-lg p-3 flex items-center gap-3">
+        <label className="flex items-center gap-2 text-sm text-ink-2">
           <input
             type="checkbox"
             checked={orphanedOnly}
@@ -1506,15 +1506,15 @@ function TopicsTab() {
           />
           Orphaned only
         </label>
-        <span className="text-xs text-slate-400 ml-auto">
+        <span className="text-xs text-muted ml-auto">
           {topics.length} topic(s) · {orphanedCount} orphaned
         </span>
       </div>
 
       {loading ? (
-        <div className="text-slate-500">Loading topics…</div>
+        <div className="text-muted">Loading topics…</div>
       ) : visible.length === 0 ? (
-        <div className="text-sm text-slate-500 italic">
+        <div className="text-sm text-muted italic">
           {orphanedOnly ? 'No orphaned topics.' : 'No topics found.'}
         </div>
       ) : (
@@ -1522,34 +1522,34 @@ function TopicsTab() {
           {visible.map(t => (
             <li
               key={t.id}
-              className="bg-white border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap"
+              className="bg-paper-2 border border-rule rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Link href={`/topics/${encodeURIComponent(t.id)}/edit`} className="font-medium text-slate-900 hover:underline truncate">
+                  <Link href={`/topics/${encodeURIComponent(t.id)}/edit`} className="font-medium text-ink hover:underline truncate">
                     {t.name}
                   </Link>
                   {!t.active && (
-                    <span className="text-[10px] uppercase tracking-wide bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-semibold">
+                    <span className="text-[10px] uppercase tracking-wide bg-rule text-ink-2 px-1.5 py-0.5 rounded font-semibold">
                       inactive
                     </span>
                   )}
                   {!t.source_yaml_present && (
-                    <span className="text-[10px] uppercase tracking-wide bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
+                    <span className="text-[10px] uppercase tracking-wide bg-gold/10 text-gold-dark px-1.5 py-0.5 rounded font-semibold">
                       orphaned
                     </span>
                   )}
                   {t.owner_user_id === null ? (
-                    <span className="text-[10px] uppercase tracking-wide bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-semibold">
+                    <span className="text-[10px] uppercase tracking-wide bg-paper-3 text-ink-2 px-1.5 py-0.5 rounded font-semibold">
                       system
                     </span>
                   ) : (
-                    <span className="text-[10px] uppercase tracking-wide bg-violet-100 text-violet-800 px-1.5 py-0.5 rounded font-semibold">
+                    <span className="text-[10px] uppercase tracking-wide bg-gold/10 text-gold-dark px-1.5 py-0.5 rounded font-semibold">
                       user-owned
                     </span>
                   )}
                 </div>
-                <div className="text-xs text-slate-500 truncate">
+                <div className="text-xs text-muted truncate">
                   <code>{t.id}</code> · {t.stream} · weight {t.weight} · {t.quiz_difficulty}
                 </div>
               </div>
