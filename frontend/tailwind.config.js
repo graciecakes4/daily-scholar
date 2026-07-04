@@ -15,31 +15,42 @@ module.exports = {
         mono: ['var(--font-mono)', 'IBM Plex Mono', 'monospace'],
       },
       colors: {
-        // editorial paper palette — see /nav-mockups/option-b-editorial-sidebar.html
+        // Theme palette — values pull from CSS custom properties (see
+        // globals.css :root + [data-theme="..."] blocks) rather than literal
+        // hex, so switching the `data-theme` attribute on <html> restyles
+        // every bg-paper/text-ink/etc. utility class at runtime with no
+        // rebuild. Each CSS variable holds space-separated R G B components
+        // (e.g. "242 235 221"), wrapped here as rgb(var(--x) / <alpha-value>)
+        // — Tailwind's documented pattern for CSS-variable colors that still
+        // need /NN opacity modifiers to work (bg-rust/5, border-rule/60,
+        // etc. all over the app). A bare `var(--x)` hex string builds
+        // without error but silently drops any utility using an opacity
+        // modifier — confirmed against the actual compiled output while
+        // building this out for Phase 5 / fd3.
         paper: {
-          DEFAULT: '#F2EBDD',
-          2: '#FBF6EB',
-          3: '#ECE2CC',
+          DEFAULT: 'rgb(var(--paper) / <alpha-value>)',
+          2: 'rgb(var(--paper-2) / <alpha-value>)',
+          3: 'rgb(var(--paper-3) / <alpha-value>)',
         },
         ink: {
-          DEFAULT: '#1B1610',
-          2: '#3A332A',
+          DEFAULT: 'rgb(var(--ink) / <alpha-value>)',
+          2: 'rgb(var(--ink-2) / <alpha-value>)',
         },
         muted: {
-          DEFAULT: '#7E7060',
+          DEFAULT: 'rgb(var(--muted) / <alpha-value>)',
         },
         rule: {
-          DEFAULT: '#DBD0B9',
+          DEFAULT: 'rgb(var(--rule) / <alpha-value>)',
         },
         gold: {
-          DEFAULT: '#B5862B',
-          dark: '#8A6519',
+          DEFAULT: 'rgb(var(--gold) / <alpha-value>)',
+          dark: 'rgb(var(--gold-dark) / <alpha-value>)',
         },
         rust: {
-          DEFAULT: '#8E3A28',
+          DEFAULT: 'rgb(var(--rust) / <alpha-value>)',
         },
         moss: {
-          DEFAULT: '#4F6B3C',
+          DEFAULT: 'rgb(var(--moss) / <alpha-value>)',
         },
         // legacy color palette kept for pages that still reference scholar-*/surface-*
         scholar: {

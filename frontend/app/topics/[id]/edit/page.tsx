@@ -27,25 +27,25 @@ export default function EditTopicPage({ params }: PageProps) {
   if (error) {
     return (
       <div className="space-y-4">
-        <Link href="/topics" className="text-sm text-slate-500 hover:text-slate-700">← back to topics</Link>
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-3">{error}</div>
+        <Link href="/topics" className="text-sm text-muted hover:text-ink-2">← back to topics</Link>
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded-lg px-4 py-3">{error}</div>
       </div>
     );
   }
 
   if (!topic) {
-    return <div className="text-slate-500">Loading…</div>;
+    return <div className="text-muted">Loading…</div>;
   }
 
   return (
     <div className="space-y-6">
       <header>
-        <Link href="/topics" className="text-sm text-slate-500 hover:text-slate-700">← back to topics</Link>
-        <h1 className="text-3xl font-bold text-slate-900 mt-2">{topic.name}</h1>
-        <p className="text-slate-600 mt-1">
+        <Link href="/topics" className="text-sm text-muted hover:text-ink-2">← back to topics</Link>
+        <h1 className="text-3xl font-bold text-ink mt-2">{topic.name}</h1>
+        <p className="text-ink-2 mt-1">
           Editing topic <code className="text-sm">{topic.id}</code>
           {topic.created_via === 'yaml' && (
-            <span className="ml-2 text-xs px-2 py-0.5 bg-amber-100 text-amber-800 rounded">
+            <span className="ml-2 text-xs px-2 py-0.5 bg-gold/10 text-gold-dark rounded">
               Originally from YAML — DB-wins on next reload
             </span>
           )}

@@ -59,8 +59,8 @@ export default function DiscoverPage() {
     <div className="space-y-6">
       <header className="flex items-baseline justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Discover topics</h1>
-          <p className="text-slate-600 mt-1">
+          <h1 className="text-3xl font-bold text-ink">Discover topics</h1>
+          <p className="text-ink-2 mt-1">
             Find public topics shared by other Daily Scholar users.
             Subscribing adds them to your scope — when the owner updates
             the topic, your paper discovery follows along automatically.
@@ -72,30 +72,30 @@ export default function DiscoverPage() {
       </header>
 
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded-lg px-4 py-2 text-sm">
           {error}
         </div>
       )}
 
-      <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <div className="bg-paper-2 border border-rule rounded-lg p-4">
         <input
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
           autoFocus
           placeholder="Search by name…"
-          className="w-full px-4 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:border-slate-900"
+          className="bg-paper text-ink w-full px-4 py-2 border border-rule rounded text-sm focus:outline-none focus:border-ink"
         />
-        <p className="text-xs text-slate-500 mt-2">
+        <p className="text-xs text-muted mt-2">
           Currently matches topic names (case-insensitive). Keyword + concept search coming soon.
         </p>
       </div>
 
-      {loading && <div className="text-slate-500">Searching…</div>}
+      {loading && <div className="text-muted">Searching…</div>}
 
       {results !== null && !loading && (
         results.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-lg p-8 text-center text-slate-500">
+          <div className="bg-paper-2 border border-rule rounded-lg p-8 text-center text-muted">
             No matching topics. They may not exist yet, be private, or already be in your scope.
           </div>
         ) : (
@@ -103,32 +103,32 @@ export default function DiscoverPage() {
             {results.map(topic => {
               const justSubscribed = subscribedIds.has(topic.id);
               return (
-                <li key={topic.id} className="bg-white border border-slate-200 rounded-lg p-4 flex items-start justify-between gap-3 flex-wrap">
+                <li key={topic.id} className="bg-paper-2 border border-rule rounded-lg p-4 flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0 flex-grow">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-slate-900">{topic.name}</span>
-                      <span className="text-xs px-2 py-0.5 bg-violet-100 text-violet-700 rounded">Shared</span>
-                      <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">weight {topic.weight}</span>
+                      <span className="font-semibold text-ink">{topic.name}</span>
+                      <span className="text-xs px-2 py-0.5 bg-gold/10 text-gold-dark rounded">Shared</span>
+                      <span className="text-xs px-2 py-0.5 bg-paper-3 text-ink-2 rounded">weight {topic.weight}</span>
                     </div>
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="mt-1 text-xs text-muted">
                       {topic.keywords.length} keywords · {topic.arxiv_categories.length} arXiv categories · {topic.key_concepts.length} concepts · {topic.stream}
                     </div>
                     {topic.keywords.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
                         {topic.keywords.slice(0, 8).map(kw => (
-                          <span key={kw} className="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded">
+                          <span key={kw} className="text-xs px-1.5 py-0.5 bg-paper-3 text-ink-2 rounded">
                             {kw}
                           </span>
                         ))}
                         {topic.keywords.length > 8 && (
-                          <span className="text-xs text-slate-400">+{topic.keywords.length - 8} more</span>
+                          <span className="text-xs text-muted">+{topic.keywords.length - 8} more</span>
                         )}
                       </div>
                     )}
                   </div>
                   <div className="shrink-0">
                     {justSubscribed ? (
-                      <span className="text-xs px-3 py-1.5 bg-emerald-100 text-emerald-800 rounded font-medium">
+                      <span className="text-xs px-3 py-1.5 bg-moss/10 text-moss rounded font-medium">
                         ✓ Subscribed
                       </span>
                     ) : (
@@ -136,7 +136,7 @@ export default function DiscoverPage() {
                         type="button"
                         onClick={() => onSubscribe(topic)}
                         disabled={busyId !== null}
-                        className="px-3 py-1.5 bg-slate-900 text-white rounded text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+                        className="px-3 py-1.5 bg-gold-dark text-white rounded text-sm font-medium hover:bg-[#734f14] disabled:opacity-50"
                       >
                         {busyId === topic.id ? 'Subscribing…' : 'Subscribe'}
                       </button>
@@ -150,7 +150,7 @@ export default function DiscoverPage() {
       )}
 
       {results === null && !loading && (
-        <div className="text-sm text-slate-500 italic">
+        <div className="text-sm text-muted italic">
           Start typing to search.
         </div>
       )}

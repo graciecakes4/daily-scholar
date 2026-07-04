@@ -26,14 +26,14 @@ export default function UserMenu() {
 
   // skeleton while /auth/me is in flight — keeps the nav width stable
   if (loading) {
-    return <div className="h-8 w-24 bg-slate-100 rounded animate-pulse" />;
+    return <div className="h-8 w-24 bg-paper-3 rounded animate-pulse" />;
   }
 
   if (!user) {
     return (
       <Link
         href="/login"
-        className="ml-2 px-3 py-1.5 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors"
+        className="ml-2 px-3 py-1.5 text-sm font-medium bg-gold-dark text-white rounded-lg hover:bg-[#734f14] transition-colors"
       >
         Log in
       </Link>
@@ -51,18 +51,18 @@ export default function UserMenu() {
 
   return (
     <div className="ml-2 flex items-center gap-2">
-      <span className="hidden sm:inline text-sm text-slate-600 truncate max-w-[180px]" title={user.email}>
+      <span className="hidden sm:inline text-sm text-ink-2 truncate max-w-[180px]" title={user.email}>
         {handle}
       </span>
       {user.role === 'admin' && (
-        <span className="text-[10px] uppercase tracking-wide bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-semibold">
+        <span className="text-[10px] uppercase tracking-wide bg-rule text-ink-2 px-1.5 py-0.5 rounded font-semibold">
           admin
         </span>
       )}
       <button
         type="button"
         onClick={onLogout}
-        className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+        className="px-3 py-1.5 text-sm font-medium text-ink-2 hover:text-ink hover:bg-paper-3 rounded-lg transition-colors"
       >
         Log out
       </button>

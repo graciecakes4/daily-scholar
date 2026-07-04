@@ -23,11 +23,11 @@ interface Props {
 }
 
 const COPY: Record<Strength, { label: string; hint: string; barCls: string; textCls: string; widthCls: string }> = {
-  empty:  { label: '',         hint: '',                                                                    barCls: 'bg-slate-200', textCls: 'text-slate-500', widthCls: 'w-0' },
-  weak:   { label: 'Weak',     hint: 'Try at least 8 characters with a mix of upper/lower and digits.',     barCls: 'bg-rose-500',  textCls: 'text-rose-700',  widthCls: 'w-1/4' },
-  fair:   { label: 'Fair',     hint: 'Longer is better. Add a symbol or another character class.',          barCls: 'bg-amber-500', textCls: 'text-amber-700', widthCls: 'w-2/4' },
+  empty:  { label: '',         hint: '',                                                                    barCls: 'bg-rule', textCls: 'text-muted', widthCls: 'w-0' },
+  weak:   { label: 'Weak',     hint: 'Try at least 8 characters with a mix of upper/lower and digits.',     barCls: 'bg-rust',  textCls: 'text-rust',  widthCls: 'w-1/4' },
+  fair:   { label: 'Fair',     hint: 'Longer is better. Add a symbol or another character class.',          barCls: 'bg-gold', textCls: 'text-gold-dark', widthCls: 'w-2/4' },
   good:   { label: 'Good',     hint: 'Good. A few more characters or a symbol would make it stronger.',    barCls: 'bg-sky-500',   textCls: 'text-sky-700',   widthCls: 'w-3/4' },
-  strong: { label: 'Strong',   hint: 'Strong. Hard to brute-force.',                                       barCls: 'bg-emerald-500', textCls: 'text-emerald-700', widthCls: 'w-full' },
+  strong: { label: 'Strong',   hint: 'Strong. Hard to brute-force.',                                       barCls: 'bg-moss', textCls: 'text-moss', widthCls: 'w-full' },
 };
 
 export function scorePassword(pw: string): Strength {
@@ -58,7 +58,7 @@ export default function PasswordStrength({ password, hideWhenEmpty = true }: Pro
 
   return (
     <div className="space-y-1" aria-live="polite">
-      <div className="h-1 w-full bg-slate-100 rounded overflow-hidden">
+      <div className="h-1 w-full bg-paper-3 rounded overflow-hidden">
         <div
           className={`h-full transition-all duration-200 ${copy.barCls} ${copy.widthCls}`}
           role="progressbar"
@@ -73,7 +73,7 @@ export default function PasswordStrength({ password, hideWhenEmpty = true }: Pro
       {strength !== 'empty' && (
         <div className="flex items-baseline justify-between text-xs">
           <span className={`font-medium ${copy.textCls}`}>{copy.label}</span>
-          <span className="text-slate-500">{copy.hint}</span>
+          <span className="text-muted">{copy.hint}</span>
         </div>
       )}
     </div>

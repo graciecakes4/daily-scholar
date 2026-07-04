@@ -245,7 +245,7 @@ export default function NotificationsSettingsPage() {
       </div>
 
       {schedulerRunning === false && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3.5 text-xs">
+        <div className="bg-gold/5 border border-gold/30 text-gold-dark rounded-xl p-3.5 text-xs">
           The background scheduler isn't currently running on the server. Saved settings will be applied
           on the next restart. (Often this means the <code className="font-mono">SCHEDULER_DISABLED</code> env var is set —
           common in test / CI environments.)
@@ -393,7 +393,7 @@ function NotificationCard({
             onChange={e => onChange({ enabled: e.target.checked })}
             className="peer sr-only"
           />
-          <span className="block w-[46px] h-[26px] rounded-full bg-rule peer-checked:bg-gold-dark transition-colors relative after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:w-5 after:h-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-5" />
+          <span className="block w-[46px] h-[26px] rounded-full bg-rule peer-checked:bg-gold-dark transition-colors relative after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:w-5 after:h-5 after:rounded-full after:bg-paper-2 after:shadow-sm after:transition-transform peer-checked:after:translate-x-5" />
         </label>
       </div>
 

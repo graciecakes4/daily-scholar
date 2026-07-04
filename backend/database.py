@@ -427,6 +427,14 @@ class UserSettings(Base):
     #   }
     notification_settings = Column(JSON, nullable=False, default=dict)
 
+    # Phase 5 / fd3 (foundation): display preferences (theme + font size).
+    # Schema lives in backend/services/display.py (DEFAULT_DISPLAY_SETTINGS).
+    # JSON so new themes/font sizes are a registry change only.
+    #
+    # Shape:
+    #   {"theme": "editorial" | "dark" | "observatory", "font_size": "small" | "medium" | "large" | "xlarge"}
+    display_settings = Column(JSON, nullable=False, default=dict)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

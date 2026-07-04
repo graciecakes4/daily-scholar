@@ -88,7 +88,7 @@ export default function SignupPage() {
             value={inviteCode}
             onChange={e => setInviteCode(e.target.value)}
             placeholder="e.g. aB3-x7F_kLm"
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono focus:outline-none focus:border-slate-900"
+            className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm font-mono focus:outline-none focus:border-ink"
           />
         </Field>
 
@@ -100,7 +100,7 @@ export default function SignupPage() {
             required
             value={email}
             onChange={e => setEmail(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:border-slate-900"
+            className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm focus:outline-none focus:border-ink"
           />
         </Field>
 
@@ -116,11 +116,11 @@ export default function SignupPage() {
             value={userId}
             onChange={e => setUserId(e.target.value.toLowerCase())}
             placeholder="(uses your email)"
-            className={`w-full px-3 py-2 border rounded text-sm focus:outline-none ${
-              handleError ? 'border-rose-400 focus:border-rose-600' : 'border-slate-300 focus:border-slate-900'
+            className={`bg-paper text-ink w-full px-3 py-2 border rounded text-sm focus:outline-none ${
+              handleError ? 'border-rust/30 focus:border-rust/40' : 'border-rule focus:border-ink'
             }`}
           />
-          {handleError && <p className="text-xs text-rose-700">{handleError}</p>}
+          {handleError && <p className="text-xs text-rust">{handleError}</p>}
         </Field>
 
         <Field label="Password" htmlFor="su-password" hint="At least 8 characters.">
@@ -132,8 +132,8 @@ export default function SignupPage() {
             minLength={8}
             value={password}
             onChange={e => setPassword(e.target.value)}
-            className={`w-full px-3 py-2 border rounded text-sm focus:outline-none ${
-              passwordTooShort ? 'border-rose-400 focus:border-rose-600' : 'border-slate-300 focus:border-slate-900'
+            className={`bg-paper text-ink w-full px-3 py-2 border rounded text-sm focus:outline-none ${
+              passwordTooShort ? 'border-rust/30 focus:border-rust/40' : 'border-rule focus:border-ink'
             }`}
           />
           <PasswordStrength password={password} />
@@ -147,33 +147,33 @@ export default function SignupPage() {
             required
             value={confirm}
             onChange={e => setConfirm(e.target.value)}
-            className={`w-full px-3 py-2 border rounded text-sm focus:outline-none ${
-              passwordMismatch ? 'border-rose-400 focus:border-rose-600' : 'border-slate-300 focus:border-slate-900'
+            className={`bg-paper text-ink w-full px-3 py-2 border rounded text-sm focus:outline-none ${
+              passwordMismatch ? 'border-rust/30 focus:border-rust/40' : 'border-rule focus:border-ink'
             }`}
           />
-          {passwordMismatch && <p className="text-xs text-rose-700">Passwords don't match.</p>}
+          {passwordMismatch && <p className="text-xs text-rust">Passwords don't match.</p>}
         </Field>
 
         {error && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">
+          <div className="bg-rust/5 border border-rust/25 text-rust rounded px-3 py-2 text-sm">
             {error}
           </div>
         )}
 
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-muted">
           New accounts require administrator approval before you can use the app.
         </p>
 
         <button
           type="submit"
           disabled={disabled}
-          className="w-full px-4 py-2 bg-slate-900 text-white rounded font-medium hover:bg-slate-700 disabled:opacity-50"
+          className="w-full px-4 py-2 bg-gold-dark text-white rounded font-medium hover:bg-[#734f14] disabled:opacity-50"
         >
           {submitting ? 'Creating account…' : 'Create account'}
         </button>
       </form>
 
-      <p className="text-sm text-slate-600 text-center mt-6">
+      <p className="text-sm text-ink-2 text-center mt-6">
         Already have an account?{' '}
         <Link href="/login" className="text-sky-700 hover:underline">
           Log in

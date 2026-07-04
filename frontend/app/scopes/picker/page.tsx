@@ -82,8 +82,8 @@ export default function ScopePickerPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-slate-900">Pick a scope to start</h1>
-        <p className="text-slate-600 mt-2 max-w-2xl">
+        <h1 className="text-3xl font-bold text-ink">Pick a scope to start</h1>
+        <p className="text-ink-2 mt-2 max-w-2xl">
           A scope decides which topics drive your daily papers, reviews, and
           quizzes. Pick a starter from the catalog below, browse what others
           have published, or build one from scratch — you can always switch
@@ -92,20 +92,20 @@ export default function ScopePickerPage() {
       </header>
 
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded-lg px-4 py-2 text-sm">
           {error}
         </div>
       )}
 
       {/* starter scopes */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
           Starter scopes
         </h2>
         {loading ? (
-          <p className="text-sm text-slate-500">Loading…</p>
+          <p className="text-sm text-muted">Loading…</p>
         ) : starters.length === 0 ? (
-          <p className="text-sm text-slate-500 italic">
+          <p className="text-sm text-muted italic">
             No starter scopes available right now.
           </p>
         ) : (
@@ -123,17 +123,17 @@ export default function ScopePickerPage() {
       </section>
 
       {/* secondary paths */}
-      <section className="bg-slate-50 border border-slate-200 rounded-lg p-5 space-y-3">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+      <section className="bg-paper border border-rule rounded-lg p-5 space-y-3">
+        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
           Or…
         </h2>
         <div className="flex flex-col sm:flex-row gap-3">
           <Link
             href="/settings/scope/browse"
-            className="flex-1 px-4 py-3 bg-white border border-slate-300 rounded-lg text-sm text-center hover:bg-slate-50"
+            className="flex-1 px-4 py-3 bg-paper-2 border border-rule rounded-lg text-sm text-center hover:bg-paper"
           >
             Browse all public scopes
-            <div className="text-xs text-slate-500 mt-0.5">
+            <div className="text-xs text-muted mt-0.5">
               Including scopes shared by other users
             </div>
           </Link>
@@ -141,10 +141,10 @@ export default function ScopePickerPage() {
             type="button"
             onClick={startFromScratch}
             disabled={busy}
-            className="flex-1 px-4 py-3 bg-white border border-slate-300 rounded-lg text-sm text-center hover:bg-slate-50 disabled:opacity-50"
+            className="flex-1 px-4 py-3 bg-paper-2 border border-rule rounded-lg text-sm text-center hover:bg-paper disabled:opacity-50"
           >
             Start from scratch
-            <div className="text-xs text-slate-500 mt-0.5">
+            <div className="text-xs text-muted mt-0.5">
               {busy ? 'Working…' : "Build your own scope from the topic catalog"}
             </div>
           </button>
@@ -162,23 +162,23 @@ function StarterCard({
   onPick: () => void;
 }) {
   return (
-    <li className="bg-white border border-slate-200 rounded-lg p-4 flex flex-col gap-2">
+    <li className="bg-paper-2 border border-rule rounded-lg p-4 flex flex-col gap-2">
       <div>
-        <h3 className="font-medium text-slate-900">{scope.name}</h3>
-        <div className="text-xs text-slate-500 mt-0.5">
+        <h3 className="font-medium text-ink">{scope.name}</h3>
+        <div className="text-xs text-muted mt-0.5">
           <span className="font-mono">{scope.scope_mode}</span>
           {' · '}
           {scope.scope_topic_ids.length} topic(s)
         </div>
       </div>
       {scope.description && (
-        <p className="text-sm text-slate-600 flex-grow">{scope.description}</p>
+        <p className="text-sm text-ink-2 flex-grow">{scope.description}</p>
       )}
       <button
         type="button"
         onClick={onPick}
         disabled={busy}
-        className="mt-2 self-start px-4 py-2 bg-slate-900 text-white rounded text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+        className="mt-2 self-start px-4 py-2 bg-gold-dark text-white rounded text-sm font-medium hover:bg-[#734f14] disabled:opacity-50"
       >
         {busy ? 'Working…' : 'Use this scope'}
       </button>

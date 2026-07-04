@@ -50,7 +50,7 @@ function ResetPasswordInner() {
   if (!token) {
     return (
       <AuthShell title="Reset your password">
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded px-3 py-2 text-sm">
           This link is missing its reset token. Start over from{' '}
           <Link href="/forgot-password" className="underline">
             forgot password
@@ -64,7 +64,7 @@ function ResetPasswordInner() {
   if (done) {
     return (
       <AuthShell title="Password updated">
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-ink-2">
           You're all set — every other device has been signed out. Redirecting you to log in…
         </p>
       </AuthShell>
@@ -83,8 +83,8 @@ function ResetPasswordInner() {
             minLength={8}
             value={password}
             onChange={e => setPassword(e.target.value)}
-            className={`w-full px-3 py-2 border rounded text-sm focus:outline-none ${
-              passwordTooShort ? 'border-rose-400 focus:border-rose-600' : 'border-slate-300 focus:border-slate-900'
+            className={`bg-paper text-ink w-full px-3 py-2 border rounded text-sm focus:outline-none ${
+              passwordTooShort ? 'border-rust/30 focus:border-rust/40' : 'border-rule focus:border-ink'
             }`}
           />
           <PasswordStrength password={password} />
@@ -98,15 +98,15 @@ function ResetPasswordInner() {
             required
             value={confirm}
             onChange={e => setConfirm(e.target.value)}
-            className={`w-full px-3 py-2 border rounded text-sm focus:outline-none ${
-              passwordMismatch ? 'border-rose-400 focus:border-rose-600' : 'border-slate-300 focus:border-slate-900'
+            className={`bg-paper text-ink w-full px-3 py-2 border rounded text-sm focus:outline-none ${
+              passwordMismatch ? 'border-rust/30 focus:border-rust/40' : 'border-rule focus:border-ink'
             }`}
           />
-          {passwordMismatch && <p className="text-xs text-rose-700">Passwords don't match.</p>}
+          {passwordMismatch && <p className="text-xs text-rust">Passwords don't match.</p>}
         </Field>
 
         {error && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">
+          <div className="bg-rust/5 border border-rust/25 text-rust rounded px-3 py-2 text-sm">
             {error}
           </div>
         )}
@@ -114,7 +114,7 @@ function ResetPasswordInner() {
         <button
           type="submit"
           disabled={disabled}
-          className="w-full px-4 py-2 bg-slate-900 text-white rounded font-medium hover:bg-slate-700 disabled:opacity-50"
+          className="w-full px-4 py-2 bg-gold-dark text-white rounded font-medium hover:bg-[#734f14] disabled:opacity-50"
         >
           {submitting ? 'Resetting…' : 'Reset password'}
         </button>

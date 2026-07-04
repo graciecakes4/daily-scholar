@@ -110,7 +110,7 @@ function ChangeUsernameCard({
           autoComplete="username"
           value={handle}
           onChange={e => setHandle(e.target.value.toLowerCase())}
-          className={`w-full rounded border px-3 py-2 font-mono text-sm focus:outline-none ${
+          className={`bg-paper text-ink w-full rounded border px-3 py-2 font-mono text-sm focus:outline-none ${
             handleError && handle ? 'border-rose-400 focus:border-rose-600' : 'border-rule focus:border-ink'
           }`}
         />
@@ -128,7 +128,7 @@ function ChangeUsernameCard({
           required
           value={current}
           onChange={e => setCurrent(e.target.value)}
-          className="w-full rounded border border-rule px-3 py-2 text-sm focus:outline-none focus:border-ink"
+          className="bg-paper text-ink w-full rounded border border-rule px-3 py-2 text-sm focus:outline-none focus:border-ink"
         />
       </Field>
 

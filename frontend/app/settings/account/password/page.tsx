@@ -89,7 +89,7 @@ function ChangePasswordCard() {
           required
           value={current}
           onChange={e => setCurrent(e.target.value)}
-          className="w-full rounded border border-rule px-3 py-2 text-sm focus:outline-none focus:border-ink"
+          className="bg-paper text-ink w-full rounded border border-rule px-3 py-2 text-sm focus:outline-none focus:border-ink"
         />
       </Field>
 
@@ -102,7 +102,7 @@ function ChangePasswordCard() {
           minLength={8}
           value={next}
           onChange={e => setNext(e.target.value)}
-          className={`w-full rounded border px-3 py-2 text-sm focus:outline-none ${
+          className={`bg-paper text-ink w-full rounded border px-3 py-2 text-sm focus:outline-none ${
             tooShort ? 'border-rose-400 focus:border-rose-600' : 'border-rule focus:border-ink'
           }`}
         />
@@ -117,7 +117,7 @@ function ChangePasswordCard() {
           required
           value={confirm}
           onChange={e => setConfirm(e.target.value)}
-          className={`w-full rounded border px-3 py-2 text-sm focus:outline-none ${
+          className={`bg-paper text-ink w-full rounded border px-3 py-2 text-sm focus:outline-none ${
             mismatch ? 'border-rose-400 focus:border-rose-600' : 'border-rule focus:border-ink'
           }`}
         />

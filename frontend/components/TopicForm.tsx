@@ -136,14 +136,14 @@ export default function TopicForm({ mode, initial }: Props) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-3xl">
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded-lg px-4 py-2 text-sm">
           {error}
         </div>
       )}
 
       {/* identity */}
-      <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Identity</h2>
+      <section className="bg-paper-2 border border-rule rounded-lg p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">Identity</h2>
         {/* slug field: only admins see it on create (regular users get a
             server-generated opaque id); shown read-only on edit so admins
             can see the slug, but it's immutable */}
@@ -162,7 +162,7 @@ export default function TopicForm({ mode, initial }: Props) {
               disabled={mode === 'edit'}
               onChange={e => patch('id', e.target.value)}
               placeholder={isAdmin ? 'leave blank to auto-generate' : 'my-new-topic'}
-              className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono disabled:bg-slate-100 disabled:text-slate-500"
+              className="w-full px-3 py-2 border border-rule rounded text-sm font-mono disabled:bg-paper-3 disabled:text-muted"
             />
           </Field>
         )}
@@ -171,7 +171,7 @@ export default function TopicForm({ mode, initial }: Props) {
             type="text"
             value={form.name}
             onChange={e => patch('name', e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+            className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm"
             required
           />
         </Field>
@@ -186,7 +186,7 @@ export default function TopicForm({ mode, initial }: Props) {
           <select
             value={form.visibility}
             onChange={e => patch('visibility', e.target.value as 'private' | 'public')}
-            className="w-full max-w-xs px-3 py-2 border border-slate-300 rounded text-sm"
+            className="bg-paper text-ink w-full max-w-xs px-3 py-2 border border-rule rounded text-sm"
           >
             <option value="private">Private</option>
             <option value="public">Public</option>
@@ -198,7 +198,7 @@ export default function TopicForm({ mode, initial }: Props) {
             value={form.stream}
             onChange={e => patch('stream', e.target.value)}
             placeholder="uncategorized"
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+            className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm"
           />
         </Field>
         <div className="flex items-center gap-6">
@@ -216,21 +216,21 @@ export default function TopicForm({ mode, initial }: Props) {
               step="0.1"
               value={form.weight}
               onChange={e => patch('weight', e.target.value)}
-              className="w-20 px-2 py-1 border border-slate-300 rounded text-sm"
+              className="bg-paper text-ink w-20 px-2 py-1 border border-rule rounded text-sm"
             />
           </Field>
         </div>
       </section>
 
       {/* paper discovery */}
-      <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Paper Discovery</h2>
+      <section className="bg-paper-2 border border-rule rounded-lg p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">Paper Discovery</h2>
         <Field label="Keywords" hint="one per line, or comma-separated">
           <textarea
             value={form.keywords}
             onChange={e => patch('keywords', e.target.value)}
             rows={6}
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono"
+            className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm font-mono"
           />
         </Field>
         <Field label="arXiv categories" hint="e.g. astro-ph.IM, cs.LG">
@@ -238,7 +238,7 @@ export default function TopicForm({ mode, initial }: Props) {
             value={form.arxiv_categories}
             onChange={e => patch('arxiv_categories', e.target.value)}
             rows={3}
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono"
+            className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm font-mono"
           />
         </Field>
         <div className="grid grid-cols-2 gap-4">
@@ -247,7 +247,7 @@ export default function TopicForm({ mode, initial }: Props) {
               type="number"
               value={form.recency_days}
               onChange={e => patch('recency_days', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+              className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm"
             />
           </Field>
           <Field label="Min relevance">
@@ -256,21 +256,21 @@ export default function TopicForm({ mode, initial }: Props) {
               step="0.01"
               value={form.min_relevance}
               onChange={e => patch('min_relevance', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+              className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm"
             />
           </Field>
         </div>
       </section>
 
       {/* learning content */}
-      <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Learning Content</h2>
+      <section className="bg-paper-2 border border-rule rounded-lg p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">Learning Content</h2>
         <Field label="Key concepts" hint="one per line">
           <textarea
             value={form.key_concepts}
             onChange={e => patch('key_concepts', e.target.value)}
             rows={6}
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+            className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm"
           />
         </Field>
         <Field label="Learning objectives" hint="one per line">
@@ -278,7 +278,7 @@ export default function TopicForm({ mode, initial }: Props) {
             value={form.learning_objectives}
             onChange={e => patch('learning_objectives', e.target.value)}
             rows={5}
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+            className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm"
           />
         </Field>
         <Field label="Resources" hint="file paths relative to uploads/, or URLs">
@@ -286,7 +286,7 @@ export default function TopicForm({ mode, initial }: Props) {
             value={form.resources}
             onChange={e => patch('resources', e.target.value)}
             rows={3}
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono"
+            className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm font-mono"
           />
         </Field>
         <div className="grid grid-cols-2 gap-4">
@@ -294,7 +294,7 @@ export default function TopicForm({ mode, initial }: Props) {
             <select
               value={form.quiz_difficulty}
               onChange={e => patch('quiz_difficulty', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+              className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm"
             >
               {DIFFICULTIES.map(d => (
                 <option key={d} value={d}>{d}</option>
@@ -306,7 +306,7 @@ export default function TopicForm({ mode, initial }: Props) {
               value={form.prerequisites}
               onChange={e => patch('prerequisites', e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono"
+              className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm font-mono"
             />
           </Field>
         </div>
@@ -316,14 +316,14 @@ export default function TopicForm({ mode, initial }: Props) {
         <button
           type="submit"
           disabled={saving}
-          className="px-5 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+          className="px-5 py-2 bg-gold-dark text-white rounded-lg text-sm font-medium hover:bg-[#734f14] disabled:opacity-50"
         >
           {saving ? 'Saving…' : mode === 'create' ? 'Create topic' : 'Save changes'}
         </button>
         <button
           type="button"
           onClick={() => router.push('/topics')}
-          className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50"
+          className="px-4 py-2 bg-paper-2 border border-rule text-ink-2 rounded-lg text-sm font-medium hover:bg-paper"
         >
           Cancel
         </button>
@@ -342,9 +342,9 @@ function Field({
 }) {
   return (
     <label className={inline ? 'flex items-center gap-2' : 'block'}>
-      <div className={inline ? 'text-sm font-medium text-slate-700' : 'flex items-baseline justify-between'}>
-        <span className="text-sm font-medium text-slate-700">{label}</span>
-        {hint && !inline && <span className="text-xs text-slate-400">{hint}</span>}
+      <div className={inline ? 'text-sm font-medium text-ink-2' : 'flex items-baseline justify-between'}>
+        <span className="text-sm font-medium text-ink-2">{label}</span>
+        {hint && !inline && <span className="text-xs text-muted">{hint}</span>}
       </div>
       <div className={inline ? '' : 'mt-1'}>{children}</div>
     </label>

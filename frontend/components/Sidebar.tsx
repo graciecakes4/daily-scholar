@@ -131,6 +131,15 @@ const SparkleIcon = ({ className }: IconProps) => (
   </svg>
 );
 
+const PaletteIcon = ({ className }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3a9 9 0 100 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-.9.7-1.5 1.5-1.5H16a4 4 0 004-4c0-4.4-3.6-8-8-8z" />
+    <circle cx="7.5" cy="10.5" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="11" cy="7" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="8" r="1.2" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 // hides the sidebar on the bare auth pages — they own the full viewport
 const HIDE_PATH_PREFIXES = ['/login', '/signup', '/account/'];
 
@@ -174,6 +183,11 @@ const ACCOUNT_ITEMS: NavItem[] = [
   { href: '/settings/account/profile', label: 'Profile', icon: <ProfileIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/account/profile') },
   { href: '/settings/account/password', label: 'Password', icon: <KeyIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/account/password') },
   { href: '/settings/account/username', label: 'Username', icon: <AtIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/account/username') },
+];
+
+// Phase 5 / fd3 (foundation)
+const APPEARANCE_ITEMS: NavItem[] = [
+  { href: '/settings/display', label: 'Display', icon: <PaletteIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/display') },
 ];
 
 const TUTORIALS_ITEMS: NavItem[] = [
@@ -381,6 +395,15 @@ export default function Sidebar() {
         <GroupLabel>Account</GroupLabel>
         <div className="flex flex-col gap-px">
           {ACCOUNT_ITEMS.map((item) => (
+            <NavLink key={item.href} item={item} pathname={pathname} />
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <GroupLabel>Appearance</GroupLabel>
+        <div className="flex flex-col gap-px">
+          {APPEARANCE_ITEMS.map((item) => (
             <NavLink key={item.href} item={item} pathname={pathname} />
           ))}
         </div>

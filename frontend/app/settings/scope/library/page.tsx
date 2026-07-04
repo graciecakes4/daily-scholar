@@ -98,7 +98,7 @@ function MyScopesInner() {
     }
   }
 
-  if (loading) return <div className="text-slate-500">Loading…</div>;
+  if (loading) return <div className="text-muted">Loading…</div>;
 
   const owned = library.filter(s => s.relation === 'owned');
   const granted = library.filter(s => s.relation === 'granted');
@@ -106,19 +106,19 @@ function MyScopesInner() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-slate-900">My scopes</h1>
-        <p className="text-slate-600 mt-1">
+        <h1 className="text-3xl font-bold text-ink">My scopes</h1>
+        <p className="text-ink-2 mt-1">
           Saved views that decide which topics drive your discovery, reviews, and quizzes.
         </p>
       </header>
 
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded-lg px-4 py-2 text-sm">
           {error}
         </div>
       )}
       {success && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-moss/5 border border-moss/25 text-moss rounded-lg px-4 py-2 text-sm">
           {success}
         </div>
       )}
@@ -126,21 +126,21 @@ function MyScopesInner() {
       {/* active scope banner */}
       <section
         data-tour="scope-active"
-        className="bg-white border border-slate-200 rounded-lg p-5 flex items-center justify-between gap-4 flex-wrap"
+        className="bg-paper-2 border border-rule rounded-lg p-5 flex items-center justify-between gap-4 flex-wrap"
       >
         <div>
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
             Active scope
           </h2>
           {active ? (
             <div className="mt-1">
               <Link
                 href={`/settings/scope/${active.id}`}
-                className="text-lg font-medium text-slate-900 hover:underline"
+                className="text-lg font-medium text-ink hover:underline"
               >
                 {active.name}
               </Link>
-              <div className="text-xs text-slate-500 mt-0.5">
+              <div className="text-xs text-muted mt-0.5">
                 <span className="font-mono">{active.scope_mode}</span>
                 {' · '}
                 {active.scope_topic_ids.length} topic(s)
@@ -148,7 +148,7 @@ function MyScopesInner() {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-slate-600 mt-1">
+            <p className="text-sm text-ink-2 mt-1">
               No scope is active.{' '}
               <Link href="/settings/scope/browse" className="text-sky-700 hover:underline">
                 Pick a starter
@@ -169,7 +169,7 @@ function MyScopesInner() {
             type="button"
             onClick={() => handleSetActive(null)}
             disabled={busy}
-            className="text-xs text-slate-500 hover:text-slate-700 underline disabled:opacity-50"
+            className="text-xs text-muted hover:text-ink-2 underline disabled:opacity-50"
             title="Clear active scope"
           >
             Clear
@@ -180,13 +180,13 @@ function MyScopesInner() {
       {/* my scopes */}
       <section data-tour="scope-library" className="space-y-3">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
             My scopes ({owned.length})
           </h2>
           <div className="flex items-center gap-2">
             <Link
               href="/settings/scope/generate"
-              className="text-sm px-4 py-2 border border-slate-300 rounded-lg font-medium text-slate-700 hover:bg-slate-50"
+              className="text-sm px-4 py-2 border border-rule rounded-lg font-medium text-ink-2 hover:bg-paper"
               title="Describe what you want to study — keywords and arXiv categories are drafted for you"
             >
               Generate scope
@@ -195,14 +195,14 @@ function MyScopesInner() {
               type="button"
               onClick={handleCreate}
               disabled={busy}
-              className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+              className="px-4 py-2 bg-gold-dark text-white rounded-lg text-sm font-medium hover:bg-[#734f14] disabled:opacity-50"
             >
               {busy ? 'Working…' : 'New scope'}
             </button>
           </div>
         </div>
         {owned.length === 0 ? (
-          <p className="text-sm text-slate-500 italic">
+          <p className="text-sm text-muted italic">
             You haven't created any scopes yet. Fork a public starter, generate one from a
             description, or build one from scratch.
           </p>
@@ -225,7 +225,7 @@ function MyScopesInner() {
       {/* shared with me */}
       {granted.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
             Shared with me ({granted.length})
           </h2>
           <ul className="space-y-2">
@@ -247,7 +247,7 @@ function MyScopesInner() {
 
 export default function MyScopesPage() {
   return (
-    <Suspense fallback={<div className="text-slate-500">Loading…</div>}>
+    <Suspense fallback={<div className="text-muted">Loading…</div>}>
       <MyScopesInner />
     </Suspense>
   );
@@ -263,14 +263,14 @@ function LibraryRow({
   onDelete?: () => void;
 }) {
   return (
-    <li className={`bg-white border rounded-lg p-4 flex items-start gap-3 ${
-      isActive ? 'border-slate-900 ring-1 ring-slate-900/10' : 'border-slate-200'
+    <li className={`bg-paper-2 border rounded-lg p-4 flex items-start gap-3 ${
+      isActive ? 'border-ink ring-1 ring-ink/10' : 'border-rule'
     }`}>
       <div className="flex-grow min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <Link
             href={`/settings/scope/${item.id}`}
-            className="font-medium text-slate-900 hover:underline truncate"
+            className="font-medium text-ink hover:underline truncate"
           >
             {item.name}
           </Link>
@@ -281,20 +281,20 @@ function LibraryRow({
             </span>
           )}
           {isActive && (
-            <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded px-1.5 py-0.5">
+            <span className="text-xs bg-moss/5 text-moss border border-moss/25 rounded px-1.5 py-0.5">
               active
             </span>
           )}
           {item.forked_from_scope_id && (
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-muted">
               forked from #{item.forked_from_scope_id}
             </span>
           )}
         </div>
         {item.description && (
-          <p className="text-sm text-slate-600 mt-1 truncate">{item.description}</p>
+          <p className="text-sm text-ink-2 mt-1 truncate">{item.description}</p>
         )}
-        <div className="text-xs text-slate-500 mt-1">
+        <div className="text-xs text-muted mt-1">
           <span className="font-mono">{item.scope_mode}</span>
           {' · '}
           {item.scope_topic_ids.length} topic(s)
@@ -306,7 +306,7 @@ function LibraryRow({
             type="button"
             onClick={onSetActive}
             disabled={busy}
-            className="text-sm px-3 py-1.5 bg-slate-100 text-slate-700 rounded hover:bg-slate-200 disabled:opacity-50"
+            className="text-sm px-3 py-1.5 bg-paper-3 text-ink-2 rounded hover:bg-rule disabled:opacity-50"
           >
             Set active
           </button>
@@ -316,7 +316,7 @@ function LibraryRow({
             type="button"
             onClick={onDelete}
             disabled={busy}
-            className="text-sm px-3 py-1.5 text-rose-600 hover:bg-rose-50 rounded disabled:opacity-50"
+            className="text-sm px-3 py-1.5 text-rust hover:bg-rust/5 rounded disabled:opacity-50"
           >
             Delete
           </button>
@@ -329,13 +329,13 @@ function LibraryRow({
 function VisibilityBadge({ visibility }: { visibility: 'public' | 'private' }) {
   if (visibility === 'public') {
     return (
-      <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded px-1.5 py-0.5">
+      <span className="text-xs bg-gold/5 text-gold-dark border border-gold/30 rounded px-1.5 py-0.5">
         public
       </span>
     );
   }
   return (
-    <span className="text-xs bg-slate-100 text-slate-600 border border-slate-200 rounded px-1.5 py-0.5">
+    <span className="text-xs bg-paper-3 text-ink-2 border border-rule rounded px-1.5 py-0.5">
       private
     </span>
   );

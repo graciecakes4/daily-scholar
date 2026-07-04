@@ -39,11 +39,11 @@ export default function ForgotPasswordPage() {
   if (sent) {
     return (
       <AuthShell title="Check your email">
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-ink-2">
           If an account exists for <span className="font-medium">{email}</span>, we've sent a
           link to reset your password. It expires in 30 minutes.
         </p>
-        <p className="text-sm text-slate-600 text-center mt-6">
+        <p className="text-sm text-ink-2 text-center mt-6">
           <Link href="/login" className="text-sky-700 hover:underline">
             Back to log in
           </Link>
@@ -54,7 +54,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthShell title="Forgot your password?">
-      <p className="text-sm text-slate-600 mb-4">
+      <p className="text-sm text-ink-2 mb-4">
         Enter the email on your account and we'll send you a link to reset your password.
       </p>
 
@@ -67,12 +67,12 @@ export default function ForgotPasswordPage() {
             required
             value={email}
             onChange={e => setEmail(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:border-slate-900"
+            className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm focus:outline-none focus:border-ink"
           />
         </Field>
 
         {error && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">
+          <div className="bg-rust/5 border border-rust/25 text-rust rounded px-3 py-2 text-sm">
             {error}
           </div>
         )}
@@ -80,13 +80,13 @@ export default function ForgotPasswordPage() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full px-4 py-2 bg-slate-900 text-white rounded font-medium hover:bg-slate-700 disabled:opacity-50"
+          className="w-full px-4 py-2 bg-gold-dark text-white rounded font-medium hover:bg-[#734f14] disabled:opacity-50"
         >
           {submitting ? 'Sending…' : 'Send reset link'}
         </button>
       </form>
 
-      <p className="text-sm text-slate-600 text-center mt-6">
+      <p className="text-sm text-ink-2 text-center mt-6">
         Remembered it?{' '}
         <Link href="/login" className="text-sky-700 hover:underline">
           Log in

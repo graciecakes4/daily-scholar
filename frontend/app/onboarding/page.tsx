@@ -99,8 +99,8 @@ export default function OnboardingPage() {
   return (
     <div className="max-w-2xl mx-auto mt-8 space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-slate-900">Welcome to Daily Scholar</h1>
-        <p className="text-slate-600 mt-1">
+        <h1 className="text-3xl font-bold text-ink">Welcome to Daily Scholar</h1>
+        <p className="text-ink-2 mt-1">
           Let's set up your first topic. Daily Scholar uses topics to discover
           relevant papers, generate reviews, and build quizzes — tell us what
           you want to learn about and we'll draft one for you.
@@ -110,15 +110,15 @@ export default function OnboardingPage() {
       <Steps current={step} />
 
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded-lg px-4 py-2 text-sm">
           {error}
         </div>
       )}
 
       {step === 'describe' && (
-        <section className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
+        <section className="bg-paper-2 border border-rule rounded-lg p-6 space-y-4">
           <label className="block">
-            <div className="text-sm font-medium text-slate-700 mb-1">
+            <div className="text-sm font-medium text-ink-2 mb-1">
               What do you want to study?
             </div>
             <textarea
@@ -126,10 +126,10 @@ export default function OnboardingPage() {
               onChange={e => setInterests(e.target.value)}
               rows={5}
               placeholder="e.g. transformer architectures, attention mechanisms, and how they apply to vision-language models"
-              className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:border-slate-900"
+              className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm focus:outline-none focus:border-ink"
               autoFocus
             />
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-muted mt-1">
               A sentence or two is enough. We'll extract keywords + arXiv categories you can edit.
             </p>
           </label>
@@ -139,7 +139,7 @@ export default function OnboardingPage() {
               type="button"
               onClick={onSkip}
               disabled={busy}
-              className="text-sm text-slate-500 hover:text-slate-700 hover:underline disabled:opacity-50"
+              className="text-sm text-muted hover:text-ink-2 hover:underline disabled:opacity-50"
             >
               Skip for now
             </button>
@@ -147,7 +147,7 @@ export default function OnboardingPage() {
               type="button"
               onClick={onGenerate}
               disabled={busy || interests.trim().length < 4}
-              className="px-5 py-2 bg-slate-900 text-white rounded font-medium hover:bg-slate-700 disabled:opacity-50"
+              className="px-5 py-2 bg-gold-dark text-white rounded font-medium hover:bg-[#734f14] disabled:opacity-50"
             >
               {busy ? 'Generating…' : 'Generate topic'}
             </button>
@@ -156,11 +156,11 @@ export default function OnboardingPage() {
       )}
 
       {step === 'review' && draft !== null && (
-        <section className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+        <section className="bg-paper-2 border border-rule rounded-lg p-6 space-y-4">
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
             Review your topic
           </h2>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-ink-2">
             Edit anything that looks off. You can refine all of this later from <strong>Settings → Topics</strong>.
           </p>
 
@@ -169,7 +169,7 @@ export default function OnboardingPage() {
               type="text"
               value={editedName}
               onChange={e => setEditedName(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+              className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm"
               required
             />
           </Field>
@@ -179,7 +179,7 @@ export default function OnboardingPage() {
               value={editedKeywords}
               onChange={e => setEditedKeywords(e.target.value)}
               rows={6}
-              className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono"
+              className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm font-mono"
             />
           </Field>
 
@@ -188,7 +188,7 @@ export default function OnboardingPage() {
               value={editedCategories}
               onChange={e => setEditedCategories(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 border border-slate-300 rounded text-sm font-mono"
+              className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm font-mono"
             />
           </Field>
 
@@ -197,7 +197,7 @@ export default function OnboardingPage() {
               value={editedConcepts}
               onChange={e => setEditedConcepts(e.target.value)}
               rows={5}
-              className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+              className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm"
             />
           </Field>
 
@@ -205,7 +205,7 @@ export default function OnboardingPage() {
             <select
               value={visibility}
               onChange={e => setVisibility(e.target.value as 'private' | 'public')}
-              className="w-full max-w-xs px-3 py-2 border border-slate-300 rounded text-sm"
+              className="bg-paper text-ink w-full max-w-xs px-3 py-2 border border-rule rounded text-sm"
             >
               <option value="private">Private</option>
               <option value="public">Public</option>
@@ -216,7 +216,7 @@ export default function OnboardingPage() {
             <button
               type="button"
               onClick={() => setStep('describe')}
-              className="text-sm text-slate-500 hover:text-slate-700 hover:underline"
+              className="text-sm text-muted hover:text-ink-2 hover:underline"
             >
               ← Edit interests
             </button>
@@ -225,7 +225,7 @@ export default function OnboardingPage() {
                 type="button"
                 onClick={onSkip}
                 disabled={busy}
-                className="text-sm text-slate-500 hover:text-slate-700 hover:underline disabled:opacity-50"
+                className="text-sm text-muted hover:text-ink-2 hover:underline disabled:opacity-50"
               >
                 Skip
               </button>
@@ -233,7 +233,7 @@ export default function OnboardingPage() {
                 type="button"
                 onClick={onSave}
                 disabled={busy || !editedName.trim()}
-                className="px-5 py-2 bg-slate-900 text-white rounded font-medium hover:bg-slate-700 disabled:opacity-50"
+                className="px-5 py-2 bg-gold-dark text-white rounded font-medium hover:bg-[#734f14] disabled:opacity-50"
               >
                 {busy ? 'Saving…' : 'Save topic + finish'}
               </button>
@@ -243,10 +243,10 @@ export default function OnboardingPage() {
       )}
 
       {step === 'done' && (
-        <section className="bg-white border border-slate-200 rounded-lg p-6 space-y-4 text-center">
+        <section className="bg-paper-2 border border-rule rounded-lg p-6 space-y-4 text-center">
           <div className="text-4xl">🎓</div>
-          <h2 className="text-xl font-bold text-slate-900">You're all set</h2>
-          <p className="text-sm text-slate-600">
+          <h2 className="text-xl font-bold text-ink">You're all set</h2>
+          <p className="text-sm text-ink-2">
             Your first topic is live. Here's what to explore next.
           </p>
           <div className="grid grid-cols-2 gap-3 pt-2">
@@ -258,7 +258,7 @@ export default function OnboardingPage() {
           <div className="pt-2">
             <Link
               href="/"
-              className="inline-block px-5 py-2 bg-slate-900 text-white rounded font-medium hover:bg-slate-700"
+              className="inline-block px-5 py-2 bg-gold-dark text-white rounded font-medium hover:bg-[#734f14]"
             >
               Go to dashboard
             </Link>
@@ -279,7 +279,7 @@ function Steps({ current }: { current: Step }) {
     done: 'Done',
   };
   return (
-    <ol className="flex items-center gap-2 text-xs text-slate-500">
+    <ol className="flex items-center gap-2 text-xs text-muted">
       {order.map((s, i) => {
         const active = s === current;
         const past = order.indexOf(current) > i;
@@ -288,16 +288,16 @@ function Steps({ current }: { current: Step }) {
             <span
               className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
                 active
-                  ? 'bg-slate-900 text-white'
+                  ? 'bg-gold-dark text-white'
                   : past
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-slate-200 text-slate-600'
+                    ? 'bg-moss text-white'
+                    : 'bg-rule text-ink-2'
               }`}
             >
               {past ? '✓' : i + 1}
             </span>
-            <span className={active ? 'text-slate-900 font-medium' : ''}>{labels[s]}</span>
-            {i < order.length - 1 && <span className="text-slate-300">→</span>}
+            <span className={active ? 'text-ink font-medium' : ''}>{labels[s]}</span>
+            {i < order.length - 1 && <span className="text-muted">→</span>}
           </li>
         );
       })}
@@ -311,8 +311,8 @@ function Field({
   return (
     <label className="block space-y-1">
       <div className="flex items-baseline justify-between">
-        <span className="text-sm font-medium text-slate-700">{label}</span>
-        {hint && <span className="text-xs text-slate-400">{hint}</span>}
+        <span className="text-sm font-medium text-ink-2">{label}</span>
+        {hint && <span className="text-xs text-muted">{hint}</span>}
       </div>
       {children}
     </label>
@@ -323,10 +323,10 @@ function NextStep({ href, title, hint }: { href: string; title: string; hint: st
   return (
     <Link
       href={href}
-      className="block bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded p-3 text-left"
+      className="block bg-paper hover:bg-paper-3 border border-rule rounded p-3 text-left"
     >
-      <div className="font-medium text-slate-900 text-sm">{title} →</div>
-      <div className="text-xs text-slate-500 mt-0.5">{hint}</div>
+      <div className="font-medium text-ink text-sm">{title} →</div>
+      <div className="text-xs text-muted mt-0.5">{hint}</div>
     </Link>
   );
 }

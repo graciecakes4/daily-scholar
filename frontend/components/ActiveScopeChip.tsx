@@ -94,13 +94,19 @@ export default function ActiveScopeChip() {
   const editedLabel = editedStamp ? `edited ${editedStamp}` : '';
 
   return (
-    <div className="relative shrink-0 mx-1.5 mb-5 overflow-hidden rounded-[10px] border border-rule px-3.5 py-3"
-         style={{ background: 'linear-gradient(180deg, #FBF6EB, #F1E8D2)' }}>
-      {/* diagonal hatching — same trick as the mockup */}
+    <div
+      className="relative shrink-0 mx-1.5 mb-5 overflow-hidden rounded-[10px] border border-rule px-3.5 py-3"
+      style={{ background: 'linear-gradient(180deg, rgb(var(--paper-2)), rgb(var(--paper-3)))' }}
+    >
+      {/* diagonal hatching — same trick as the mockup. Uses the theme's own
+          --gold variable (Phase 5 / fd3) instead of a fixed hex, since this
+          is an inline style and Tailwind's theme-aware utility classes
+          don't reach it otherwise — exactly the kind of spot the class-based
+          sweep can't find, since there is no Tailwind color class to grep for. */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{ backgroundImage: 'repeating-linear-gradient(135deg, transparent 0 8px, rgba(181,134,43,0.05) 8px 9px)' }}
+        style={{ backgroundImage: 'repeating-linear-gradient(135deg, transparent 0 8px, rgb(var(--gold) / 0.05) 8px 9px)' }}
       />
       <div className="relative">
         <div className="font-serif text-[10px] font-medium uppercase tracking-[0.18em] text-muted">In scope</div>

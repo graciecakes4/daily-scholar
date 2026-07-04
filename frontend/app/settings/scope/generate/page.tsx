@@ -170,21 +170,21 @@ export default function GenerateScopePage() {
   return (
     <div className="max-w-2xl space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-slate-900">Generate a scope</h1>
-        <p className="text-slate-600 mt-1">
+        <h1 className="text-3xl font-bold text-ink">Generate a scope</h1>
+        <p className="text-ink-2 mt-1">
           Describe what you want to study. We'll draft the search keywords and arXiv
           categories for you — nothing is saved until you approve it.
         </p>
       </header>
 
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded-lg px-4 py-2 text-sm">
           {error}
         </div>
       )}
 
       {stage === 'input' ? (
-        <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+        <section className="bg-paper-2 border border-rule rounded-lg p-5 space-y-4">
           <Field label="Title" htmlFor="gs-title" hint="Becomes the scope and topic name.">
             <input
               id="gs-title"
@@ -193,7 +193,7 @@ export default function GenerateScopePage() {
               onChange={e => setTitle(e.target.value)}
               maxLength={200}
               placeholder="e.g. Diffusion models for protein design"
-              className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:border-slate-900"
+              className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm focus:outline-none focus:border-ink"
             />
           </Field>
           <Field
@@ -208,7 +208,7 @@ export default function GenerateScopePage() {
               rows={4}
               maxLength={2000}
               placeholder="What do you want your daily papers to cover?"
-              className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:border-slate-900"
+              className="bg-paper text-ink w-full px-3 py-2 border border-rule rounded text-sm focus:outline-none focus:border-ink"
             />
           </Field>
           <div className="flex items-center justify-between">
@@ -219,20 +219,20 @@ export default function GenerateScopePage() {
               type="button"
               onClick={handleGenerate}
               disabled={!canGenerate}
-              className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+              className="px-4 py-2 bg-gold-dark text-white rounded-lg text-sm font-medium hover:bg-[#734f14] disabled:opacity-50"
             >
               {generating ? 'Generating…' : 'Generate draft'}
             </button>
           </div>
         </section>
       ) : (
-        <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-5">
+        <section className="bg-paper-2 border border-rule rounded-lg p-5 space-y-5">
           <div className="flex items-baseline justify-between gap-4 flex-wrap">
             <div>
-              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+              <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
                 Draft for &ldquo;{title.trim()}&rdquo;
               </h2>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-muted mt-1">
                 Click a bubble to edit or delete it. Edit anything before approving —
                 this is only saved once you create the scope.
               </p>
@@ -241,7 +241,7 @@ export default function GenerateScopePage() {
               type="button"
               onClick={handleGenerate}
               disabled={generating || creating}
-              className="text-sm px-3 py-1.5 bg-slate-100 text-slate-700 rounded hover:bg-slate-200 disabled:opacity-50"
+              className="text-sm px-3 py-1.5 bg-paper-3 text-ink-2 rounded hover:bg-rule disabled:opacity-50"
             >
               {generating ? 'Regenerating…' : 'Regenerate'}
             </button>
@@ -283,7 +283,7 @@ export default function GenerateScopePage() {
               id="gs-visibility"
               value={visibility}
               onChange={e => setVisibility(e.target.value as ScopeVisibility)}
-              className="px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+              className="px-3 py-2 border border-rule rounded text-sm bg-paper-2"
             >
               <option value="private">Private — only you</option>
               <option value="public">Public — discoverable by other users</option>
@@ -295,7 +295,7 @@ export default function GenerateScopePage() {
               type="button"
               onClick={handleStartOver}
               disabled={creating}
-              className="text-sm text-slate-500 hover:text-slate-700 underline disabled:opacity-50"
+              className="text-sm text-muted hover:text-ink-2 underline disabled:opacity-50"
             >
               Start over
             </button>
@@ -303,7 +303,7 @@ export default function GenerateScopePage() {
               type="button"
               onClick={handleCreate}
               disabled={creating || !title.trim()}
-              className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+              className="px-4 py-2 bg-gold-dark text-white rounded-lg text-sm font-medium hover:bg-[#734f14] disabled:opacity-50"
             >
               {creating ? 'Creating…' : 'Create scope'}
             </button>
@@ -321,11 +321,11 @@ function Field({
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between">
         {htmlFor ? (
-          <label htmlFor={htmlFor} className="text-sm font-medium text-slate-700">{label}</label>
+          <label htmlFor={htmlFor} className="text-sm font-medium text-ink-2">{label}</label>
         ) : (
-          <span className="text-sm font-medium text-slate-700">{label}</span>
+          <span className="text-sm font-medium text-ink-2">{label}</span>
         )}
-        {hint && <span className="text-xs text-slate-400">{hint}</span>}
+        {hint && <span className="text-xs text-muted">{hint}</span>}
       </div>
       {children}
     </div>

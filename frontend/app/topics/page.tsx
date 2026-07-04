@@ -147,8 +147,8 @@ export default function TopicCatalogPage() {
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Topics</h1>
-          <p className="text-slate-600 mt-1">
+          <h1 className="text-3xl font-bold text-ink">Topics</h1>
+          <p className="text-ink-2 mt-1">
             Each topic drives both paper discovery (keywords + arXiv categories) and review/quiz generation.
           </p>
         </div>
@@ -156,20 +156,20 @@ export default function TopicCatalogPage() {
           <Link
             data-tour="topics-new"
             href="/topics/new"
-            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 transition-all"
+            className="px-4 py-2 bg-gold-dark text-white rounded-lg text-sm font-medium hover:bg-[#734f14] transition-all"
           >
             + New topic
           </Link>
           <Link
             data-tour="topics-discover"
             href="/topics/discover"
-            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-all"
+            className="px-4 py-2 bg-paper-2 border border-rule text-ink-2 rounded-lg text-sm font-medium hover:bg-paper transition-all"
           >
             Discover
           </Link>
           <Link
             href="/topics/archive"
-            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-all"
+            className="px-4 py-2 bg-paper-2 border border-rule text-ink-2 rounded-lg text-sm font-medium hover:bg-paper transition-all"
           >
             Review history
           </Link>
@@ -177,13 +177,13 @@ export default function TopicCatalogPage() {
       </header>
 
       {/* controls */}
-      <div data-tour="topics-filter" className="bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-center gap-3">
+      <div data-tour="topics-filter" className="bg-paper-2 border border-rule rounded-lg p-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-slate-600">Stream:</label>
+          <label className="text-sm font-medium text-ink-2">Stream:</label>
           <select
             value={streamFilter}
             onChange={e => setStreamFilter(e.target.value)}
-            className="text-sm border border-slate-300 rounded px-2 py-1"
+            className="bg-paper text-ink text-sm border border-rule rounded px-2 py-1"
           >
             <option value="">All</option>
             {Object.keys(grouped).concat(streamFilter ? [streamFilter] : [])
@@ -194,7 +194,7 @@ export default function TopicCatalogPage() {
               ))}
           </select>
         </div>
-        <label className="text-sm font-medium text-slate-600 flex items-center gap-2 cursor-pointer">
+        <label className="text-sm font-medium text-ink-2 flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
             checked={showOrphaned}
@@ -206,7 +206,7 @@ export default function TopicCatalogPage() {
         <button
           onClick={handleImport}
           disabled={busy}
-          className="px-3 py-1.5 text-sm bg-amber-100 text-amber-800 rounded hover:bg-amber-200 disabled:opacity-50"
+          className="px-3 py-1.5 text-sm bg-gold/10 text-gold-dark rounded hover:bg-gold/20 disabled:opacity-50"
           title="Re-sync topics table from config/topics/*.yaml"
         >
           Import YAML → DB
@@ -222,31 +222,31 @@ export default function TopicCatalogPage() {
       </div>
 
       {statusMsg && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-moss/5 border border-moss/25 text-moss rounded-lg px-4 py-2 text-sm">
           {statusMsg}
         </div>
       )}
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded-lg px-4 py-2 text-sm">
           {error}
         </div>
       )}
 
       {loading ? (
-        <div className="text-slate-500">Loading…</div>
+        <div className="text-muted">Loading…</div>
       ) : topics.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-lg p-8 text-center text-slate-500">
-          No topics yet. <Link href="/topics/new" className="text-slate-900 font-medium underline">Create one</Link>.
+        <div className="bg-paper-2 border border-rule rounded-lg p-8 text-center text-muted">
+          No topics yet. <Link href="/topics/new" className="text-ink font-medium underline">Create one</Link>.
         </div>
       ) : (
         <div className="space-y-6">
           {orderedStreams.map(stream => (
             <section key={stream}>
-              <h2 className="text-lg font-semibold text-slate-800 mb-2">
+              <h2 className="text-lg font-semibold text-ink mb-2">
                 {streamDisplayName(stream)}
-                <span className="ml-2 text-sm font-normal text-slate-500">({grouped[stream].length})</span>
+                <span className="ml-2 text-sm font-normal text-muted">({grouped[stream].length})</span>
               </h2>
-              <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
+              <div className="bg-paper-2 border border-rule rounded-lg divide-y divide-rule">
                 {grouped[stream].map(topic => (
                   <TopicRow
                     key={topic.id}
@@ -280,12 +280,12 @@ function TopicRow({
   // Phase C/D ownership badge — system / your topic / subscribed
   const ownerBadge =
     topic.owner_user_id === null
-      ? { label: 'System', cls: 'bg-slate-100 text-slate-700', title: 'Shared by the app' }
+      ? { label: 'System', cls: 'bg-paper-3 text-ink-2', title: 'Shared by the app' }
       : topic.is_subscribed
-        ? { label: 'Subscribed', cls: 'bg-emerald-100 text-emerald-800', title: 'You subscribed to this topic via Discover' }
+        ? { label: 'Subscribed', cls: 'bg-moss/10 text-moss', title: 'You subscribed to this topic via Discover' }
         : canEdit
           ? { label: 'Yours', cls: 'bg-sky-100 text-sky-800', title: 'You own this topic' }
-          : { label: 'Shared', cls: 'bg-violet-100 text-violet-700', title: 'Public topic owned by another user' };
+          : { label: 'Shared', cls: 'bg-gold/10 text-gold-dark', title: 'Public topic owned by another user' };
 
   return (
     <div className="p-4 flex items-start gap-4">
@@ -294,32 +294,32 @@ function TopicRow({
           {canEdit ? (
             <Link
               href={`/topics/${encodeURIComponent(topic.id)}/edit`}
-              className="font-semibold text-slate-900 hover:underline"
+              className="font-semibold text-ink hover:underline"
             >
               {topic.name}
             </Link>
           ) : (
-            <span className="font-semibold text-slate-900">{topic.name}</span>
+            <span className="font-semibold text-ink">{topic.name}</span>
           )}
           <span className={`text-xs px-2 py-0.5 rounded ${ownerBadge.cls}`} title={ownerBadge.title}>
             {ownerBadge.label}
           </span>
           {topic.visibility === 'private' && topic.owner_user_id !== null && (
-            <span className="text-xs px-2 py-0.5 bg-slate-200 text-slate-700 rounded" title="Only you can see this topic">private</span>
+            <span className="text-xs px-2 py-0.5 bg-rule text-ink-2 rounded" title="Only you can see this topic">private</span>
           )}
           {!topic.active && (
-            <span className="text-xs px-2 py-0.5 bg-slate-200 text-slate-600 rounded">inactive</span>
+            <span className="text-xs px-2 py-0.5 bg-rule text-ink-2 rounded">inactive</span>
           )}
           {topic.created_via === 'ui' && (
-            <span className="text-xs px-2 py-0.5 bg-violet-100 text-violet-700 rounded" title="Created via web UI">ui</span>
+            <span className="text-xs px-2 py-0.5 bg-gold/10 text-gold-dark rounded" title="Created via web UI">ui</span>
           )}
           {!topic.source_yaml_present && topic.created_via === 'yaml' && (
-            <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded" title="No matching YAML file on disk">orphaned</span>
+            <span className="text-xs px-2 py-0.5 bg-gold/10 text-gold-dark rounded" title="No matching YAML file on disk">orphaned</span>
           )}
-          <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">weight {topic.weight}</span>
-          <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">{topic.quiz_difficulty}</span>
+          <span className="text-xs px-2 py-0.5 bg-paper-3 text-ink-2 rounded">weight {topic.weight}</span>
+          <span className="text-xs px-2 py-0.5 bg-paper-3 text-ink-2 rounded">{topic.quiz_difficulty}</span>
         </div>
-        <div className="mt-1 text-sm text-slate-500 truncate">
+        <div className="mt-1 text-sm text-muted truncate">
           {topic.id} · {topic.keywords.length} keywords · {topic.arxiv_categories.length} arXiv categories · {topic.key_concepts.length} concepts
         </div>
       </div>
@@ -328,7 +328,7 @@ function TopicRow({
           <button
             onClick={onUnsubscribe}
             disabled={busy}
-            className="text-xs px-3 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 disabled:opacity-50"
+            className="text-xs px-3 py-1.5 rounded bg-paper-2 border border-rule text-ink-2 hover:bg-rust/5 hover:border-rust/25 hover:text-rust disabled:opacity-50"
             title="Stop following this topic; the owner keeps it"
           >
             Unsubscribe
@@ -341,22 +341,22 @@ function TopicRow({
               disabled={busy}
               className={`text-xs px-3 py-1.5 rounded border disabled:opacity-50 ${
                 topic.active
-                  ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                  : 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+                  ? 'bg-paper-2 border-rule text-ink-2 hover:bg-paper'
+                  : 'bg-moss/5 border-moss/30 text-moss hover:bg-moss/10'
               }`}
             >
               {topic.active ? 'Deactivate' : 'Activate'}
             </button>
             <Link
               href={`/topics/${encodeURIComponent(topic.id)}/edit`}
-              className="text-xs px-3 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
+              className="text-xs px-3 py-1.5 rounded bg-paper-2 border border-rule text-ink-2 hover:bg-paper"
             >
               Edit
             </Link>
             <button
               onClick={onHardDelete}
               disabled={busy}
-              className="text-xs px-3 py-1.5 rounded bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+              className="text-xs px-3 py-1.5 rounded bg-paper-2 border border-rust/25 text-rust hover:bg-rust/5 disabled:opacity-50"
             >
               Delete
             </button>

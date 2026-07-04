@@ -100,13 +100,13 @@ export default function InstallPrompt() {
 
   return (
     <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:max-w-sm z-50">
-      <div className="bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-800 p-4">
+      <div className="bg-gold-dark text-white rounded-2xl shadow-2xl border border-ink-2 p-4">
         <div className="flex items-start gap-3">
           <div className="text-3xl shrink-0">📚</div>
           <div className="flex-grow min-w-0">
             <div className="text-sm font-semibold">Install Daily Scholar</div>
             {showIos ? (
-              <p className="text-xs text-slate-300 mt-1">
+              <p className="text-xs text-muted mt-1">
                 Tap{" "}
                 <span className="inline-block w-4 h-4 align-middle">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -116,7 +116,7 @@ export default function InstallPrompt() {
                 in Safari's toolbar, then <strong>Add to Home Screen</strong>. (Required on iOS — push notifications need it.)
               </p>
             ) : (
-              <p className="text-xs text-slate-300 mt-1">
+              <p className="text-xs text-muted mt-1">
                 Get a one-tap shortcut on your home screen + offline access to your archive.
               </p>
             )}
@@ -124,14 +124,14 @@ export default function InstallPrompt() {
               {deferred && (
                 <button
                   onClick={install}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white text-slate-900 hover:bg-slate-100"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-paper-2 text-ink hover:bg-paper-3"
                 >
                   Install
                 </button>
               )}
               <button
                 onClick={dismiss}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white"
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted hover:text-white"
               >
                 Not now
               </button>
