@@ -8,7 +8,7 @@ import MobileTabBar from "@/components/MobileTabBar";
 import OnboardingGuard from "@/components/OnboardingGuard";
 import ScopePickerGuard from "@/components/ScopePickerGuard";
 import ScopeTour from "@/components/ScopeTour";
-import ThemeProvider, { THEME_STORAGE_KEY } from "@/components/ThemeProvider";
+import ThemeProvider, { THEME_STORAGE_KEY, THEME_COLORS } from "@/components/ThemeProvider";
 import TopicsTour from "@/components/TopicsTour";
 import Sidebar from "@/components/Sidebar";
 
@@ -24,8 +24,12 @@ const THEME_INIT_SCRIPT = `
   try {
     var raw = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});
     var s = raw ? JSON.parse(raw) : null;
-    document.documentElement.setAttribute('data-theme', (s && s.theme) || 'editorial');
+    var theme = (s && s.theme) || 'editorial';
+    document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-font-size', (s && s.font_size) || 'medium');
+    var colors = ${JSON.stringify(THEME_COLORS)};
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', colors[theme] || colors.editorial);
   } catch (e) {}
 })();
 `;

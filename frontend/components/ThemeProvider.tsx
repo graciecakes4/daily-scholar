@@ -24,10 +24,23 @@ import { getDisplaySettings, type DisplaySettings } from '@/lib/api';
 
 export const THEME_STORAGE_KEY = 'ds-display-settings';
 
+// mirrors globals.css's --paper for each theme. The <meta name="theme-color">
+// tag (mobile browser status bar / task-switcher card) is outside the CSS
+// cascade entirely — Next's `viewport.themeColor` metadata export can only
+// set a static value, so it has to be kept in sync here instead.
+export const THEME_COLORS: Record<string, string> = {
+  editorial: '#F2EBDD',
+  dark: '#1C1812',
+  observatory: '#0C0B09',
+};
+
 export function applyDisplaySettings(settings: DisplaySettings) {
   if (typeof document === 'undefined') return;
   document.documentElement.setAttribute('data-theme', settings.theme);
   document.documentElement.setAttribute('data-font-size', settings.font_size);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  const color = THEME_COLORS[settings.theme] ?? THEME_COLORS.editorial;
+  if (meta) meta.setAttribute('content', color);
 }
 
 function cacheDisplaySettings(settings: DisplaySettings) {
