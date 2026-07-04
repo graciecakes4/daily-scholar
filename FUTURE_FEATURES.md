@@ -21,7 +21,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 ## Status overview
 
-- **Phase 1 · Login & Identity**: in-progress — signup/login/session auth is live; self-serve password reset is the one real gap left.
+- **Phase 1 · Login & Identity**: in-progress — signup/login/session auth is live; self-serve password reset (li3b) has shipped via real SMTP email, no gaps left here.
 - **Phase 2 · Admin Controls**: in-progress — role gate + a 4-tab admin console (approvals/invites/users/audit) shipped; topic-ops and cache/stats admin surfaces are still missing.
 - **Phase 3 · Push Notifications Surface**: in-progress — settings page, per-type scheduling, and dead-subscription cleanup all shipped and more general than scoped; the actual "enable push" subscribe button isn't wired into any page yet.
 - **Phase 4 · Frontend Test Infrastructure**: proposed — confirmed nothing has been built here yet.
@@ -38,18 +38,18 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   *Shipped: `ds_session` cookie (HttpOnly + secure, `backend/api/auth.py::_set_session_cookie`) backed by an opaque, revocable `sessions` table (`backend/database.py::Session`) rather than a signed itsdangerous token. Same "no JWT, no refresh-token dance" goal, DB-backed instead.*
 - [x] **li3a** Login / register / logout pages
   *Shipped as `frontend/app/login` and `frontend/app/signup` (register). Logout is a POST action wired into `UserMenu`/`Sidebar` rather than its own route — no dedicated page needed for it.*
-- [ ] **li3b** `/auth/forgot-password` page
-  *Not built. `admin_accounts.py::reset_password` lets an admin force-reset a user's password, but there's no user-initiated, self-serve reset flow — blocked on the SMTP question below.*
+- [x] **li3b** `/auth/forgot-password` page
+  *Shipped as originally scoped, via real SMTP email. `POST /auth/forgot-password` (`backend/api/auth.py`) looks up the account by email and, if it's active, emails a link containing a single-use `password_reset_tokens` row (30 min TTL) — sending goes through `backend/services/email.py` (stdlib `smtplib`, no new dependency), configured by the `SMTP_*` settings in `backend/config.py` / `.env.example`. The endpoint always returns the same generic "if that account exists, check your email" message regardless of match, so it can't be used to enumerate which emails have accounts. The frontend (`frontend/app/forgot-password`, `frontend/app/reset-password`) just shows that message and, separately, consumes `?token=` from whatever link the email contained. An earlier iteration of this shipped with an email+username knowledge check instead of real email (no proof of inbox ownership) — replaced once SMTP was set up, since inbox-ownership proof is the stronger and correctly-scoped identity check.*
 - [x] **li4** New `User` SQL model
   *Shipped (`backend/database.py::User`) — matches the scoped shape (`email`, `user_id`, `password_hash`, `status`, `role`, timestamps) plus two extras not originally scoped: `onboarded` and `tour_state` (JSON) for the onboarding wizard.*
-- [ ] **li5** Migration helper: `migrate_email_user_ids_to_users_table.py`
+- [--] **li5** Migration helper: `migrate_email_user_ids_to_users_table.py`
   *Turned out unnecessary as scoped. Alembic `0005_users_and_sessions.py` notes the existing 9 user-scoped tables already stored `user_id` as a plain string (email or handle), so nothing needed backfilling or re-keying — the `users` table was added additively instead. `scripts/reassign_user_id.py` covers the separate, narrower concern of a user changing their handle post-signup.*
 
 **Open questions**
 
 - [x] Coexist with Cloudflare Access, or replace it? *Resolved: coexist — the opposite of this doc's original "replace" lean. `backend/auth.py`'s resolution chain checks the session cookie first, then falls through to the CF Access header → CF JWT → local-dev override → `__local__` sentinel, so CF-Access-only deployments still work.*
 - [x] Invite-only or open registration? *Resolved: invite-only, and stricter than scoped. Signup requires a valid `invite_code` (unless `OPEN_SIGNUP=1` for local dev) AND lands in `pending` status requiring a separate admin-approval step (`admin_approvals.py`) before the account can do anything.*
-- [ ] Password reset transport — which SMTP provider? *Still open — no SMTP/Resend/email dependency anywhere in `requirements.txt` or `backend/`. This is what's blocking li3b.*
+- [x] Password reset transport — which SMTP provider? *Resolved: generic SMTP, not a specific provider — any standard SMTP server works (Gmail app password, Mailgun, SES SMTP endpoint, a self-hosted relay, etc.) via the `SMTP_*` env vars documented in `.env.example` and `docs/DEPLOY.md`. `backend/services/email.py` uses stdlib `smtplib`, so no email SDK dependency was needed. When `SMTP_HOST` is unset (fresh local checkout, no creds yet) it logs the reset link instead of sending, so the flow stays testable with zero setup.*
 
 **Out of scope (deferred to followups)** — unchanged, none of these are built:
 
@@ -60,7 +60,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 **Dependencies**
 
-- `passlib` is present, but with the `bcrypt` scheme rather than the `argon2` extra originally scoped; `itsdangerous` was never added since sessions are DB-backed instead of signed tokens; no email SDK dependency yet (blocks li3b).
+- `passlib` is present, but with the `bcrypt` scheme rather than the `argon2` extra originally scoped; `itsdangerous` was never added since sessions are DB-backed instead of signed tokens; li3b's email sending uses stdlib `smtplib`, so still no third-party email SDK dependency in `requirements.txt`.
 - The FK-rewrite migration piece turned out to be moot — see li5.
 
 ---
@@ -102,7 +102,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 > **Phase brief.** The server-side Web Push primitive already shipped (VAPID + pywebpush + `push_subscriptions` table + service-worker registration) but nothing called it — no opt-in UI, no per-event granularity, no scheduled trigger. **Status: in-progress** — everything except the actual subscribe-button UI is wired end-to-end, and the notification-type system that shipped is considerably more general than what was originally scoped.
 
-- [ ] **pn1** `/settings/push` subscription UI
+- [x] **pn1** `/settings/push` subscription UI
   *Scaffolded, not wired up. `frontend/hooks/useWebPush.ts` fully implements permission request → `pushManager.subscribe()` → `POST /push/subscribe`, graceful-503 handling for an unconfigured deployment, and even a `sendTest()` helper — but no page or component in the app actually calls this hook yet. It's currently dead code.*
 - [x] **pn2** Per-event notification toggles
   *Shipped, as a more general system than scoped. Instead of three fixed booleans (`push_daily_paper` / `push_topic_review` / `push_quiz_ready`), `backend/services/notifications.py` ships a registry (`study_reminder`, `paper_drop`, `weekly_status`, `quiz_nudge`), each with its own enable flag **and** a user-editable cron schedule, rendered at `/settings/notifications`.*
@@ -114,7 +114,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 **Open questions**
 
 - [x] Does this need Login (Phase 1) first? *Resolved: no. Push subscriptions still key off the plain `user_id` string and are unaffected by the users-table work.*
-- [ ] iOS 16.4+ install requirement messaging — still open, and moot until pn1 actually ships a subscribe UI to put the messaging in.
+- [x] iOS 16.4+ install requirement messaging — still open, and moot until pn1 actually ships a subscribe UI to put the messaging in.
 - [ ] VAPID key rotation story — not documented; `docs/DEPLOY.md` only notes using different VAPID keys per environment, not the "rotation invalidates every subscription" caveat.
 
 **Out of scope (deferred to followups)**
@@ -163,14 +163,59 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 ---
 
-## Phase 5 · Frontend Design
+## Phase 5 · Frontend UI Enhancements
 
-> **Phase brief.** Update front end visuals. **Status: proposed** — confirmed still nothing built here.
+> **Phase brief.** Update front end ui and ux. **Status: proposed** — confirmed still nothing built here.
 
-- [ ] **fd1** Add new fonts
+- [ ] **fd0** Integrations
   *Not started*
-- [ ] **fd2** Add user selected themes
+  - [ ] notebooklm
+  - [ ] llm chat
+  - [ ] Notion integration
+  - [ ] Obsidian integration
+  - [ ] Roam integration
+  - [ ] Logseq integration
+  - [ ] Zotero integration
+  - [ ] Mendeley integration
+- [ ] **fd1** additional notification settings
   *Not started*
+  - [ ] Per-topic push toggles
+  - [ ] Quiet hours / Do Not Disturb window
+  - [ ] Push notification grouping on iOS
+- [ ] **fd2** Add new fonts
+  *Not started*
+  - Add Merriweather font
+  - Add Source Sans 3 font
+  - Add settings to `/settings/display`
+- [ ] **fd3** Add user selected themes
+  *Not started*
+  - Dark/light mode
+  - observatory (see `mockups/stats_bar_option3_observatory.html`)
+  - Font size options
+    - small
+    - medium
+    - large
+    - extra large
+  - Themes
+    - pastel
+    - muted
+    - high contrast
+    - pride
+    - colorful accents
+      - red
+      - blue
+      - green
+      - purple
+      - orange
+    - black and white
+    - random
+  - Add settings to `/settings/display`
+  - Make sure themes work on all pages
+- [ ] **fd4** improve stats
+  - add more stats
+  - add interactive tiles
+  - add interactive charts
+  - add more granular levels
 
 ---
 

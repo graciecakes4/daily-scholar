@@ -45,8 +45,16 @@ services:
     environment:
       # override DATABASE_URL to point at the compose-managed postgres
       DATABASE_URL: postgresql+psycopg://scholar:scholar@postgres:5432/daily_scholar
-      # frontend lives at the compose-network alias `frontend`
-      FRONTEND_URL: http://frontend:3000
+      # Must be a URL your BROWSER can reach, not the compose-network
+      # alias -- CORS already allows localhost:3000/127.0.0.1:3000 as a
+      # hardcoded fallback regardless of this value (see
+      # _resolve_cors_origins() in backend/main.py), so the only thing
+      # this setting controls in local dev is the base URL used to build
+      # links a human actually clicks, like the li3b password-reset
+      # email. `http://frontend:3000` breaks that -- it only resolves
+      # inside the Docker network. The frontend service's port is
+      # published as 3000:3000, so localhost:3000 is the right value.
+      FRONTEND_URL: http://localhost:3000
       PORT: "8000"
     ports:
       - "8000:8000"
