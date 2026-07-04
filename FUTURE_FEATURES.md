@@ -22,7 +22,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 ## Status overview
 
 - **Phase 1 · Login & Identity**: in-progress — signup/login/session auth is live; self-serve password reset (li3b) has shipped via real SMTP email, no gaps left here.
-- **Phase 2 · Admin Controls**: in-progress — role gate + a 4-tab admin console (approvals/invites/users/audit) shipped; topic-ops and cache/stats admin surfaces are still missing.
+- **Phase 2 · Admin Controls**: in-progress — role gate + a 7-tab admin console (approvals/invites/users/audit/topics/cache/stats) shipped. Cache-bust is per-user only for now — see Phase 6 for the planned multi-select + global-clear follow-up.
 - **Phase 3 · Push Notifications Surface**: in-progress — settings page, per-type scheduling, and dead-subscription cleanup all shipped and more general than scoped; the actual "enable push" subscribe button isn't wired into any page yet.
 - **Phase 4 · Frontend Test Infrastructure**: proposed — confirmed nothing has been built here yet.
 
@@ -67,7 +67,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 ## Phase 2 · Admin Controls
 
-> **Phase brief.** In-app admin role + a small admin UI for ops tasks that today require shell access or direct DB writes (cache busts, topic re-bootstraps, user-activity debugging). `/admin/*` endpoints exist server-side but have no in-app role check — gated only by Cloudflare Access. **Status: in-progress** — the role gate and a 4-tab admin console shipped; topic-ops and cache/stats surfaces haven't.
+> **Phase brief.** In-app admin role + a small admin UI for ops tasks that today require shell access or direct DB writes (cache busts, topic re-bootstraps, user-activity debugging). `/admin/*` endpoints exist server-side but have no in-app role check — gated only by Cloudflare Access. **Status: in-progress** — the role gate and a 7-tab admin console shipped (approvals/invites/users/audit/topics/cache/stats).
 
 - [x] **ad1** `users.role` column (`'user' | 'admin'`, default `'user'`)
   *Shipped (`backend/database.py::User.role`). Seeded via `scripts/create_admin.py` rather than a `flask admin grant` command — this stack is FastAPI, not Flask.*
@@ -75,10 +75,10 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   *Shipped in `backend/auth.py::require_admin`, applied across `admin.py`, `admin_accounts.py`, `admin_approvals.py`, `admin_invites.py`, `admin_audit.py`.*
 - [x] **ad3** `/admin/users`-equivalent page
   *Shipped as the "Users" tab in `frontend/app/settings/admin/page.tsx` — list/search, per-user stats (`GET /admin/users/{id}/stats`), and soft-disable via a status change to `suspended` (string status field rather than a boolean `is_active`, same effect).*
-- [ ] **ad4** `/admin/topics` page
-  *Backend half shipped, frontend half isn't. `POST /topics/import-yaml`, `POST /topics/export-yaml`, and an `include_orphaned` query param all exist and are `require_admin`-gated in `backend/api/topics.py` — but no admin UI page calls any of them yet; they're only reachable by hitting the API directly.*
-- [ ] **ad5** `/admin/cache` + `/admin/stats` pages
-  *Not built. No cache-busting endpoint or system-wide stats endpoint exists in the backend, and nothing in the admin console references cache state or global counts.*
+- [x] **ad4** `/admin/topics` page
+  *Shipped as the "Topics" tab in `frontend/app/settings/admin/page.tsx`. The backend half (`POST /topics/import-yaml`, `POST /topics/export-yaml`, `GET /topics?include_orphaned=`) already existed — this was purely the missing UI: Import/Export buttons with a result summary, an orphaned-only filter, and active/orphaned/system-vs-user-owned badges per topic. Deeper per-topic editing still happens on the existing `/topics/[id]/edit` page rather than being duplicated here.*
+- [x] **ad5** `/admin/cache` + `/admin/stats` pages
+  *Shipped as "Cache" and "Stats" tabs. **Cache**: `DELETE /admin/cache/{user_id}` (`backend/api/admin.py`) clears every `daily_content_cache` row for one target user, looked up via the same account list the Users tab already fetches — no separate lookup endpoint needed. Scoped to a single user for this PR; see **Phase 6** for the planned multi-select + global-clear follow-up. Every bust is audit-logged (`EventType.CACHE_BUST`). **Stats**: `GET /admin/stats/overview` (user counts by status, content volume, 30-day signup trend) plus a considerably more built-out `GET /admin/stats/quiz-performance` — overall/median/average score, score distribution, per-topic and per-difficulty accuracy breakdowns (worst-performing topics surfaced first), a 30-day score trend, and two leaderboards (most active, highest accuracy — the latter gated behind a minimum-questions-answered floor so a single lucky quiz can't top the board). All derived from existing `ArchivedQuiz.questions` JSON (topic_id + difficulty + correct/incorrect are already stored per question) — no new instrumentation needed. Every aggregation is fetch-then-bucket-in-Python rather than dialect-specific SQL (`date_trunc`/`strftime` differ between SQLite and Postgres), fine at beta scale. No charting library exists in this project, so the visualizations are hand-rolled CSS bars/sparklines rather than a new frontend dependency.*
 - [x] **ad6** Admin-only nav surface
   *Shipped — `Sidebar.tsx`, `UserMenu.tsx`, and `MobileTabBar.tsx` all gate the admin link on `user.role === 'admin'`.*
 
@@ -216,6 +216,23 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   - add interactive tiles
   - add interactive charts
   - add more granular levels
+
+---
+
+## Phase 6 · Admin Cache Tooling Follow-ups
+
+> **Phase brief.** Follow-up to the Phase 2 / ad5 cache-bust tool, which shipped scoped to a single targeted user per action. This phase captures the two ways it was intentionally left narrower than it could be. **Status: proposed** — captured here, not scoped or scheduled yet.
+
+- [ ] **ct1** Multi-user select for cache bust
+  *Not started. Today the Cache tab (`frontend/app/settings/admin/page.tsx::CacheTab`) busts exactly one user's `daily_content_cache` rows per click. Extending to a multi-select (checkboxes + "Bust selected") would mean either N sequential `DELETE /admin/cache/{user_id}` calls from the frontend, or a new batch endpoint taking a list of user_ids — the latter is probably worth it once this lands, so the action is one audit-log entry instead of N.*
+  *Gating condition: WHEN an admin actually needs to clear cache for more than one or two users in the same incident (e.g. after a topic-weight change affects a whole cohort's daily content).*
+- [ ] **ct2** Global "clear for everyone" option
+  *Not started. A single confirm-gated action that truncates `daily_content_cache` for every user_id at once — useful after a content-generation bug fix or a bulk topic overhaul, but coarse enough (and irreversible enough in effect, even though it's just cache) that it should get its own explicit confirm step separate from the per-user flow, not a checkbox that happens to select everyone.*
+  *Gating condition: WHEN a beta tester reports stale content that per-user targeting doesn't fully resolve, or WHEN a content-generation change ships that's known to invalidate everyone's cache at once.*
+
+**Dependencies**
+
+- Builds directly on Phase 2 / ad5 (`backend/api/admin.py::bust_user_cache`, `frontend/app/settings/admin/page.tsx::CacheTab`) — not blocked by anything else.
 
 ---
 

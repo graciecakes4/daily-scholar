@@ -1377,6 +1377,94 @@ export async function adminResetPassword(
 }
 
 // -----------------------------------------------------------------------------
+// Admin: system stats (ad5)
+// -----------------------------------------------------------------------------
+
+export interface StatsOverview {
+  users: {
+    active: number;
+    pending: number;
+    suspended: number;
+    admins: number;
+    total: number;
+  };
+  content: {
+    topics_total: number;
+    topics_active: number;
+    papers_seen: number;
+    papers_archived: number;
+    quizzes_taken: number;
+  };
+  signup_trend: { date: string; signups: number }[];
+}
+
+export async function getStatsOverview(): Promise<StatsOverview> {
+  return fetchAPI('/admin/stats/overview');
+}
+
+export interface QuizTopicBreakdown {
+  topic_id: string;
+  topic_name: string;
+  attempts: number;
+  correct: number;
+  accuracy: number;
+}
+
+export interface QuizDifficultyBreakdown {
+  difficulty: string;
+  attempts: number;
+  correct: number;
+  accuracy: number;
+}
+
+export interface QuizScoreTrendPoint {
+  date: string;
+  quizzes_taken: number;
+  avg_percentage: number;
+}
+
+export interface QuizLeaderboardEntry {
+  user_id: string;
+  email: string;
+  quizzes_taken: number;
+  accuracy: number;
+}
+
+export interface QuizPerformanceStats {
+  total_quizzes: number;
+  total_questions_answered: number;
+  overall_accuracy: number;
+  average_score: number;
+  median_score: number;
+  score_distribution: { '0-59': number; '60-79': number; '80-100': number };
+  by_topic: QuizTopicBreakdown[];
+  by_difficulty: QuizDifficultyBreakdown[];
+  score_trend: QuizScoreTrendPoint[];
+  top_by_volume: QuizLeaderboardEntry[];
+  top_by_accuracy: QuizLeaderboardEntry[];
+  accuracy_leaderboard_min_questions: number;
+}
+
+export async function getQuizPerformanceStats(): Promise<QuizPerformanceStats> {
+  return fetchAPI('/admin/stats/quiz-performance');
+}
+
+// -----------------------------------------------------------------------------
+// Admin: per-user cache bust (ad5)
+// -----------------------------------------------------------------------------
+
+export async function bustUserCache(
+  userId: string,
+): Promise<{ ok: boolean; user_id: string; rows_deleted: number }> {
+  return fetchAPI(`/admin/cache/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+}
+
+// -----------------------------------------------------------------------------
+// Admin: topics (ad4) — importTopicsFromYaml / exportTopicsToYaml / listTopics
+// already exist above in the Topics section; nothing new needed here.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
 // Admin: audit log
 // -----------------------------------------------------------------------------
 
@@ -1387,7 +1475,8 @@ export type AuditEventType =
   | 'user.suspend'
   | 'user.reactivate'
   | 'invite.create'
-  | 'invite.revoke';
+  | 'invite.revoke'
+  | 'cache.bust';
 
 export interface AuditEvent {
   id: number;

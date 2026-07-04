@@ -18,14 +18,20 @@ import PasswordStrength from '@/components/PasswordStrength';
 import {
   adminResetPassword,
   approveUser,
+  bustUserCache,
   changeAccountRole,
   changeAccountStatus,
   createInvite,
+  exportTopicsToYaml,
+  getQuizPerformanceStats,
+  getStatsOverview,
+  importTopicsFromYaml,
   listAccounts,
   listAuditEvents,
   listAuditEventTypes,
   listInvites,
   listPendingApprovals,
+  listTopics,
   rejectUser,
   revokeInvite,
   type AccountSummary,
@@ -34,12 +40,15 @@ import {
   type InviteState,
   type InviteSummary,
   type PendingUserSummary,
+  type QuizPerformanceStats,
+  type StatsOverview,
+  type Topic,
   type UserRole,
   type UserStatus,
 } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 
-type Tab = 'approvals' | 'invites' | 'users' | 'audit';
+type Tab = 'approvals' | 'invites' | 'users' | 'audit' | 'topics' | 'cache' | 'stats';
 
 export default function AdminSettingsPage() {
   const { user, loading } = useAuth();
@@ -82,6 +91,15 @@ export default function AdminSettingsPage() {
           <TabButton active={tab === 'audit'} onClick={() => setTab('audit')}>
             Audit log
           </TabButton>
+          <TabButton active={tab === 'topics'} onClick={() => setTab('topics')}>
+            Topics
+          </TabButton>
+          <TabButton active={tab === 'cache'} onClick={() => setTab('cache')}>
+            Cache
+          </TabButton>
+          <TabButton active={tab === 'stats'} onClick={() => setTab('stats')}>
+            Stats
+          </TabButton>
         </nav>
       </div>
 
@@ -89,6 +107,9 @@ export default function AdminSettingsPage() {
       {tab === 'invites' && <InvitesTab />}
       {tab === 'users' && <UsersTab currentUserId={currentUserId} />}
       {tab === 'audit' && <AuditTab />}
+      {tab === 'topics' && <TopicsTab />}
+      {tab === 'cache' && <CacheTab />}
+      {tab === 'stats' && <StatsTab />}
     </div>
   );
 }
@@ -978,6 +999,7 @@ const EVENT_LABELS: Record<AuditEventType, string> = {
   'user.reactivate': 'Reactivate',
   'invite.create': 'Create invite',
   'invite.revoke': 'Revoke invite',
+  'cache.bust': 'Bust cache',
 };
 
 const EVENT_VERBS: Record<AuditEventType, string> = {
@@ -988,6 +1010,7 @@ const EVENT_VERBS: Record<AuditEventType, string> = {
   'user.reactivate': 'reactivated',
   'invite.create': 'created invite',
   'invite.revoke': 'revoked invite',
+  'cache.bust': 'busted cache for',
 };
 
 const EVENT_STYLES: Record<AuditEventType, string> = {
@@ -998,6 +1021,7 @@ const EVENT_STYLES: Record<AuditEventType, string> = {
   'user.reactivate': 'bg-emerald-100 text-emerald-800',
   'invite.create': 'bg-sky-100 text-sky-800',
   'invite.revoke': 'bg-slate-200 text-slate-700',
+  'cache.bust': 'bg-amber-100 text-amber-800',
 };
 
 function eventLabel(type: AuditEventType): string {
@@ -1013,5 +1037,526 @@ function EventBadge({ type }: { type: AuditEventType }) {
     <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-semibold ${EVENT_STYLES[type] ?? 'bg-slate-100 text-slate-700'}`}>
       {eventLabel(type)}
     </span>
+  );
+}
+
+// ---------- cache tab (ad5, per-user) ----------
+//
+// Search-then-bust: this reuses the same account list the Users tab
+// already fetches rather than adding a new lookup endpoint. Only clears
+// the target user's own daily_content_cache rows — see FUTURE_FEATURES.md
+// Phase 6 for the planned multi-select + global-clear follow-up.
+
+function CacheTab() {
+  const [accounts, setAccounts] = useState<AccountSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        setAccounts(await listAccounts());
+      } catch (e: any) {
+        setError(e?.message || 'Failed to load users');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return accounts;
+    return accounts.filter(
+      a => a.email.toLowerCase().includes(q) || a.user_id.toLowerCase().includes(q),
+    );
+  }, [accounts, query]);
+
+  async function onBust(a: AccountSummary) {
+    if (!confirm(`Clear all cached daily content for ${a.email}? They'll get freshly generated content next time.`)) return;
+    setBusyId(a.user_id);
+    setError(null);
+    setNotice(null);
+    try {
+      const r = await bustUserCache(a.user_id);
+      setNotice(
+        r.rows_deleted > 0
+          ? `Cleared ${r.rows_deleted} cached row(s) for ${a.email}.`
+          : `${a.email} had no cached content to clear.`,
+      );
+    } catch (e: any) {
+      setError(e?.message || 'Cache bust failed');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      <p className="text-sm text-slate-600">
+        Force a user's daily content to regenerate from scratch — for "my content looks
+        stuck/wrong" support tickets. Safe to do any time; it's disposable cache, not source data.
+      </p>
+
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>
+      )}
+      {notice && (
+        <div className="bg-sky-50 border border-sky-200 text-sky-800 rounded px-3 py-2 text-sm">{notice}</div>
+      )}
+
+      <input
+        type="text"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder="Search by email or handle…"
+        className="w-full max-w-sm px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:border-slate-900"
+      />
+
+      {loading ? (
+        <div className="text-slate-500">Loading users…</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-sm text-slate-500 italic">No users match.</div>
+      ) : (
+        <ul className="space-y-2">
+          {filtered.map(a => (
+            <li
+              key={a.id}
+              className="bg-white border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap"
+            >
+              <div className="min-w-0">
+                <div className="font-medium text-slate-900 truncate">{a.email}</div>
+                <div className="text-xs text-slate-500 truncate">
+                  user_id: <code>{a.user_id}</code>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onBust(a)}
+                disabled={busyId !== null}
+                className="px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded text-xs hover:bg-amber-50 disabled:opacity-50 shrink-0"
+              >
+                {busyId === a.user_id ? 'Clearing…' : 'Bust cache'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ---------- stats tab (ad5) ----------
+//
+// No charting library is installed anywhere in this project (checked
+// package.json — no recharts/chart.js/d3), so the visualizations here are
+// hand-rolled with plain CSS bars, matching the existing PasswordStrength
+// component's approach rather than pulling in a new dependency for what's
+// otherwise a handful of bar charts and ranked lists.
+
+function StatCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-lg p-4">
+      <div className="text-2xl font-bold text-slate-900">{value}</div>
+      <div className="text-xs text-slate-500 mt-1">{label}</div>
+    </div>
+  );
+}
+
+/** Horizontal bar, width proportional to value/max. */
+function BarRow({
+  label, value, max, displayValue, barClassName = 'bg-slate-900',
+}: {
+  label: string;
+  value: number;
+  max: number;
+  displayValue?: string;
+  barClassName?: string;
+}) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div className="space-y-1">
+      <div className="flex items-baseline justify-between text-xs">
+        <span className="text-slate-700 truncate pr-2">{label}</span>
+        <span className="text-slate-500 shrink-0">{displayValue ?? value}</span>
+      </div>
+      <div className="h-2 w-full bg-slate-100 rounded overflow-hidden">
+        <div className={`h-full rounded ${barClassName}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/** Small day-by-day bar strip for a trend series — a sparkline without a charting lib. */
+function TrendBars({
+  points, valueKey, labelSuffix = '',
+}: {
+  points: Record<string, any>[];
+  valueKey: string;
+  labelSuffix?: string;
+}) {
+  if (points.length === 0) {
+    return <div className="text-sm text-slate-500 italic">No activity in this window.</div>;
+  }
+  const max = Math.max(...points.map(p => Number(p[valueKey]) || 0), 1);
+  return (
+    <div className="flex items-end gap-0.5 h-16">
+      {points.map((p, i) => {
+        const v = Number(p[valueKey]) || 0;
+        const heightPct = Math.max(4, (v / max) * 100);
+        return (
+          <div
+            key={i}
+            title={`${p.date}: ${v}${labelSuffix}`}
+            className="flex-1 bg-slate-800 hover:bg-slate-600 rounded-t min-w-[2px]"
+            style={{ height: `${heightPct}%` }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function accuracyColor(accuracy: number): string {
+  if (accuracy >= 80) return 'bg-emerald-500';
+  if (accuracy >= 60) return 'bg-amber-500';
+  return 'bg-rose-500';
+}
+
+function StatsTab() {
+  const [overview, setOverview] = useState<StatsOverview | null>(null);
+  const [quiz, setQuiz] = useState<QuizPerformanceStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [ov, qp] = await Promise.all([getStatsOverview(), getQuizPerformanceStats()]);
+        setOverview(ov);
+        setQuiz(qp);
+      } catch (e: any) {
+        setError(e?.message || 'Failed to load stats');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) return <div className="text-slate-500">Loading stats…</div>;
+  if (error) {
+    return <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>;
+  }
+  if (!overview || !quiz) return null;
+
+  const scoreBucketMax = Math.max(...Object.values(quiz.score_distribution), 1);
+
+  return (
+    <div className="space-y-8">
+      {/* ---- usage overview ---- */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Usage overview</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatCard label="Active users" value={overview.users.active} />
+          <StatCard label="Pending approval" value={overview.users.pending} />
+          <StatCard label="Suspended" value={overview.users.suspended} />
+          <StatCard label="Admins" value={overview.users.admins} />
+          <StatCard label="Active topics" value={`${overview.content.topics_active} / ${overview.content.topics_total}`} />
+          <StatCard label="Papers seen" value={overview.content.papers_seen} />
+          <StatCard label="Papers archived" value={overview.content.papers_archived} />
+          <StatCard label="Quizzes taken" value={overview.content.quizzes_taken} />
+        </div>
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <div className="text-xs text-slate-500 mb-2">Signups, last 30 days</div>
+          <TrendBars points={overview.signup_trend} valueKey="signups" labelSuffix=" signup(s)" />
+        </div>
+      </section>
+
+      {/* ---- quiz performance ---- */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Quiz performance</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatCard label="Quizzes taken" value={quiz.total_quizzes} />
+          <StatCard label="Questions answered" value={quiz.total_questions_answered} />
+          <StatCard label="Overall accuracy" value={`${quiz.overall_accuracy}%`} />
+          <StatCard label="Avg / median score" value={`${quiz.average_score}% / ${quiz.median_score}%`} />
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
+          <div className="text-xs text-slate-500">Score distribution (by quiz)</div>
+          <div className="space-y-2">
+            <BarRow label="0–59%" value={quiz.score_distribution['0-59']} max={scoreBucketMax} barClassName="bg-rose-500" />
+            <BarRow label="60–79%" value={quiz.score_distribution['60-79']} max={scoreBucketMax} barClassName="bg-amber-500" />
+            <BarRow label="80–100%" value={quiz.score_distribution['80-100']} max={scoreBucketMax} barClassName="bg-emerald-500" />
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <div className="text-xs text-slate-500 mb-2">Average score, last 30 days</div>
+          <TrendBars points={quiz.score_trend} valueKey="avg_percentage" labelSuffix="% avg" />
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
+            <div className="text-xs text-slate-500">
+              By topic — worst first ({quiz.by_topic.length} topic{quiz.by_topic.length === 1 ? '' : 's'})
+            </div>
+            {quiz.by_topic.length === 0 ? (
+              <div className="text-sm text-slate-500 italic">No quiz data yet.</div>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {quiz.by_topic.map(t => (
+                  <BarRow
+                    key={t.topic_id}
+                    label={t.topic_name}
+                    value={t.accuracy}
+                    max={100}
+                    displayValue={`${t.accuracy}% (${t.correct}/${t.attempts})`}
+                    barClassName={accuracyColor(t.accuracy)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
+            <div className="text-xs text-slate-500">By difficulty</div>
+            {quiz.by_difficulty.length === 0 ? (
+              <div className="text-sm text-slate-500 italic">No quiz data yet.</div>
+            ) : (
+              <div className="space-y-2">
+                {quiz.by_difficulty.map(d => (
+                  <BarRow
+                    key={d.difficulty}
+                    label={d.difficulty}
+                    value={d.accuracy}
+                    max={100}
+                    displayValue={`${d.accuracy}% (${d.correct}/${d.attempts})`}
+                    barClassName={accuracyColor(d.accuracy)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Leaderboard
+            title="Most active"
+            entries={quiz.top_by_volume}
+            metric={e => `${e.quizzes_taken} quiz${e.quizzes_taken === 1 ? '' : 'zes'}`}
+          />
+          <Leaderboard
+            title={`Highest accuracy (min. ${quiz.accuracy_leaderboard_min_questions} questions answered)`}
+            entries={quiz.top_by_accuracy}
+            metric={e => `${e.accuracy}%`}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Leaderboard({
+  title, entries, metric,
+}: {
+  title: string;
+  entries: { user_id: string; email: string; quizzes_taken: number; accuracy: number }[];
+  metric: (e: { user_id: string; email: string; quizzes_taken: number; accuracy: number }) => string;
+}) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-2">
+      <div className="text-xs text-slate-500">{title}</div>
+      {entries.length === 0 ? (
+        <div className="text-sm text-slate-500 italic">Not enough data yet.</div>
+      ) : (
+        <ol className="space-y-1.5">
+          {entries.map((e, i) => (
+            <li key={e.user_id} className="flex items-center justify-between text-sm gap-2">
+              <span className="flex items-center gap-2 min-w-0">
+                <span className="text-xs text-slate-400 w-4 shrink-0">{i + 1}</span>
+                <span className="truncate">{e.email}</span>
+              </span>
+              <span className="text-slate-500 shrink-0">{metric(e)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+// ---------- topics tab (ad4) ----------
+//
+// The backend half of this (POST /topics/import-yaml, POST /topics/export-yaml,
+// GET /topics?include_orphaned=) has existed for a while — this tab is just
+// the missing admin UI wired onto it. Deeper editing of an individual topic
+// still happens on its existing /topics/[id]/edit page; this tab is for the
+// admin-specific ops actions (sync from disk, dump to disk, spot orphans).
+
+function TopicsTab() {
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [orphanedOnly, setOrphanedOnly] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const rows = await listTopics({ includeOrphaned: true });
+      setTopics(rows);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load topics');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  async function onImport() {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const r = await importTopicsFromYaml();
+      setNotice(
+        `Synced from config/topics/*.yaml: ${r.inserted} inserted, ${r.updated} updated`
+        + (r.marked_orphaned ? `, ${r.marked_orphaned} marked orphaned` : '') + '.',
+      );
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || 'Import failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onExport() {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const r = await exportTopicsToYaml();
+      setNotice(`Exported ${r.exported} topic(s) to ${r.directory}.`);
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || 'Export failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const orphanedCount = topics.filter(t => !t.source_yaml_present).length;
+  const visible = orphanedOnly ? topics.filter(t => !t.source_yaml_present) : topics;
+
+  return (
+    <section className="space-y-4">
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded px-3 py-2 text-sm">{error}</div>
+      )}
+      {notice && (
+        <div className="bg-sky-50 border border-sky-200 text-sky-800 rounded px-3 py-2 text-sm">{notice}</div>
+      )}
+
+      <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-center gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">Sync with config/topics/*.yaml</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Import re-reads the YAML files on disk into the database. Export writes the current
+            database state back out to YAML — do this before committing any UI-made topic changes.
+          </p>
+        </div>
+        <div className="flex gap-2 ml-auto shrink-0">
+          <button
+            type="button"
+            onClick={onImport}
+            disabled={busy}
+            className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded text-sm hover:bg-slate-50 disabled:opacity-50"
+          >
+            {busy ? 'Working…' : 'Import from YAML'}
+          </button>
+          <button
+            type="button"
+            onClick={onExport}
+            disabled={busy}
+            className="px-3 py-1.5 bg-slate-900 text-white rounded text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+          >
+            {busy ? 'Working…' : 'Export to YAML'}
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-lg p-3 flex items-center gap-3">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={orphanedOnly}
+            onChange={e => setOrphanedOnly(e.target.checked)}
+          />
+          Orphaned only
+        </label>
+        <span className="text-xs text-slate-400 ml-auto">
+          {topics.length} topic(s) · {orphanedCount} orphaned
+        </span>
+      </div>
+
+      {loading ? (
+        <div className="text-slate-500">Loading topics…</div>
+      ) : visible.length === 0 ? (
+        <div className="text-sm text-slate-500 italic">
+          {orphanedOnly ? 'No orphaned topics.' : 'No topics found.'}
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {visible.map(t => (
+            <li
+              key={t.id}
+              className="bg-white border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap"
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Link href={`/topics/${encodeURIComponent(t.id)}/edit`} className="font-medium text-slate-900 hover:underline truncate">
+                    {t.name}
+                  </Link>
+                  {!t.active && (
+                    <span className="text-[10px] uppercase tracking-wide bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-semibold">
+                      inactive
+                    </span>
+                  )}
+                  {!t.source_yaml_present && (
+                    <span className="text-[10px] uppercase tracking-wide bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
+                      orphaned
+                    </span>
+                  )}
+                  {t.owner_user_id === null ? (
+                    <span className="text-[10px] uppercase tracking-wide bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-semibold">
+                      system
+                    </span>
+                  ) : (
+                    <span className="text-[10px] uppercase tracking-wide bg-violet-100 text-violet-800 px-1.5 py-0.5 rounded font-semibold">
+                      user-owned
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-slate-500 truncate">
+                  <code>{t.id}</code> · {t.stream} · weight {t.weight} · {t.quiz_difficulty}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
