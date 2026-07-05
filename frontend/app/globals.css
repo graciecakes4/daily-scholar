@@ -6,8 +6,12 @@
    are the three newer theme faces, same reasoning — all loaded up front.
    cormorant garamond (muted), atkinson hyperlegible (high_contrast — a
    typeface built for low-vision readability, used for both display and
-   body), and fredoka + figtree (pride) are the final three. */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,30..100;1,9..144,400..600,30..100&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..600&family=Nunito:wght@400;600;700;800&family=Archivo+Black&family=Space+Mono:wght@400;700&family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fredoka:wght@500;600;700&family=Figtree:wght@400;500;600;700&display=swap');
+   body), and fredoka + figtree (pride) are the final three. merriweather
+   + source sans 3 (fd2) are a separate axis entirely — reading-font
+   options for long-form generated content only (see the
+   [data-reading-font="..."] .prose-scholar rules below), independent of
+   theme, so they're loaded here too rather than gated behind first use. */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,30..100;1,9..144,400..600,30..100&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..600&family=Nunito:wght@400;600;700;800&family=Archivo+Black&family=Space+Mono:wght@400;700&family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fredoka:wght@500;600;700&family=Figtree:wght@400;500;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Source+Sans+3:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -457,21 +461,28 @@ html, body {
   @apply backdrop-blur-xl bg-white/70 border border-white/20;
 }
 
-/* Prose styles for generated content */
+/* Prose styles for generated content (topic reviews, paper summaries).
+   Converted from hardcoded slate/blue Tailwind classes to theme
+   tokens — a gap the earlier app-wide theme sweep missed since this
+   lives in globals.css rather than a page file, not caught until fd2's
+   reading-font work touched this exact block. Code blocks intentionally
+   use ink-2/paper-2 (inverted from the page) rather than the gold-dark
+   swap used for slate-900 elsewhere, since a code block reads as a
+   neutral dark surface on every theme, not an accent-colored one. */
 .prose-scholar {
-  @apply text-slate-700 leading-relaxed;
+  @apply text-ink-2 leading-relaxed;
 }
 
 .prose-scholar h1 {
-  @apply text-2xl font-bold text-slate-900 mb-4;
+  @apply text-2xl font-bold text-ink mb-4;
 }
 
 .prose-scholar h2 {
-  @apply text-xl font-semibold text-slate-800 mb-3 mt-6;
+  @apply text-xl font-semibold text-ink mb-3 mt-6;
 }
 
 .prose-scholar h3 {
-  @apply text-lg font-medium text-slate-800 mb-2 mt-4;
+  @apply text-lg font-medium text-ink mb-2 mt-4;
 }
 
 .prose-scholar p {
@@ -487,17 +498,28 @@ html, body {
 }
 
 .prose-scholar li {
-  @apply text-slate-700;
+  @apply text-ink-2;
 }
 
 .prose-scholar code {
-  @apply bg-slate-100 px-1.5 py-0.5 rounded text-sm font-mono text-slate-800;
+  @apply bg-paper-3 px-1.5 py-0.5 rounded text-sm font-mono text-ink;
 }
 
 .prose-scholar pre {
-  @apply bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto mb-4;
+  @apply bg-ink-2 text-paper-2 p-4 rounded-lg overflow-x-auto mb-4;
 }
 
 .prose-scholar blockquote {
-  @apply border-l-4 border-blue-500 pl-4 italic text-slate-600 my-4;
+  @apply border-l-4 border-gold pl-4 italic text-ink-2 my-4;
+}
+
+/* fd2 — reading-font picker. Theme-independent, scoped to .prose-scholar
+   only; "theme" (the default) has no rule here at all, so prose content
+   just inherits the active theme's own body font as before. */
+[data-reading-font="merriweather"] .prose-scholar {
+  font-family: 'Merriweather', Georgia, serif;
+}
+
+[data-reading-font="source_sans"] .prose-scholar {
+  font-family: 'Source Sans 3', system-ui, sans-serif;
 }

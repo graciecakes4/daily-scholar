@@ -32,6 +32,7 @@ const THEME_INIT_SCRIPT = `
     var theme = (s && (s.resolved_theme || s.theme)) || 'editorial';
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-font-size', (s && s.font_size) || 'medium');
+    document.documentElement.setAttribute('data-reading-font', (s && s.reading_font) || 'theme');
     var accent = s && (s.resolved_accent || s.accent);
     if (accent) {
       document.documentElement.setAttribute('data-accent', accent);

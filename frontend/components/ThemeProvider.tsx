@@ -50,6 +50,9 @@ export function applyDisplaySettings(settings: DisplaySettings) {
   const accent = settings.resolved_accent ?? settings.accent;
   document.documentElement.setAttribute('data-theme', theme);
   document.documentElement.setAttribute('data-font-size', settings.font_size);
+  // fd2 — theme-independent, always a valid value (default "theme" has
+  // no matching CSS rule, so setting it is a harmless no-op).
+  document.documentElement.setAttribute('data-reading-font', settings.reading_font);
   // accent only applies to themes with a multi-hue picker — clear the
   // attribute for every other theme so a stale accent from a previous
   // theme can't leak into globals.css's [data-theme="..."][data-accent="..."]

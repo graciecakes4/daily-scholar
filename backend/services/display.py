@@ -25,6 +25,13 @@ from fd3's backlog, named to fit each theme's own palette. Noir's are
 fully saturated rather than pastel since a washed-out tint would
 disappear against its near-black surfaces.
 
+fd2's "add new fonts" landed as a theme-independent reading_font
+setting: READING_FONTS registers "theme" (the no-op default — every
+theme's own body font, untouched), "merriweather", and "source_sans".
+Scoped to long-form generated content only (globals.css's
+.prose-scholar rules), not the app's own theme typography, so it can't
+clash with the bespoke fonts each theme below already carries.
+
 fd3's full theme list is now shipped: muted (quiet stone/greige,
 single clay accent), high_contrast (pure black/white verified against
 WCAG, its own 4-option accent picker — cyan/orange/magenta/violet),
@@ -75,6 +82,13 @@ class FontSizeOption:
     key: str
     label: str
     root_px: int         # <html> base font-size in px for this option
+
+
+@dataclass(frozen=True)
+class ReadingFontOption:
+    key: str    # stable id; used in settings JSON + the data-reading-font attr
+    label: str
+    description: str
 
 
 @dataclass(frozen=True)
@@ -163,6 +177,31 @@ FONT_SIZES: dict[str, FontSizeOption] = {
     "xlarge": FontSizeOption(key="xlarge", label="Extra large", root_px=21),
 }
 
+# fd2's "add new fonts" — scoped to long-form generated content only
+# (topic reviews, paper summaries — the .prose-scholar styles in
+# globals.css), not the app's own theme typography. Each theme keeps its
+# own bespoke display/body fonts everywhere else; this is a separate,
+# theme-independent axis, like font_size. "theme" is the no-op default —
+# no [data-reading-font="theme"] CSS rule exists, so prose-scholar just
+# inherits whatever the active theme already uses for body text.
+READING_FONTS: dict[str, ReadingFontOption] = {
+    "theme": ReadingFontOption(
+        key="theme",
+        label="Match theme (default)",
+        description="Whatever the active theme already uses for body text.",
+    ),
+    "merriweather": ReadingFontOption(
+        key="merriweather",
+        label="Merriweather",
+        description="A serif built for long-form on-screen reading.",
+    ),
+    "source_sans": ReadingFontOption(
+        key="source_sans",
+        label="Source Sans 3",
+        description="A clean humanist sans for long-form reading.",
+    ),
+}
+
 # Per-theme accent registry — only themes picked for the multi-hue accent
 # treatment (fd3 backlog) get an entry here. soft_morning's own baseline
 # --gold/--gold-dark (the "orange" values, see globals.css) is the
@@ -201,6 +240,7 @@ DEFAULT_DISPLAY_SETTINGS: dict[str, Any] = {
     "theme": "editorial",
     "font_size": "medium",
     "accent": None,
+    "reading_font": "theme",
 }
 
 
@@ -226,6 +266,13 @@ def list_font_sizes() -> list[dict[str, Any]]:
     return [
         {"key": f.key, "label": f.label, "root_px": f.root_px}
         for f in FONT_SIZES.values()
+    ]
+
+
+def list_reading_fonts() -> list[dict[str, Any]]:
+    return [
+        {"key": r.key, "label": r.label, "description": r.description}
+        for r in READING_FONTS.values()
     ]
 
 
@@ -293,7 +340,18 @@ def ensure_settings_shape(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
         candidate = raw.get("accent")
         accent = candidate if candidate in theme_accents else DEFAULT_ACCENTS.get(theme)
 
-    return {"theme": theme, "font_size": font_size, "accent": accent}
+    # reading_font is theme-independent (fd2) — no per-theme validity to
+    # check, just a plain registry lookup.
+    reading_font = str(raw.get("reading_font") or DEFAULT_DISPLAY_SETTINGS["reading_font"])
+    if reading_font not in READING_FONTS:
+        reading_font = DEFAULT_DISPLAY_SETTINGS["reading_font"]
+
+    return {
+        "theme": theme,
+        "font_size": font_size,
+        "accent": accent,
+        "reading_font": reading_font,
+    }
 
 
 def _with_resolved(user_id: str, normalized: dict[str, Any]) -> dict[str, Any]:

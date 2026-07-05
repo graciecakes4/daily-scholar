@@ -1140,6 +1140,12 @@ export interface FontSizeMeta {
   root_px: number;
 }
 
+export interface ReadingFontMeta {
+  key: string;
+  label: string;
+  description: string;
+}
+
 export interface DisplaySettings {
   theme: string;
   font_size: string;
@@ -1151,6 +1157,9 @@ export interface DisplaySettings {
   // special-case "random" when deciding what to apply.
   resolved_theme: string;
   resolved_accent: string | null;
+  // fd2 — theme-independent, only affects long-form generated content
+  // (.prose-scholar). "theme" is the no-op default.
+  reading_font: string;
 }
 
 export async function listThemes(): Promise<{ themes: ThemeMeta[] }> {
@@ -1159,6 +1168,10 @@ export async function listThemes(): Promise<{ themes: ThemeMeta[] }> {
 
 export async function listFontSizes(): Promise<{ font_sizes: FontSizeMeta[] }> {
   return fetchAPI('/display/font-sizes');
+}
+
+export async function listReadingFonts(): Promise<{ reading_fonts: ReadingFontMeta[] }> {
+  return fetchAPI('/display/reading-fonts');
 }
 
 export async function getDisplaySettings(): Promise<DisplaySettings> {
