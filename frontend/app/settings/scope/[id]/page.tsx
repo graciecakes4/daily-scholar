@@ -230,13 +230,13 @@ export default function ScopeEditorPage() {
     }
   }
 
-  if (loading) return <div className="text-slate-500">Loading…</div>;
+  if (loading) return <div className="text-muted">Loading…</div>;
   // draft mode renders the editor without a `scope` row; only the
   // existing-scope path needs the "not found" guard.
   if (!isDraft && !scope) {
     return (
       <div className="space-y-4">
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded-lg px-4 py-2 text-sm">
           {error ?? 'Scope not found.'}
         </div>
         <Link href="/settings/scope/library" className="text-sky-700 hover:underline text-sm">
@@ -265,10 +265,10 @@ export default function ScopeEditorPage() {
           <Link href="/settings/scope/library" className="text-sky-700 hover:underline text-sm">
             ← Library
           </Link>
-          <h1 className="text-3xl font-bold text-slate-900 mt-1 truncate">
+          <h1 className="text-3xl font-bold text-ink mt-1 truncate">
             {isDraft ? 'New scope' : scope?.name}
           </h1>
-          <p className="text-slate-600 mt-1 text-sm">
+          <p className="text-ink-2 mt-1 text-sm">
             {isDraft
               ? "Nothing is saved until you hit Save — navigate away to discard."
               : canEdit
@@ -281,7 +281,7 @@ export default function ScopeEditorPage() {
             <button
               type="button"
               onClick={handleSetActive}
-              className="text-sm px-3 py-1.5 bg-slate-100 text-slate-700 rounded hover:bg-slate-200"
+              className="text-sm px-3 py-1.5 bg-paper-3 text-ink-2 rounded hover:bg-rule"
             >
               Set active
             </button>
@@ -290,7 +290,7 @@ export default function ScopeEditorPage() {
             <button
               type="button"
               onClick={handleFork}
-              className="text-sm px-3 py-1.5 bg-slate-900 text-white rounded hover:bg-slate-700"
+              className="text-sm px-3 py-1.5 bg-gold-dark text-white rounded hover:bg-[#734f14]"
             >
               Fork to my library
             </button>
@@ -299,7 +299,7 @@ export default function ScopeEditorPage() {
             <button
               type="button"
               onClick={toggleVisibility}
-              className="text-sm px-3 py-1.5 bg-slate-100 text-slate-700 rounded hover:bg-slate-200"
+              className="text-sm px-3 py-1.5 bg-paper-3 text-ink-2 rounded hover:bg-rule"
               title={visibility === 'public' ? 'Make private' : 'Make public'}
             >
               {visibility === 'public' ? 'Make private' : 'Make public'}
@@ -309,48 +309,48 @@ export default function ScopeEditorPage() {
       </header>
 
       {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-rust/5 border border-rust/25 text-rust rounded-lg px-4 py-2 text-sm">
           {error}
         </div>
       )}
       {success && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-2 text-sm">
+        <div className="bg-moss/5 border border-moss/25 text-moss rounded-lg px-4 py-2 text-sm">
           {success}
         </div>
       )}
 
       {/* name + description */}
-      <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+      <section className="bg-paper-2 border border-rule rounded-lg p-5 space-y-3">
+        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
           Details
         </h2>
         <label className="block">
-          <span className="text-xs text-slate-600">Name</span>
+          <span className="text-xs text-ink-2">Name</span>
           <input
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
             disabled={!canEdit}
             maxLength={200}
-            className="mt-1 w-full px-3 py-2 border border-slate-300 rounded text-sm disabled:bg-slate-50 disabled:text-slate-500"
+            className="mt-1 w-full px-3 py-2 border border-rule rounded text-sm disabled:bg-paper disabled:text-muted"
           />
         </label>
         <label className="block">
-          <span className="text-xs text-slate-600">Description (optional)</span>
+          <span className="text-xs text-ink-2">Description (optional)</span>
           <textarea
             value={description}
             onChange={e => setDescription(e.target.value)}
             disabled={!canEdit}
             maxLength={2000}
             rows={3}
-            className="mt-1 w-full px-3 py-2 border border-slate-300 rounded text-sm disabled:bg-slate-50 disabled:text-slate-500"
+            className="mt-1 w-full px-3 py-2 border border-rule rounded text-sm disabled:bg-paper disabled:text-muted"
           />
         </label>
       </section>
 
       {/* mode selector */}
-      <section data-tour="scope-mode" className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Mode</h2>
+      <section data-tour="scope-mode" className="bg-paper-2 border border-rule rounded-lg p-5 space-y-3">
+        <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">Mode</h2>
         <ModeOption
           checked={mode === 'all'}
           onChange={() => setRadioMode('all')}
@@ -376,17 +376,17 @@ export default function ScopeEditorPage() {
 
       {/* topic picker */}
       {mode !== 'all' && (
-        <section className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+        <section className="bg-paper-2 border border-rule rounded-lg p-5 space-y-4">
           <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+            <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">
               {mode === 'silo' ? 'Select one topic' : 'Select topics'}
             </h2>
-            <span className="text-xs text-slate-500">{selected.length} selected</span>
+            <span className="text-xs text-muted">{selected.length} selected</span>
           </div>
           <div className="space-y-4">
             {Object.keys(grouped).sort().map(stream => (
               <div key={stream}>
-                <h3 className="text-xs uppercase tracking-wide text-slate-400 mb-1">
+                <h3 className="text-xs uppercase tracking-wide text-muted mb-1">
                   {streamDisplayName(stream)}
                 </h3>
                 <div className="space-y-1">
@@ -397,8 +397,8 @@ export default function ScopeEditorPage() {
                         canEdit ? 'cursor-pointer' : 'cursor-default'
                       } ${
                         selected.includes(t.id)
-                          ? 'bg-slate-900 text-white border-slate-900'
-                          : 'bg-white border-slate-200 hover:bg-slate-50'
+                          ? 'bg-gold-dark text-white border-ink'
+                          : 'bg-paper-2 border-rule hover:bg-paper'
                       }`}
                     >
                       <input
@@ -410,12 +410,12 @@ export default function ScopeEditorPage() {
                       />
                       <div className="flex-grow min-w-0">
                         <div className={`text-sm font-medium ${
-                          selected.includes(t.id) ? 'text-white' : 'text-slate-900'
+                          selected.includes(t.id) ? 'text-white' : 'text-ink'
                         }`}>
                           {t.name}
                         </div>
                         <div className={`text-xs truncate ${
-                          selected.includes(t.id) ? 'text-slate-300' : 'text-slate-500'
+                          selected.includes(t.id) ? 'text-muted' : 'text-muted'
                         }`}>
                           {t.id}
                         </div>
@@ -430,14 +430,14 @@ export default function ScopeEditorPage() {
       )}
 
       {/* footer */}
-      <div className="bg-slate-100 border border-slate-200 rounded-lg p-4 flex items-center justify-between gap-4 flex-wrap">
-        <div className="text-sm text-slate-700">
+      <div className="bg-paper-3 border border-rule rounded-lg p-4 flex items-center justify-between gap-4 flex-wrap">
+        <div className="text-sm text-ink-2">
           {mode === 'all' && <span><strong>{topics.length}</strong> active topic(s) in scope.</span>}
           {mode === 'multi' && <span><strong>{inScopeCount}</strong> topic(s) selected.</span>}
           {mode === 'silo' && (
             selected.length === 1
               ? <span>Siloed on <strong>{topics.find(t => t.id === selected[0])?.name || selected[0]}</strong>.</span>
-              : <span className="text-slate-500">Pick one topic to silo on.</span>
+              : <span className="text-muted">Pick one topic to silo on.</span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -445,7 +445,7 @@ export default function ScopeEditorPage() {
             <button
               type="button"
               onClick={handleDelete}
-              className="text-sm px-3 py-2 text-rose-600 hover:bg-rose-50 rounded"
+              className="text-sm px-3 py-2 text-rust hover:bg-rust/5 rounded"
             >
               Delete
             </button>
@@ -454,7 +454,7 @@ export default function ScopeEditorPage() {
             data-tour="scope-save"
             onClick={save}
             disabled={saveDisabled}
-            className="px-5 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+            className="px-5 py-2 bg-gold-dark text-white rounded-lg text-sm font-medium hover:bg-[#734f14] disabled:opacity-50"
           >
             {saving ? 'Saving…' : isDraft ? 'Create' : 'Save'}
           </button>
@@ -462,7 +462,7 @@ export default function ScopeEditorPage() {
       </div>
 
       {scope && (
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-muted">
           Last updated {new Date(scope.updated_at).toLocaleString()}.
           {scope.forked_from_scope_id && (
             <> Forked from scope #{scope.forked_from_scope_id}.</>
@@ -486,8 +486,8 @@ function ModeOption({
     <label className={`flex items-start gap-3 ${disabled ? 'cursor-default opacity-70' : 'cursor-pointer'}`}>
       <input type="radio" checked={checked} onChange={onChange} disabled={disabled} className="mt-1" />
       <div>
-        <div className="text-sm font-medium text-slate-900">{label}</div>
-        <div className="text-xs text-slate-500">{help}</div>
+        <div className="text-sm font-medium text-ink">{label}</div>
+        <div className="text-xs text-muted">{help}</div>
       </div>
     </label>
   );

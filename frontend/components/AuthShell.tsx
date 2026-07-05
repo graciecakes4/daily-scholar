@@ -18,8 +18,8 @@ export function AuthShell({
 }) {
   return (
     <div className="max-w-md mx-auto mt-12">
-      <h1 className="text-2xl font-bold text-slate-900 mb-6 text-center">{title}</h1>
-      <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+      <h1 className="text-2xl font-bold text-ink mb-6 text-center">{title}</h1>
+      <div className="bg-paper-2 border border-rule rounded-lg p-6 shadow-sm">
         {children}
       </div>
     </div>
@@ -39,11 +39,11 @@ export function Field({
 }) {
   return (
     <div className="space-y-1">
-      <label htmlFor={htmlFor} className="block text-sm font-medium text-slate-700">
+      <label htmlFor={htmlFor} className="block text-sm font-medium text-ink-2">
         {label}
       </label>
       {children}
-      {hint && <p className="text-xs text-slate-500">{hint}</p>}
+      {hint && <p className="text-xs text-muted">{hint}</p>}
     </div>
   );
 }

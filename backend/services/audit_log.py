@@ -48,6 +48,12 @@ class EventType:
     INVITE_CREATE = "invite.create"
     INVITE_REVOKE = "invite.revoke"
 
+    # Admin-triggered per-user daily-content cache clear (ad5). Worth
+    # auditing like the other admin mutations above, even though it's
+    # non-destructive to real data (just forces regeneration) — it's
+    # still an action taken on someone else's account.
+    CACHE_BUST = "cache.bust"
+
     @classmethod
     def all(cls) -> list[str]:
         return [
@@ -59,6 +65,7 @@ class EventType:
             cls.USER_PASSWORD_RESET_ADMIN,
             cls.INVITE_CREATE,
             cls.INVITE_REVOKE,
+            cls.CACHE_BUST,
         ]
 
 

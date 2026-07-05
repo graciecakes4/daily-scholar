@@ -108,6 +108,20 @@ class Settings(BaseSettings):
     vapid_private_key: Optional[str] = Field(default=None)
     vapid_subject: Optional[str] = Field(default=None)
 
+    # SMTP (transactional email) — required for password-reset emails (li3b)
+    # and any future transactional mail (invite delivery, etc.). All fields
+    # optional: when smtp_host is unset, backend/services/email.py logs the
+    # message instead of sending, so local dev works without real creds.
+    smtp_host: Optional[str] = Field(default=None)
+    smtp_port: int = Field(default=587)
+    smtp_username: Optional[str] = Field(default=None)
+    smtp_password: Optional[str] = Field(default=None)
+    # STARTTLS on 587 (the common case); set false only for a provider that
+    # requires implicit TLS on 465 or an unencrypted internal relay.
+    smtp_use_tls: bool = Field(default=True)
+    smtp_from_email: Optional[str] = Field(default=None)
+    smtp_from_name: str = Field(default="Daily Scholar")
+
     # Cloudflare Access — multi-user identity (optional).
     # The app always reads Cf-Access-Authenticated-User-Email as the identity
     # source when present. When CF_ACCESS_VERIFY_JWT is on, the app also

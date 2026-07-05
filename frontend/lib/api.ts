@@ -1117,6 +1117,77 @@ export async function listNotificationJobs(): Promise<{
 }
 
 // -----------------------------------------------------------------------------
+// Display preferences (Phase 5 / fd3, foundation slice)
+// -----------------------------------------------------------------------------
+
+export interface AccentMeta {
+  key: string;
+  label: string;
+  hex: string;
+}
+
+export interface ThemeMeta {
+  key: string;
+  label: string;
+  description: string;
+  dark: boolean;
+  accents: AccentMeta[];
+}
+
+export interface FontSizeMeta {
+  key: string;
+  label: string;
+  root_px: number;
+}
+
+export interface ReadingFontMeta {
+  key: string;
+  label: string;
+  description: string;
+}
+
+export interface DisplaySettings {
+  theme: string;
+  font_size: string;
+  accent: string | null;
+  // what should actually be painted (data-theme/data-accent) this week —
+  // equal to theme/accent for every normal theme; computed server-side
+  // when theme === "random" (see backend/services/display.py's
+  // resolve_random()). Always present, so the frontend never has to
+  // special-case "random" when deciding what to apply.
+  resolved_theme: string;
+  resolved_accent: string | null;
+  // fd2 — theme-independent, only affects long-form generated content
+  // (.prose-scholar). "theme" is the no-op default.
+  reading_font: string;
+}
+
+export async function listThemes(): Promise<{ themes: ThemeMeta[] }> {
+  return fetchAPI('/display/themes');
+}
+
+export async function listFontSizes(): Promise<{ font_sizes: FontSizeMeta[] }> {
+  return fetchAPI('/display/font-sizes');
+}
+
+export async function listReadingFonts(): Promise<{ reading_fonts: ReadingFontMeta[] }> {
+  return fetchAPI('/display/reading-fonts');
+}
+
+export async function getDisplaySettings(): Promise<DisplaySettings> {
+  return fetchAPI('/display/settings');
+}
+
+export async function updateDisplaySettings(
+  settings: DisplaySettings,
+): Promise<DisplaySettings> {
+  return fetchAPI('/display/settings', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  });
+}
+
+// -----------------------------------------------------------------------------
 // In-app auth (Phase A)
 // -----------------------------------------------------------------------------
 
@@ -1225,6 +1296,34 @@ export async function resetTour(
     ? `/auth/tour-reset?tour_id=${encodeURIComponent(tour_id)}`
     : '/auth/tour-reset';
   return fetchAPI(path, { method: 'PUT' });
+}
+
+// -----------------------------------------------------------------------------
+// Self-serve password reset (li3b)
+// -----------------------------------------------------------------------------
+//
+// Step 1 emails a reset link (SMTP, backend/services/email.py) if the
+// address belongs to an active account. The response is always the same
+// generic message regardless of whether it matched anything, so there's
+// nothing for the frontend to branch on here — just show the message.
+
+export async function requestPasswordReset(
+  email: string,
+): Promise<{ ok: boolean; message: string }> {
+  return fetchAPI('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function confirmPasswordReset(
+  token: string,
+  new_password: string,
+): Promise<{ ok: boolean }> {
+  return fetchAPI('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, new_password }),
+  });
 }
 
 // -----------------------------------------------------------------------------
@@ -1349,6 +1448,94 @@ export async function adminResetPassword(
 }
 
 // -----------------------------------------------------------------------------
+// Admin: system stats (ad5)
+// -----------------------------------------------------------------------------
+
+export interface StatsOverview {
+  users: {
+    active: number;
+    pending: number;
+    suspended: number;
+    admins: number;
+    total: number;
+  };
+  content: {
+    topics_total: number;
+    topics_active: number;
+    papers_seen: number;
+    papers_archived: number;
+    quizzes_taken: number;
+  };
+  signup_trend: { date: string; signups: number }[];
+}
+
+export async function getStatsOverview(): Promise<StatsOverview> {
+  return fetchAPI('/admin/stats/overview');
+}
+
+export interface QuizTopicBreakdown {
+  topic_id: string;
+  topic_name: string;
+  attempts: number;
+  correct: number;
+  accuracy: number;
+}
+
+export interface QuizDifficultyBreakdown {
+  difficulty: string;
+  attempts: number;
+  correct: number;
+  accuracy: number;
+}
+
+export interface QuizScoreTrendPoint {
+  date: string;
+  quizzes_taken: number;
+  avg_percentage: number;
+}
+
+export interface QuizLeaderboardEntry {
+  user_id: string;
+  email: string;
+  quizzes_taken: number;
+  accuracy: number;
+}
+
+export interface QuizPerformanceStats {
+  total_quizzes: number;
+  total_questions_answered: number;
+  overall_accuracy: number;
+  average_score: number;
+  median_score: number;
+  score_distribution: { '0-59': number; '60-79': number; '80-100': number };
+  by_topic: QuizTopicBreakdown[];
+  by_difficulty: QuizDifficultyBreakdown[];
+  score_trend: QuizScoreTrendPoint[];
+  top_by_volume: QuizLeaderboardEntry[];
+  top_by_accuracy: QuizLeaderboardEntry[];
+  accuracy_leaderboard_min_questions: number;
+}
+
+export async function getQuizPerformanceStats(): Promise<QuizPerformanceStats> {
+  return fetchAPI('/admin/stats/quiz-performance');
+}
+
+// -----------------------------------------------------------------------------
+// Admin: per-user cache bust (ad5)
+// -----------------------------------------------------------------------------
+
+export async function bustUserCache(
+  userId: string,
+): Promise<{ ok: boolean; user_id: string; rows_deleted: number }> {
+  return fetchAPI(`/admin/cache/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+}
+
+// -----------------------------------------------------------------------------
+// Admin: topics (ad4) — importTopicsFromYaml / exportTopicsToYaml / listTopics
+// already exist above in the Topics section; nothing new needed here.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
 // Admin: audit log
 // -----------------------------------------------------------------------------
 
@@ -1359,7 +1546,8 @@ export type AuditEventType =
   | 'user.suspend'
   | 'user.reactivate'
   | 'invite.create'
-  | 'invite.revoke';
+  | 'invite.revoke'
+  | 'cache.bust';
 
 export interface AuditEvent {
   id: number;

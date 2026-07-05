@@ -1,6 +1,17 @@
 /* font stack — fraunces drives editorial display type, ibm plex mono powers
-   the small mono badges + byline, inter remains body/ui */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,30..100;1,9..144,400..600,30..100&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+   the small mono badges + byline, inter remains body/ui. bodoni moda is the
+   observatory theme's display face (Phase 5 / fd3) — loaded here too so
+   switching data-theme never triggers a network fetch. nunito (soft_morning),
+   archivo black + space mono (brutalist), and bebas neue + work sans (noir)
+   are the three newer theme faces, same reasoning — all loaded up front.
+   cormorant garamond (muted), atkinson hyperlegible (high_contrast — a
+   typeface built for low-vision readability, used for both display and
+   body), and fredoka + figtree (pride) are the final three. merriweather
+   + source sans 3 (fd2) are a separate axis entirely — reading-font
+   options for long-form generated content only (see the
+   [data-reading-font="..."] .prose-scholar rules below), independent of
+   theme, so they're loaded here too rather than gated behind first use. */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,30..100;1,9..144,400..600,30..100&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..600&family=Nunito:wght@400;600;700;800&family=Archivo+Black&family=Space+Mono:wght@400;700&family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fredoka:wght@500;600;700&family=Figtree:wght@400;500;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Source+Sans+3:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -11,32 +22,343 @@
   --font-serif: 'Fraunces', Georgia, serif;
   --font-mono: 'IBM Plex Mono', 'JetBrains Mono', monospace;
 
-  /* editorial paper palette — mirrored in tailwind.config.js so utility
-     classes (bg-paper, text-ink, border-rule, etc.) compose with these */
-  --paper: #F2EBDD;
-  --paper-2: #FBF6EB;
-  --paper-3: #ECE2CC;
-  --ink: #1B1610;
-  --ink-2: #3A332A;
-  --muted: #7E7060;
-  --rule: #DBD0B9;
-  --gold: #B5862B;
-  --gold-dark: #8A6519;
-  --rust: #8E3A28;
-  --moss: #4F6B3C;
+  /* editorial paper palette (default theme) — mirrored in tailwind.config.js
+     so utility classes (bg-paper, text-ink, border-rule, etc.) compose with
+     these. Phase 5 / fd3: overridden per-theme below via [data-theme="..."]
+     on <html>; :root stays the "editorial" values so anything that renders
+     before ThemeProvider hydrates still looks correct (no FOUC).
+
+     Values are space-separated R G B components (not hex) — tailwind.config.js
+     wraps them as rgb(var(--x) / <alpha-value>), which is what actually lets
+     Tailwind's opacity modifiers (bg-rust/5, border-rule/60, etc.) keep
+     working. A plain var(--x) hex string builds fine for solid-color
+     utilities but silently drops any utility that uses a /NN opacity
+     modifier — learned the hard way when bg-rust/5 and border-moss/25
+     vanished from the compiled CSS during the fd3 foundation pass. */
+  --paper: 242 235 221;
+  --paper-2: 251 246 235;
+  --paper-3: 236 226 204;
+  --ink: 27 22 16;
+  --ink-2: 58 51 42;
+  --muted: 126 112 96;
+  --rule: 219 208 185;
+  --gold: 181 134 43;
+  --gold-dark: 138 101 25;
+  --rust: 142 58 40;
+  --moss: 79 107 60;
+
+  /* base <html> font-size the font-size picker scales — see
+     [data-font-size="..."] below. Every Tailwind rem-based utility
+     cascades from this, so no component classes need to change. */
+  font-size: 17px;
+
+  /* hints the browser's own native form chrome (a <select>'s open dropdown
+     popup, a date-input's calendar picker, native scrollbars) to render
+     light — the closed box itself is handled by the bg-paper/text-ink
+     classes on the element, but that popup content is OS-drawn and mostly
+     ignores page CSS unless this is set. */
+  color-scheme: light;
 }
+
+/* ---------------------------------------------------------------------
+   Phase 5 / fd3 — theme variants. Same token names as :root above; a
+   theme block only needs to override what actually differs. `dark` keeps
+   the editorial fonts, just recolored; `observatory` is the fuller
+   departure from mockups/stats_bar_option3_observatory.html — near-black
+   instrument panel, amber glow, Bodoni Moda display numerals.
+   Remaining fd3 scope (pastel/muted/high-contrast/pride/accents/b&w/
+   random) lands as additional [data-theme="..."] blocks here later —
+   the registry in backend/services/display.py is the other half.
+   --------------------------------------------------------------------- */
+
+[data-theme="dark"] {
+  --paper: 28 24 18;
+  --paper-2: 35 30 23;
+  --paper-3: 42 36 27;
+  --ink: 242 235 221;
+  --ink-2: 216 203 180;
+  --muted: 156 143 121;
+  --rule: 58 51 42;
+  --gold: 217 165 63;
+  --gold-dark: 181 134 43;
+  --rust: 201 97 74;
+  --moss: 110 154 91;
+  color-scheme: dark;
+}
+
+[data-theme="observatory"] {
+  --font-serif: 'Bodoni Moda', Georgia, serif;
+
+  --paper: 12 11 9;
+  --paper-2: 21 19 16;
+  --paper-3: 27 24 21;
+  --ink: 237 230 216;
+  --ink-2: 201 187 166;
+  --muted: 141 133 119;
+  color-scheme: dark;
+  --rule: 44 40 34;
+  --gold: 232 163 61;
+  --gold-dark: 181 119 42;
+  --rust: 181 87 58;
+  --moss: 107 143 90;
+}
+
+/* soft morning — blush pastel, rounded shapes. The first of the two
+   themes (alongside noir) that grew a multi-hue accent picker (fd3
+   backlog's red/blue/green/purple/orange, under friendlier names) —
+   backend/services/display.py's THEME_ACCENTS registers 5 options:
+   orange (the baseline below, no data-accent attr needed), rose, sage,
+   sky, lavender (each an override block right after this one). Only
+   --gold/--gold-dark change between accents; everything else (paper,
+   ink, rust/moss danger-success colors) stays put. */
+[data-theme="soft_morning"] {
+  --font-serif: 'Fraunces', Georgia, serif;
+  --font-inter: 'Nunito', system-ui, sans-serif;
+
+  --paper: 255 243 238;
+  --paper-2: 255 255 255;
+  --paper-3: 255 228 217;
+  --ink: 90 58 48;
+  --ink-2: 122 80 65;
+  --muted: 176 138 121;
+  --rule: 244 214 202;
+  --gold: 217 130 46;
+  --gold-dark: 184 106 31;
+  --rust: 199 68 68;
+  --moss: 122 148 103;
+  color-scheme: light;
+}
+
+[data-theme="soft_morning"][data-accent="rose"] {
+  --gold: 212 92 130;
+  --gold-dark: 184 68 104;
+}
+
+[data-theme="soft_morning"][data-accent="sage"] {
+  --gold: 107 143 88;
+  --gold-dark: 85 112 69;
+}
+
+[data-theme="soft_morning"][data-accent="sky"] {
+  --gold: 74 143 194;
+  --gold-dark: 57 111 155;
+}
+
+[data-theme="soft_morning"][data-accent="lavender"] {
+  --gold: 133 112 201;
+  --gold-dark: 107 88 168;
+}
+
+/* noir — cold true grayscale (deliberately no warm undertone, unlike
+   observatory's amber-glow instrument panel) with one electric-blue
+   accent. The other of the two multi-hue-accent themes — backend/
+   services/display.py's THEME_ACCENTS registers 5 options: cobalt (the
+   baseline below, no data-accent attr needed), crimson, emerald,
+   violet, amber (each an override block right after this one). Unlike
+   soft_morning's pastel set, these stay fully saturated — a washed-out
+   tint would vanish against near-black surfaces. */
+[data-theme="noir"] {
+  --font-serif: 'Bebas Neue', Georgia, serif;
+  --font-inter: 'Work Sans', system-ui, sans-serif;
+
+  --paper: 22 22 22;
+  --paper-2: 35 35 35;
+  --paper-3: 45 45 45;
+  --ink: 242 242 242;
+  --ink-2: 200 200 200;
+  --muted: 140 140 140;
+  --rule: 60 60 60;
+  --gold: 62 123 250;
+  --gold-dark: 41 94 214;
+  --rust: 224 74 74;
+  --moss: 86 168 118;
+  color-scheme: dark;
+}
+
+[data-theme="noir"][data-accent="crimson"] {
+  --gold: 240 69 90;
+  --gold-dark: 197 57 74;
+}
+
+[data-theme="noir"][data-accent="emerald"] {
+  --gold: 47 191 113;
+  --gold-dark: 39 157 93;
+}
+
+[data-theme="noir"][data-accent="violet"] {
+  --gold: 168 85 247;
+  --gold-dark: 138 70 203;
+}
+
+[data-theme="noir"][data-accent="amber"] {
+  --gold: 245 166 35;
+  --gold-dark: 201 136 29;
+}
+
+/* muted — desaturated stone/greige, hairline rules, single accent (no
+   multi-hue picker, same pattern as brutalist). Only --font-serif
+   changes (Cormorant Garamond for headlines) — body stays the default
+   Inter, deliberately, so the "quiet" identity comes from restraint
+   rather than a totalizing font swap. */
+[data-theme="muted"] {
+  --font-serif: 'Cormorant Garamond', Georgia, serif;
+
+  --paper: 234 230 221;
+  --paper-2: 244 241 234;
+  --paper-3: 223 218 205;
+  --ink: 62 58 52;
+  --ink-2: 90 85 77;
+  --muted: 139 132 120;
+  --rule: 230 226 219;
+  --gold: 138 107 82;
+  --gold-dark: 110 84 62;
+  --rust: 163 74 58;
+  --moss: 107 133 88;
+  color-scheme: light;
+}
+
+/* high_contrast — pure black/white, verified against WCAG (body text
+   21:1, secondary 9.6:1, borders 4.1:1 — all clear AAA except danger
+   red at ~6.9:1, still well past AA). Atkinson Hyperlegible — a
+   typeface built for low-vision readability — replaces both the
+   display and body face. 4-option accent picker: cyan (baseline),
+   orange, magenta, violet — cyan/orange clear AAA (13.7:1 / 8.9:1
+   against black), magenta/violet clear AA (6.5:1 / 6.2:1). */
+[data-theme="high_contrast"] {
+  --font-serif: 'Atkinson Hyperlegible', Georgia, serif;
+  --font-inter: 'Atkinson Hyperlegible', system-ui, sans-serif;
+
+  --paper: 0 0 0;
+  --paper-2: 18 18 18;
+  --paper-3: 34 34 34;
+  --ink: 255 255 255;
+  --ink-2: 230 230 230;
+  --muted: 175 175 175;
+  --rule: 110 110 110;
+  --gold: 0 229 255;
+  --gold-dark: 0 183 204;
+  --rust: 255 92 92;
+  --moss: 74 222 128;
+  color-scheme: dark;
+}
+
+[data-theme="high_contrast"][data-accent="orange"] {
+  --gold: 255 138 0;
+  --gold-dark: 204 110 0;
+}
+
+[data-theme="high_contrast"][data-accent="magenta"] {
+  --gold: 255 62 165;
+  --gold-dark: 204 50 132;
+}
+
+[data-theme="high_contrast"][data-accent="violet"] {
+  --gold: 178 102 255;
+  --gold-dark: 142 82 204;
+}
+
+/* pride — clean warm-neutral base (Fredoka + Figtree), single solid
+   accent (vivid pink, used everywhere the app already reaches for
+   --gold/--gold-dark — buttons, borders, "Selected" labels). The
+   progressive flag's full palette shows up separately, decoratively,
+   as a thin gradient ribbon pinned to the top of the viewport (see
+   .app-shell::before below) — a ribbon, not a flood, per the design
+   review. */
+[data-theme="pride"] {
+  --font-serif: 'Fredoka', Georgia, serif;
+  --font-inter: 'Figtree', system-ui, sans-serif;
+
+  --paper: 255 253 249;
+  --paper-2: 255 255 255;
+  --paper-3: 251 247 238;
+  --ink: 36 31 26;
+  --ink-2: 74 64 54;
+  --muted: 138 128 114;
+  --rule: 235 229 218;
+  --gold: 236 72 153;
+  --gold-dark: 188 58 122;
+  --rust: 220 38 38;
+  --moss: 34 197 94;
+  color-scheme: light;
+}
+
+[data-theme="pride"] .app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 4px;
+  z-index: 40;
+  background: linear-gradient(
+    90deg,
+    #000000,
+    #603813,
+    #74d7ee,
+    #ffafc8,
+    #ffffff,
+    #e40303,
+    #ff8c00,
+    #ffed00,
+    #008026,
+    #004dff,
+    #732982
+  );
+}
+
+/* brutalist — standalone theme (single accent only, no multi-hue variant
+   planned). Stark white/black, thick hard-edge borders, offset shadows,
+   punchy red accent. --rule is reused as a solid near-black (rather than
+   a faint hairline) so every existing border-rule utility across the app
+   renders as a bold structural line for free; the block below then
+   zeroes out corner-rounding and soft shadows app-wide to match. */
+[data-theme="brutalist"] {
+  --font-serif: 'Archivo Black', Georgia, serif;
+  --font-inter: 'Space Mono', 'IBM Plex Mono', monospace;
+  --font-mono: 'Space Mono', 'IBM Plex Mono', monospace;
+
+  --paper: 255 255 255;
+  --paper-2: 255 255 255;
+  --paper-3: 244 244 244;
+  --ink: 17 17 17;
+  --ink-2: 51 51 51;
+  --muted: 102 102 102;
+  --rule: 17 17 17;
+  --gold: 232 53 43;
+  --gold-dark: 184 32 24;
+  --rust: 175 20 60;
+  --moss: 30 140 70;
+  color-scheme: light;
+}
+
+[data-theme="brutalist"] * {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* ---------------------------------------------------------------------
+   Phase 5 / fd3 — font-size options. Scales every rem-based Tailwind
+   utility from the root, so no per-component work is needed beyond this.
+   --------------------------------------------------------------------- */
+
+html[data-font-size="small"] { font-size: 15px; }
+html[data-font-size="medium"] { font-size: 17px; }
+html[data-font-size="large"] { font-size: 19px; }
+html[data-font-size="xlarge"] { font-size: 21px; }
 
 body {
   font-family: var(--font-inter);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: var(--paper);
-  color: var(--ink);
+  background: rgb(var(--paper));
+  color: rgb(var(--ink));
   min-height: 100vh;
-  /* gentle radial warm-glow on the page — sits under the noise overlay */
+  /* gentle radial glow, tinted from the active theme's own accent/danger
+     tokens (rather than fixed hex) so it reads correctly in every theme —
+     Phase 5 / fd3. */
   background-image:
-    radial-gradient(circle at 20% 0%, rgba(181, 134, 43, 0.06), transparent 50%),
-    radial-gradient(circle at 100% 100%, rgba(142, 58, 40, 0.05), transparent 40%);
+    radial-gradient(circle at 20% 0%, rgb(var(--gold) / 0.06), transparent 50%),
+    radial-gradient(circle at 100% 100%, rgb(var(--rust) / 0.05), transparent 40%);
+  /* smooth cross-fade when the user switches theme/font-size */
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* faint paper noise via inline svg — pinned to the viewport so panning
@@ -73,12 +395,12 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--rule);
+  background: rgb(var(--rule));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
+  background: rgb(var(--muted));
 }
 
 /* Custom utilities */
@@ -139,21 +461,28 @@ html, body {
   @apply backdrop-blur-xl bg-white/70 border border-white/20;
 }
 
-/* Prose styles for generated content */
+/* Prose styles for generated content (topic reviews, paper summaries).
+   Converted from hardcoded slate/blue Tailwind classes to theme
+   tokens — a gap the earlier app-wide theme sweep missed since this
+   lives in globals.css rather than a page file, not caught until fd2's
+   reading-font work touched this exact block. Code blocks intentionally
+   use ink-2/paper-2 (inverted from the page) rather than the gold-dark
+   swap used for slate-900 elsewhere, since a code block reads as a
+   neutral dark surface on every theme, not an accent-colored one. */
 .prose-scholar {
-  @apply text-slate-700 leading-relaxed;
+  @apply text-ink-2 leading-relaxed;
 }
 
 .prose-scholar h1 {
-  @apply text-2xl font-bold text-slate-900 mb-4;
+  @apply text-2xl font-bold text-ink mb-4;
 }
 
 .prose-scholar h2 {
-  @apply text-xl font-semibold text-slate-800 mb-3 mt-6;
+  @apply text-xl font-semibold text-ink mb-3 mt-6;
 }
 
 .prose-scholar h3 {
-  @apply text-lg font-medium text-slate-800 mb-2 mt-4;
+  @apply text-lg font-medium text-ink mb-2 mt-4;
 }
 
 .prose-scholar p {
@@ -169,17 +498,28 @@ html, body {
 }
 
 .prose-scholar li {
-  @apply text-slate-700;
+  @apply text-ink-2;
 }
 
 .prose-scholar code {
-  @apply bg-slate-100 px-1.5 py-0.5 rounded text-sm font-mono text-slate-800;
+  @apply bg-paper-3 px-1.5 py-0.5 rounded text-sm font-mono text-ink;
 }
 
 .prose-scholar pre {
-  @apply bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto mb-4;
+  @apply bg-ink-2 text-paper-2 p-4 rounded-lg overflow-x-auto mb-4;
 }
 
 .prose-scholar blockquote {
-  @apply border-l-4 border-blue-500 pl-4 italic text-slate-600 my-4;
+  @apply border-l-4 border-gold pl-4 italic text-ink-2 my-4;
+}
+
+/* fd2 — reading-font picker. Theme-independent, scoped to .prose-scholar
+   only; "theme" (the default) has no rule here at all, so prose content
+   just inherits the active theme's own body font as before. */
+[data-reading-font="merriweather"] .prose-scholar {
+  font-family: 'Merriweather', Georgia, serif;
+}
+
+[data-reading-font="source_sans"] .prose-scholar {
+  font-family: 'Source Sans 3', system-ui, sans-serif;
 }

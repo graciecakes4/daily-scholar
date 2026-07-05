@@ -228,8 +228,8 @@ export default function DashboardPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 animate-pulse" />
-          <p className="text-slate-600">Loading your daily learning content...</p>
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-gold to-gold-dark animate-pulse" />
+          <p className="text-ink-2">Loading your daily learning content...</p>
         </div>
       </div>
     );
@@ -238,10 +238,10 @@ export default function DashboardPage() {
   if (apiStatus === 'error') {
     return (
       <div className="max-w-2xl mx-auto mt-12">
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center">
-          <h2 className="text-xl font-semibold text-red-800 mb-2">Cannot Connect to Backend</h2>
-          <p className="text-red-600 mb-4">{error}</p>
-          <code className="bg-red-100 px-3 py-1 rounded text-sm">uvicorn backend.main:app --reload</code>
+        <div className="bg-rust/5 border border-rust/25 rounded-2xl p-8 text-center">
+          <h2 className="text-xl font-semibold text-rust mb-2">Cannot Connect to Backend</h2>
+          <p className="text-rust mb-4">{error}</p>
+          <code className="bg-rust/10 px-3 py-1 rounded text-sm">uvicorn backend.main:app --reload</code>
         </div>
       </div>
     );
@@ -311,37 +311,37 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Daily Scholar</h1>
-          <p className="text-slate-600 mt-1">{dailyContent?.date}</p>
+          <h1 className="text-3xl font-bold text-ink">Daily Scholar</h1>
+          <p className="text-ink-2 mt-1">{dailyContent?.date}</p>
         </div>
       </div>
 
       {/* Section Navigation — equal 3-col grid on mobile so the buttons share
           width and never overflow; flex with natural widths on md+. Labels are
           abbreviated on mobile ("Paper" instead of "Today's Paper") */}
-      <div className="grid grid-cols-3 gap-1 md:flex md:gap-2 border-b border-slate-200 pb-2">
+      <div className="grid grid-cols-3 gap-1 md:flex md:gap-2 border-b border-rule pb-2">
         <button
           data-tour="paper"
           onClick={() => setActiveSection('paper')}
           className={`flex items-center justify-center gap-1.5 px-2 py-2 md:px-4 rounded-lg font-medium text-sm md:text-base transition-all min-w-0 ${
-            activeSection === 'paper' ? 'bg-blue-100 text-blue-700' : 'text-slate-600 hover:bg-slate-100'
+            activeSection === 'paper' ? 'bg-gold/10 text-gold-dark' : 'text-ink-2 hover:bg-paper-3'
           }`}
         >
           <BookIcon />
           <span className="truncate"><span className="hidden md:inline">Today's </span>Paper</span>
-          {dailyContent?.paper && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />}
+          {dailyContent?.paper && <span className="w-2 h-2 rounded-full bg-gold flex-shrink-0" />}
         </button>
         <button
           data-tour="review"
           onClick={() => setActiveSection('review')}
           className={`flex items-center justify-center gap-1.5 px-2 py-2 md:px-4 rounded-lg font-medium text-sm md:text-base transition-all min-w-0 ${
-            activeSection === 'review' ? 'bg-emerald-100 text-emerald-700' : 'text-slate-600 hover:bg-slate-100'
+            activeSection === 'review' ? 'bg-moss/10 text-moss' : 'text-ink-2 hover:bg-paper-3'
           }`}
         >
           <BrainIcon />
           <span className="truncate"><span className="hidden md:inline">Topic </span>Review</span>
           {dailyContent?.topic_reviews && (
-            <span className="px-2 py-0.5 bg-emerald-200 text-emerald-800 text-xs rounded-full flex-shrink-0">
+            <span className="px-2 py-0.5 bg-moss/20 text-moss text-xs rounded-full flex-shrink-0">
               {dailyContent.topic_reviews.length}
             </span>
           )}
@@ -350,12 +350,12 @@ export default function DashboardPage() {
           data-tour="quiz"
           onClick={() => setActiveSection('quiz')}
           className={`flex items-center justify-center gap-1.5 px-2 py-2 md:px-4 rounded-lg font-medium text-sm md:text-base transition-all min-w-0 ${
-            activeSection === 'quiz' ? 'bg-purple-100 text-purple-700' : 'text-slate-600 hover:bg-slate-100'
+            activeSection === 'quiz' ? 'bg-gold/10 text-gold-dark' : 'text-ink-2 hover:bg-paper-3'
           }`}
         >
           <QuizIcon />
           <span className="truncate">Quiz</span>
-          <span className="px-2 py-0.5 bg-purple-200 text-purple-800 text-xs rounded-full flex-shrink-0">
+          <span className="px-2 py-0.5 bg-gold/20 text-gold-dark text-xs rounded-full flex-shrink-0">
             {quizQuestions.length}
           </span>
         </button>
@@ -367,39 +367,39 @@ export default function DashboardPage() {
           
           {/* Paper Section */}
           {activeSection === 'paper' && (
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <div className="bg-paper-2 rounded-2xl border border-rule overflow-hidden">
               {dailyContent?.paper ? (
                 <>
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-3">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                      <span className="px-2 py-1 bg-gold/10 text-gold-dark text-xs font-medium rounded">
                         {dailyContent.paper.source}
                       </span>
                       {dailyContent.paper.primary_category && (
-                        <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded">
+                        <span className="px-2 py-1 bg-paper-3 text-ink-2 text-xs rounded">
                           {dailyContent.paper.primary_category}
                         </span>
                       )}
                     </div>
-                    <h2 className="text-xl font-bold text-slate-900 mb-2">{dailyContent.paper.title}</h2>
-                    <p className="text-sm text-slate-600 mb-4">
+                    <h2 className="text-xl font-bold text-ink mb-2">{dailyContent.paper.title}</h2>
+                    <p className="text-sm text-ink-2 mb-4">
                       {dailyContent.paper.authors?.slice(0, 4).join(', ')}
                       {dailyContent.paper.authors?.length > 4 && ' et al.'}
                     </p>
 
                     {dailyContent.paper_summary && (
                       <div className="space-y-4">
-                        <div className="bg-blue-50 rounded-xl p-4">
-                          <h3 className="font-semibold text-blue-900 mb-2">Summary</h3>
-                          <p className="text-blue-800 text-sm">{dailyContent.paper_summary.summary}</p>
+                        <div className="bg-gold/5 rounded-xl p-4">
+                          <h3 className="font-semibold text-gold-dark mb-2">Summary</h3>
+                          <p className="text-gold-dark text-sm">{dailyContent.paper_summary.summary}</p>
                         </div>
                         {dailyContent.paper_summary.key_findings?.length > 0 && (
                           <div>
-                            <h3 className="font-semibold text-slate-900 mb-2">Key Findings</h3>
+                            <h3 className="font-semibold text-ink mb-2">Key Findings</h3>
                             <ul className="space-y-1">
                               {dailyContent.paper_summary.key_findings.map((f, i) => (
-                                <li key={i} className="text-sm text-slate-700 flex items-start gap-2">
-                                  <span className="text-blue-500">•</span>{f}
+                                <li key={i} className="text-sm text-ink-2 flex items-start gap-2">
+                                  <span className="text-gold-dark">•</span>{f}
                                 </li>
                               ))}
                             </ul>
@@ -408,15 +408,15 @@ export default function DashboardPage() {
                       </div>
                     )}
                   </div>
-                  <div className="border-t border-slate-100 p-4 bg-slate-50 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div className="border-t border-rule p-4 bg-paper flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div className="flex gap-2">
                       <a href={dailyContent.paper.url} target="_blank" rel="noopener noreferrer"
-                         className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm hover:bg-slate-50">
+                         className="flex items-center gap-2 px-4 py-2 bg-paper-2 border border-rule rounded-lg text-sm hover:bg-paper">
                         <ExternalLinkIcon /> Open
                       </a>
                       {dailyContent.paper.pdf_url && (
                         <a href={dailyContent.paper.pdf_url} target="_blank" rel="noopener noreferrer"
-                           className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm hover:bg-slate-50">
+                           className="px-4 py-2 bg-paper-2 border border-rule rounded-lg text-sm hover:bg-paper">
                           PDF
                         </a>
                       )}
@@ -425,11 +425,11 @@ export default function DashboardPage() {
                       <button
                         onClick={handleNewPaper}
                         disabled={refreshingPaper}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-paper-2 border border-rule text-ink-2 hover:bg-paper disabled:opacity-50"
                         title="Skip this paper and find a different one"
                       >
                         {refreshingPaper ? (
-                          <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                          <span className="w-4 h-4 border-2 border-muted border-t-transparent rounded-full animate-spin" />
                         ) : (
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -441,11 +441,11 @@ export default function DashboardPage() {
                         onClick={handleArchivePaper}
                         disabled={archivingPaper || paperArchived}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
-                          paperArchived ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-600 text-white hover:bg-blue-700'
+                          paperArchived ? 'bg-moss/10 text-moss' : 'bg-gold-dark text-white hover:brightness-90'
                         } disabled:opacity-50`}
                       >
                         {archivingPaper ? (
-                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span className="w-4 h-4 border-2 border-paper-2 border-t-transparent rounded-full animate-spin" />
                         ) : paperArchived ? <CheckIcon /> : <ArchiveIcon />}
                         {paperArchived ? 'Saved!' : 'Save to Archive'}
                       </button>
@@ -454,11 +454,11 @@ export default function DashboardPage() {
                 </>
               ) : (
                 <div className="p-12 text-center">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-paper-3 flex items-center justify-center">
                     <BookIcon />
                   </div>
-                  <h3 className="text-lg font-semibold text-slate-700 mb-2">No New Papers Today</h3>
-                  <p className="text-slate-500 text-sm">Check back tomorrow for new papers!</p>
+                  <h3 className="text-lg font-semibold text-ink-2 mb-2">No New Papers Today</h3>
+                  <p className="text-muted text-sm">Check back tomorrow for new papers!</p>
                 </div>
               )}
             </div>
@@ -466,25 +466,25 @@ export default function DashboardPage() {
 
           {/* Topic Review Section */}
           {activeSection === 'review' && dailyContent?.topic_reviews?.map((tr, index) => (
-            <div key={index} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <div key={index} className="bg-paper-2 rounded-2xl border border-rule overflow-hidden">
               <div className="p-6">
                 <div className="flex flex-col gap-3 mb-4 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
-                    <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded">
+                    <span className="px-2 py-1 bg-moss/10 text-moss text-xs font-medium rounded">
                       {tr.topic.course_name}
                     </span>
-                    <h2 className="text-xl font-bold text-slate-900 mt-2 break-words">{tr.topic.name}</h2>
+                    <h2 className="text-xl font-bold text-ink mt-2 break-words">{tr.topic.name}</h2>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     {index === 0 && (
                       <button
                         onClick={handleNewReview}
                         disabled={refreshingReview}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-paper-2 border border-rule text-ink-2 hover:bg-paper disabled:opacity-50"
                         title="Generate a different topic review"
                       >
                         {refreshingReview ? (
-                          <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                          <span className="w-4 h-4 border-2 border-muted border-t-transparent rounded-full animate-spin" />
                         ) : (
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -497,33 +497,33 @@ export default function DashboardPage() {
                       onClick={() => handleArchiveTopic(index)}
                       disabled={archivingTopic === tr.topic.id || archivedTopics.has(tr.topic.id)}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
-                        archivedTopics.has(tr.topic.id) ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 hover:bg-slate-200'
+                        archivedTopics.has(tr.topic.id) ? 'bg-moss/10 text-moss' : 'bg-paper-3 hover:bg-rule'
                       } disabled:opacity-50`}
                     >
                       {archivingTopic === tr.topic.id ? (
-                        <span className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                        <span className="w-4 h-4 border-2 border-muted border-t-transparent rounded-full animate-spin" />
                       ) : archivedTopics.has(tr.topic.id) ? <><CheckIcon /> Saved</> : <><ArchiveIcon /> Save</>}
                     </button>
                   </div>
                 </div>
-                <p className="text-slate-700 mb-4">{tr.review.review_content}</p>
+                <p className="text-ink-2 mb-4">{tr.review.review_content}</p>
                 <div className="grid md:grid-cols-2 gap-4">
                   {tr.review.key_points?.length > 0 && (
-                    <div className="bg-emerald-50 rounded-xl p-4">
-                      <h4 className="font-semibold text-emerald-900 mb-2">Key Points</h4>
+                    <div className="bg-moss/5 rounded-xl p-4">
+                      <h4 className="font-semibold text-moss mb-2">Key Points</h4>
                       <ul className="space-y-1">
                         {tr.review.key_points.map((p, i) => (
-                          <li key={i} className="text-sm text-emerald-800">✓ {p}</li>
+                          <li key={i} className="text-sm text-moss">✓ {p}</li>
                         ))}
                       </ul>
                     </div>
                   )}
                   {tr.review.practice_suggestions?.length > 0 && (
-                    <div className="bg-amber-50 rounded-xl p-4">
-                      <h4 className="font-semibold text-amber-900 mb-2">Practice Ideas</h4>
+                    <div className="bg-gold/5 rounded-xl p-4">
+                      <h4 className="font-semibold text-gold-dark mb-2">Practice Ideas</h4>
                       <ul className="space-y-1">
                         {tr.review.practice_suggestions.map((s, i) => (
-                          <li key={i} className="text-sm text-amber-800">→ {s}</li>
+                          <li key={i} className="text-sm text-gold-dark">→ {s}</li>
                         ))}
                       </ul>
                     </div>
@@ -535,28 +535,28 @@ export default function DashboardPage() {
 
           {/* Quiz Section */}
           {activeSection === 'quiz' && (
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-              <div className="p-4 border-b border-slate-100 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="bg-paper-2 rounded-2xl border border-rule overflow-hidden">
+              <div className="p-4 border-b border-rule flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
-                  <h2 className="text-lg font-bold text-slate-900">Knowledge Check</h2>
-                  <p className="text-sm text-slate-500">{quizQuestions.length} questions • {quizTotalPoints} points</p>
+                  <h2 className="text-lg font-bold text-ink">Knowledge Check</h2>
+                  <p className="text-sm text-muted">{quizQuestions.length} questions • {quizTotalPoints} points</p>
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   {Object.keys(quizResults).length > 0 && !quizArchived && (
                     <button onClick={handleArchiveQuiz} disabled={archivingQuiz}
-                            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50">
-                      {archivingQuiz ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <ArchiveIcon />}
+                            className="flex items-center gap-2 px-4 py-2 bg-moss text-white rounded-lg text-sm hover:brightness-90 disabled:opacity-50">
+                      {archivingQuiz ? <span className="w-4 h-4 border-2 border-paper-2 border-t-transparent rounded-full animate-spin" /> : <ArchiveIcon />}
                       Save Results
                     </button>
                   )}
                   {quizArchived && (
-                    <span className="flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-lg text-sm">
+                    <span className="flex items-center gap-2 px-4 py-2 bg-moss/10 text-moss rounded-lg text-sm">
                       <CheckIcon /> Saved!
                     </span>
                   )}
                   <button onClick={handleRegenerateQuiz} disabled={regeneratingQuiz}
-                          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 disabled:opacity-50">
-                    {regeneratingQuiz ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : '🔄'}
+                          className="flex items-center gap-2 px-4 py-2 bg-gold-dark text-white rounded-lg text-sm hover:brightness-90 disabled:opacity-50">
+                    {regeneratingQuiz ? <span className="w-4 h-4 border-2 border-paper-2 border-t-transparent rounded-full animate-spin" /> : '🔄'}
                     New Quiz
                   </button>
                 </div>
@@ -564,23 +564,23 @@ export default function DashboardPage() {
               <div className="p-6 space-y-6">
                 {quizQuestions.map((q, i) => (
                   <div key={q.id} className={`p-4 rounded-xl border ${
-                    quizResults[q.id] ? (quizResults[q.id].correct ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200') : 'bg-slate-50 border-slate-200'
+                    quizResults[q.id] ? (quizResults[q.id].correct ? 'bg-moss/5 border-moss/25' : 'bg-rust/5 border-rust/25') : 'bg-paper border-rule'
                   }`}>
                     <div className="flex items-start gap-3 mb-3">
-                      <span className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 font-bold flex items-center justify-center text-sm">{i + 1}</span>
+                      <span className="w-8 h-8 rounded-full bg-gold/10 text-gold-dark font-bold flex items-center justify-center text-sm">{i + 1}</span>
                       <div>
-                        <p className="font-medium text-slate-900">{q.question_text}</p>
-                        {q.topic_name && <p className="text-xs text-slate-500 mt-1">{q.topic_name}</p>}
+                        <p className="font-medium text-ink">{q.question_text}</p>
+                        {q.topic_name && <p className="text-xs text-muted mt-1">{q.topic_name}</p>}
                       </div>
                     </div>
                     {q.options && (
                       <div className="space-y-2 ml-11">
                         {q.options.map((opt, oi) => (
                           <label key={oi} className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer border ${
-                            quizAnswers[q.id] === opt ? 'bg-purple-100 border-purple-300' : 'bg-white border-slate-200 hover:bg-slate-50'
+                            quizAnswers[q.id] === opt ? 'bg-gold/10 border-gold/30' : 'bg-paper-2 border-rule hover:bg-paper'
                           }`}>
                             <input type="radio" name={q.id} value={opt} checked={quizAnswers[q.id] === opt}
-                                   onChange={() => handleAnswerChange(q.id, opt)} disabled={!!quizResults[q.id]} className="w-4 h-4 text-purple-600" />
+                                   onChange={() => handleAnswerChange(q.id, opt)} disabled={!!quizResults[q.id]} className="w-4 h-4 text-gold-dark" />
                             <span className="text-sm">{opt}</span>
                           </label>
                         ))}
@@ -588,20 +588,20 @@ export default function DashboardPage() {
                     )}
                     {!quizResults[q.id] && quizAnswers[q.id] && (
                       <div className="ml-11 mt-3">
-                        <button onClick={() => handleSubmitAnswer(q.id)} className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700">
+                        <button onClick={() => handleSubmitAnswer(q.id)} className="px-4 py-2 bg-gold-dark text-white rounded-lg text-sm hover:brightness-90">
                           Check Answer
                         </button>
                       </div>
                     )}
                     {quizResults[q.id] && (
-                      <div className={`ml-11 mt-3 p-3 rounded-lg ${quizResults[q.id].correct ? 'bg-emerald-100' : 'bg-red-100'}`}>
+                      <div className={`ml-11 mt-3 p-3 rounded-lg ${quizResults[q.id].correct ? 'bg-moss/10' : 'bg-rust/10'}`}>
                         <div className="flex items-center gap-2 mb-1">
                           {quizResults[q.id].correct ? <CheckIcon /> : <XIcon />}
-                          <span className={`font-medium ${quizResults[q.id].correct ? 'text-emerald-700' : 'text-red-700'}`}>
+                          <span className={`font-medium ${quizResults[q.id].correct ? 'text-moss' : 'text-rust'}`}>
                             {quizResults[q.id].correct ? 'Correct!' : 'Not quite'}
                           </span>
                         </div>
-                        <p className={`text-sm ${quizResults[q.id].correct ? 'text-emerald-600' : 'text-red-600'}`}>
+                        <p className={`text-sm ${quizResults[q.id].correct ? 'text-moss' : 'text-rust'}`}>
                           {quizResults[q.id].feedback}
                         </p>
                       </div>
@@ -615,20 +615,20 @@ export default function DashboardPage() {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6">
-            <h3 className="font-bold text-slate-900 mb-4">📚 Resources</h3>
+          <div className="bg-paper-2 rounded-2xl border border-rule p-6">
+            <h3 className="font-bold text-ink mb-4">📚 Resources</h3>
             <div className="space-y-3">
               {dailyContent?.resources?.slice(0, 6).map((r, i) => (
                 r.url ? (
                   <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
-                     className="block p-3 rounded-lg border border-slate-100 hover:border-blue-200 hover:bg-blue-50">
-                    <p className="font-medium text-slate-900 text-sm">{r.title}</p>
-                    <p className="text-xs text-slate-500 mt-1">{r.type}</p>
+                     className="block p-3 rounded-lg border border-rule hover:border-gold/30 hover:bg-gold/5">
+                    <p className="font-medium text-ink text-sm">{r.title}</p>
+                    <p className="text-xs text-muted mt-1">{r.type}</p>
                   </a>
                 ) : (
-                  <div key={i} className="p-3 rounded-lg border border-slate-100">
-                    <p className="font-medium text-slate-900 text-sm">{r.title}</p>
-                    <p className="text-xs text-slate-500 mt-1">{r.type}</p>
+                  <div key={i} className="p-3 rounded-lg border border-rule">
+                    <p className="font-medium text-ink text-sm">{r.title}</p>
+                    <p className="text-xs text-muted mt-1">{r.type}</p>
                   </div>
                 )
               ))}
@@ -636,13 +636,13 @@ export default function DashboardPage() {
           </div>
 
           {userStats && (
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 text-white">
+            <div className="bg-gradient-to-br from-ink-2 to-ink rounded-2xl p-6 text-white">
               <h3 className="font-bold mb-4">Your Progress</h3>
               <div className="space-y-3 text-sm">
-                <div className="flex justify-between"><span className="text-slate-400">Papers Read</span><span className="font-bold">{userStats.papers_by_status.completed}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Reading</span><span className="font-bold">{userStats.papers_by_status.reading}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Topics Reviewed</span><span className="font-bold">{userStats.lifetime.topics_reviewed}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Quizzes Taken</span><span className="font-bold">{userStats.lifetime.quizzes_taken}</span></div>
+                <div className="flex justify-between"><span className="text-muted">Papers Read</span><span className="font-bold">{userStats.papers_by_status.completed}</span></div>
+                <div className="flex justify-between"><span className="text-muted">Reading</span><span className="font-bold">{userStats.papers_by_status.reading}</span></div>
+                <div className="flex justify-between"><span className="text-muted">Topics Reviewed</span><span className="font-bold">{userStats.lifetime.topics_reviewed}</span></div>
+                <div className="flex justify-between"><span className="text-muted">Quizzes Taken</span><span className="font-bold">{userStats.lifetime.quizzes_taken}</span></div>
               </div>
             </div>
           )}

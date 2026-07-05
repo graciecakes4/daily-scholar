@@ -80,6 +80,15 @@ DEFAULT_POLICIES: list[Policy] = [
     ("POST", "/auth/login", 5, 60, ip_key),
     # POST /auth/signup: 3 per minute per IP — signup flood defense
     ("POST", "/auth/signup", 3, 60, ip_key),
+    # POST /auth/forgot-password: 5 per hour per IP — the generic response
+    # (backend/services/password_reset.py) already stops this from leaking
+    # which emails have accounts, but it's still a mail-bombing / flooding
+    # surface, so it's throttled tighter and over a longer window than login.
+    ("POST", "/auth/forgot-password", 5, 3600, ip_key),
+    # POST /auth/reset-password: 10 per hour per IP — token guessing
+    # defense. Generous relative to forgot-password since a legitimate
+    # user may retype a password a few times before it validates.
+    ("POST", "/auth/reset-password", 10, 3600, ip_key),
     # POST /onboarding/generate-topic: 5 per hour per user — LLM bill protection
     ("POST", "/onboarding/generate-topic", 5, 3600, user_or_ip_key),
 ]

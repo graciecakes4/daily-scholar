@@ -143,7 +143,7 @@ export default function ChipListEditor({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1.5">
         {items.length === 0 && !adding && emptyHint && (
-          <span className="text-xs text-slate-400 italic">{emptyHint}</span>
+          <span className="text-xs text-muted italic">{emptyHint}</span>
         )}
         {items.map((item, idx) => (
           <button
@@ -153,8 +153,8 @@ export default function ChipListEditor({
             aria-pressed={selected === idx}
             className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs border transition-colors ${fontCls} ${
               selected === idx
-                ? 'bg-slate-900 text-white border-slate-900'
-                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                ? 'bg-gold-dark text-white border-ink'
+                : 'bg-paper-3 text-ink-2 border-rule hover:bg-rule'
             }`}
           >
             {item}
@@ -164,7 +164,7 @@ export default function ChipListEditor({
           <button
             type="button"
             onClick={openAdd}
-            className="inline-flex items-center px-2.5 py-1 rounded-full text-xs border border-dashed border-slate-300 text-slate-500 hover:border-slate-400 hover:text-slate-700"
+            className="inline-flex items-center px-2.5 py-1 rounded-full text-xs border border-dashed border-rule text-muted hover:border-muted hover:text-ink-2"
           >
             + Add
           </button>
@@ -173,26 +173,26 @@ export default function ChipListEditor({
 
       {selected !== null && !editing && (
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-slate-400">Selected:</span>
-          <span className={`text-slate-700 ${fontCls}`}>{items[selected]}</span>
+          <span className="text-muted">Selected:</span>
+          <span className={`text-ink-2 ${fontCls}`}>{items[selected]}</span>
           <button
             type="button"
             onClick={startEdit}
-            className="px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200"
+            className="px-2 py-1 rounded bg-paper-3 text-ink-2 hover:bg-rule"
           >
             Edit
           </button>
           <button
             type="button"
             onClick={deleteSelected}
-            className="px-2 py-1 rounded text-rose-600 hover:bg-rose-50"
+            className="px-2 py-1 rounded text-rust hover:bg-rust/5"
           >
             Delete
           </button>
           <button
             type="button"
             onClick={() => setSelected(null)}
-            className="px-2 py-1 text-slate-400 hover:text-slate-600"
+            className="px-2 py-1 text-muted hover:text-ink-2"
           >
             Cancel
           </button>
@@ -210,20 +210,20 @@ export default function ChipListEditor({
               if (e.key === 'Enter') { e.preventDefault(); saveEdit(); }
               if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
             }}
-            className={`flex-grow max-w-xs px-2.5 py-1 border border-slate-300 rounded text-xs focus:outline-none focus:border-slate-900 ${fontCls}`}
+            className={`bg-paper text-ink flex-grow max-w-xs px-2.5 py-1 border border-rule rounded text-xs focus:outline-none focus:border-ink ${fontCls}`}
           />
           <button
             type="button"
             onClick={saveEdit}
             disabled={!editValue.trim()}
-            className="px-2 py-1 rounded bg-slate-900 text-white text-xs hover:bg-slate-700 disabled:opacity-50"
+            className="px-2 py-1 rounded bg-gold-dark text-white text-xs hover:bg-[#734f14] disabled:opacity-50"
           >
             Save
           </button>
           <button
             type="button"
             onClick={cancelEdit}
-            className="px-2 py-1 text-xs text-slate-400 hover:text-slate-600"
+            className="px-2 py-1 text-xs text-muted hover:text-ink-2"
           >
             Cancel
           </button>
@@ -240,27 +240,27 @@ export default function ChipListEditor({
               onChange={e => { setAddValue(e.target.value); setHighlightIdx(0); }}
               onKeyDown={handleAddKeyDown}
               placeholder={addPlaceholder}
-              className={`flex-grow px-2.5 py-1 border border-slate-300 rounded text-xs focus:outline-none focus:border-slate-900 ${fontCls}`}
+              className={`bg-paper text-ink flex-grow px-2.5 py-1 border border-rule rounded text-xs focus:outline-none focus:border-ink ${fontCls}`}
             />
             <button
               type="button"
               onClick={() => commitAdd(addValue)}
               disabled={!addValue.trim()}
-              className="px-2 py-1 rounded bg-slate-900 text-white text-xs hover:bg-slate-700 disabled:opacity-50"
+              className="px-2 py-1 rounded bg-gold-dark text-white text-xs hover:bg-[#734f14] disabled:opacity-50"
             >
               Add
             </button>
             <button
               type="button"
               onClick={closeAdd}
-              className="px-1.5 py-1 text-slate-400 hover:text-slate-600 text-xs"
+              className="px-1.5 py-1 text-muted hover:text-ink-2 text-xs"
               title="Done adding"
             >
               Done
             </button>
           </div>
           {filteredSuggestions.length > 0 && (
-            <ul className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded shadow-lg max-h-48 overflow-auto">
+            <ul className="absolute z-10 mt-1 w-full bg-paper-2 border border-rule rounded shadow-lg max-h-48 overflow-auto">
               {filteredSuggestions.map((s, i) => (
                 <li key={s}>
                   <button
@@ -268,7 +268,7 @@ export default function ChipListEditor({
                     onMouseDown={e => e.preventDefault()}
                     onClick={() => commitAdd(s)}
                     className={`w-full text-left px-2.5 py-1.5 text-xs ${fontCls} ${
-                      i === highlightIdx ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+                      i === highlightIdx ? 'bg-paper-3 text-ink' : 'text-ink-2 hover:bg-paper'
                     }`}
                   >
                     {s}

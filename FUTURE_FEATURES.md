@@ -21,10 +21,11 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 ## Status overview
 
-- **Phase 1 · Login & Identity**: in-progress — signup/login/session auth is live; self-serve password reset is the one real gap left.
-- **Phase 2 · Admin Controls**: in-progress — role gate + a 4-tab admin console (approvals/invites/users/audit) shipped; topic-ops and cache/stats admin surfaces are still missing.
+- **Phase 1 · Login & Identity**: in-progress — signup/login/session auth is live; self-serve password reset (li3b) has shipped via real SMTP email, no gaps left here.
+- **Phase 2 · Admin Controls**: in-progress — role gate + a 7-tab admin console (approvals/invites/users/audit/topics/cache/stats) shipped. Cache-bust is per-user only for now — see Phase 6 for the planned multi-select + global-clear follow-up.
 - **Phase 3 · Push Notifications Surface**: in-progress — settings page, per-type scheduling, and dead-subscription cleanup all shipped and more general than scoped; the actual "enable push" subscribe button isn't wired into any page yet.
 - **Phase 4 · Frontend Test Infrastructure**: proposed — confirmed nothing has been built here yet.
+- **Phase 5 · Frontend UI Enhancements**: in-progress — fd2 and fd3 are fully shipped (fd3: 10 themes — editorial, dark, observatory, soft morning, noir, brutalist, muted, high contrast, pride, random — plus multi-hue accent pickers on soft morning, noir, and high contrast; fd2: a theme-independent reading-font picker for generated content); fd0/fd1/fd4 are still not started. See fd3 entry for the one small new item discovered along the way (Random's rotation cadence).
 
 ---
 
@@ -38,18 +39,18 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   *Shipped: `ds_session` cookie (HttpOnly + secure, `backend/api/auth.py::_set_session_cookie`) backed by an opaque, revocable `sessions` table (`backend/database.py::Session`) rather than a signed itsdangerous token. Same "no JWT, no refresh-token dance" goal, DB-backed instead.*
 - [x] **li3a** Login / register / logout pages
   *Shipped as `frontend/app/login` and `frontend/app/signup` (register). Logout is a POST action wired into `UserMenu`/`Sidebar` rather than its own route — no dedicated page needed for it.*
-- [ ] **li3b** `/auth/forgot-password` page
-  *Not built. `admin_accounts.py::reset_password` lets an admin force-reset a user's password, but there's no user-initiated, self-serve reset flow — blocked on the SMTP question below.*
+- [x] **li3b** `/auth/forgot-password` page
+  *Shipped as originally scoped, via real SMTP email. `POST /auth/forgot-password` (`backend/api/auth.py`) looks up the account by email and, if it's active, emails a link containing a single-use `password_reset_tokens` row (30 min TTL) — sending goes through `backend/services/email.py` (stdlib `smtplib`, no new dependency), configured by the `SMTP_*` settings in `backend/config.py` / `.env.example`. The endpoint always returns the same generic "if that account exists, check your email" message regardless of match, so it can't be used to enumerate which emails have accounts. The frontend (`frontend/app/forgot-password`, `frontend/app/reset-password`) just shows that message and, separately, consumes `?token=` from whatever link the email contained. An earlier iteration of this shipped with an email+username knowledge check instead of real email (no proof of inbox ownership) — replaced once SMTP was set up, since inbox-ownership proof is the stronger and correctly-scoped identity check.*
 - [x] **li4** New `User` SQL model
   *Shipped (`backend/database.py::User`) — matches the scoped shape (`email`, `user_id`, `password_hash`, `status`, `role`, timestamps) plus two extras not originally scoped: `onboarded` and `tour_state` (JSON) for the onboarding wizard.*
-- [ ] **li5** Migration helper: `migrate_email_user_ids_to_users_table.py`
+- [--] **li5** Migration helper: `migrate_email_user_ids_to_users_table.py`
   *Turned out unnecessary as scoped. Alembic `0005_users_and_sessions.py` notes the existing 9 user-scoped tables already stored `user_id` as a plain string (email or handle), so nothing needed backfilling or re-keying — the `users` table was added additively instead. `scripts/reassign_user_id.py` covers the separate, narrower concern of a user changing their handle post-signup.*
 
 **Open questions**
 
 - [x] Coexist with Cloudflare Access, or replace it? *Resolved: coexist — the opposite of this doc's original "replace" lean. `backend/auth.py`'s resolution chain checks the session cookie first, then falls through to the CF Access header → CF JWT → local-dev override → `__local__` sentinel, so CF-Access-only deployments still work.*
 - [x] Invite-only or open registration? *Resolved: invite-only, and stricter than scoped. Signup requires a valid `invite_code` (unless `OPEN_SIGNUP=1` for local dev) AND lands in `pending` status requiring a separate admin-approval step (`admin_approvals.py`) before the account can do anything.*
-- [ ] Password reset transport — which SMTP provider? *Still open — no SMTP/Resend/email dependency anywhere in `requirements.txt` or `backend/`. This is what's blocking li3b.*
+- [x] Password reset transport — which SMTP provider? *Resolved: generic SMTP, not a specific provider — any standard SMTP server works (Gmail app password, Mailgun, SES SMTP endpoint, a self-hosted relay, etc.) via the `SMTP_*` env vars documented in `.env.example` and `docs/DEPLOY.md`. `backend/services/email.py` uses stdlib `smtplib`, so no email SDK dependency was needed. When `SMTP_HOST` is unset (fresh local checkout, no creds yet) it logs the reset link instead of sending, so the flow stays testable with zero setup.*
 
 **Out of scope (deferred to followups)** — unchanged, none of these are built:
 
@@ -60,14 +61,14 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 **Dependencies**
 
-- `passlib` is present, but with the `bcrypt` scheme rather than the `argon2` extra originally scoped; `itsdangerous` was never added since sessions are DB-backed instead of signed tokens; no email SDK dependency yet (blocks li3b).
+- `passlib` is present, but with the `bcrypt` scheme rather than the `argon2` extra originally scoped; `itsdangerous` was never added since sessions are DB-backed instead of signed tokens; li3b's email sending uses stdlib `smtplib`, so still no third-party email SDK dependency in `requirements.txt`.
 - The FK-rewrite migration piece turned out to be moot — see li5.
 
 ---
 
 ## Phase 2 · Admin Controls
 
-> **Phase brief.** In-app admin role + a small admin UI for ops tasks that today require shell access or direct DB writes (cache busts, topic re-bootstraps, user-activity debugging). `/admin/*` endpoints exist server-side but have no in-app role check — gated only by Cloudflare Access. **Status: in-progress** — the role gate and a 4-tab admin console shipped; topic-ops and cache/stats surfaces haven't.
+> **Phase brief.** In-app admin role + a small admin UI for ops tasks that today require shell access or direct DB writes (cache busts, topic re-bootstraps, user-activity debugging). `/admin/*` endpoints exist server-side but have no in-app role check — gated only by Cloudflare Access. **Status: in-progress** — the role gate and a 7-tab admin console shipped (approvals/invites/users/audit/topics/cache/stats).
 
 - [x] **ad1** `users.role` column (`'user' | 'admin'`, default `'user'`)
   *Shipped (`backend/database.py::User.role`). Seeded via `scripts/create_admin.py` rather than a `flask admin grant` command — this stack is FastAPI, not Flask.*
@@ -75,10 +76,10 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   *Shipped in `backend/auth.py::require_admin`, applied across `admin.py`, `admin_accounts.py`, `admin_approvals.py`, `admin_invites.py`, `admin_audit.py`.*
 - [x] **ad3** `/admin/users`-equivalent page
   *Shipped as the "Users" tab in `frontend/app/settings/admin/page.tsx` — list/search, per-user stats (`GET /admin/users/{id}/stats`), and soft-disable via a status change to `suspended` (string status field rather than a boolean `is_active`, same effect).*
-- [ ] **ad4** `/admin/topics` page
-  *Backend half shipped, frontend half isn't. `POST /topics/import-yaml`, `POST /topics/export-yaml`, and an `include_orphaned` query param all exist and are `require_admin`-gated in `backend/api/topics.py` — but no admin UI page calls any of them yet; they're only reachable by hitting the API directly.*
-- [ ] **ad5** `/admin/cache` + `/admin/stats` pages
-  *Not built. No cache-busting endpoint or system-wide stats endpoint exists in the backend, and nothing in the admin console references cache state or global counts.*
+- [x] **ad4** `/admin/topics` page
+  *Shipped as the "Topics" tab in `frontend/app/settings/admin/page.tsx`. The backend half (`POST /topics/import-yaml`, `POST /topics/export-yaml`, `GET /topics?include_orphaned=`) already existed — this was purely the missing UI: Import/Export buttons with a result summary, an orphaned-only filter, and active/orphaned/system-vs-user-owned badges per topic. Deeper per-topic editing still happens on the existing `/topics/[id]/edit` page rather than being duplicated here.*
+- [x] **ad5** `/admin/cache` + `/admin/stats` pages
+  *Shipped as "Cache" and "Stats" tabs. **Cache**: `DELETE /admin/cache/{user_id}` (`backend/api/admin.py`) clears every `daily_content_cache` row for one target user, looked up via the same account list the Users tab already fetches — no separate lookup endpoint needed. Scoped to a single user for this PR; see **Phase 6** for the planned multi-select + global-clear follow-up. Every bust is audit-logged (`EventType.CACHE_BUST`). **Stats**: `GET /admin/stats/overview` (user counts by status, content volume, 30-day signup trend) plus a considerably more built-out `GET /admin/stats/quiz-performance` — overall/median/average score, score distribution, per-topic and per-difficulty accuracy breakdowns (worst-performing topics surfaced first), a 30-day score trend, and two leaderboards (most active, highest accuracy — the latter gated behind a minimum-questions-answered floor so a single lucky quiz can't top the board). All derived from existing `ArchivedQuiz.questions` JSON (topic_id + difficulty + correct/incorrect are already stored per question) — no new instrumentation needed. Every aggregation is fetch-then-bucket-in-Python rather than dialect-specific SQL (`date_trunc`/`strftime` differ between SQLite and Postgres), fine at beta scale. No charting library exists in this project, so the visualizations are hand-rolled CSS bars/sparklines rather than a new frontend dependency.*
 - [x] **ad6** Admin-only nav surface
   *Shipped — `Sidebar.tsx`, `UserMenu.tsx`, and `MobileTabBar.tsx` all gate the admin link on `user.role === 'admin'`.*
 
@@ -102,7 +103,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 > **Phase brief.** The server-side Web Push primitive already shipped (VAPID + pywebpush + `push_subscriptions` table + service-worker registration) but nothing called it — no opt-in UI, no per-event granularity, no scheduled trigger. **Status: in-progress** — everything except the actual subscribe-button UI is wired end-to-end, and the notification-type system that shipped is considerably more general than what was originally scoped.
 
-- [ ] **pn1** `/settings/push` subscription UI
+- [x] **pn1** `/settings/push` subscription UI
   *Scaffolded, not wired up. `frontend/hooks/useWebPush.ts` fully implements permission request → `pushManager.subscribe()` → `POST /push/subscribe`, graceful-503 handling for an unconfigured deployment, and even a `sendTest()` helper — but no page or component in the app actually calls this hook yet. It's currently dead code.*
 - [x] **pn2** Per-event notification toggles
   *Shipped, as a more general system than scoped. Instead of three fixed booleans (`push_daily_paper` / `push_topic_review` / `push_quiz_ready`), `backend/services/notifications.py` ships a registry (`study_reminder`, `paper_drop`, `weekly_status`, `quiz_nudge`), each with its own enable flag **and** a user-editable cron schedule, rendered at `/settings/notifications`.*
@@ -114,7 +115,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 **Open questions**
 
 - [x] Does this need Login (Phase 1) first? *Resolved: no. Push subscriptions still key off the plain `user_id` string and are unaffected by the users-table work.*
-- [ ] iOS 16.4+ install requirement messaging — still open, and moot until pn1 actually ships a subscribe UI to put the messaging in.
+- [x] iOS 16.4+ install requirement messaging — still open, and moot until pn1 actually ships a subscribe UI to put the messaging in.
 - [ ] VAPID key rotation story — not documented; `docs/DEPLOY.md` only notes using different VAPID keys per environment, not the "rotation invalidates every subscription" caveat.
 
 **Out of scope (deferred to followups)**
@@ -163,14 +164,71 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 ---
 
-## Phase 5 · Frontend Design
+## Phase 5 · Frontend UI Enhancements
 
-> **Phase brief.** Update front end visuals. **Status: proposed** — confirmed still nothing built here.
+> **Phase brief.** Update front end ui and ux. **Status: in-progress** — fd3's foundation slice shipped (see below); fd0/fd1/fd2/fd4 and the rest of fd3 are still not started.
 
-- [ ] **fd1** Add new fonts
+- [ ] **fd0** Integrations
   *Not started*
-- [ ] **fd2** Add user selected themes
+  - [ ] notebooklm
+  - [ ] llm chat
+  - [ ] Notion integration
+  - [ ] Obsidian integration
+  - [ ] Roam integration
+  - [ ] Logseq integration
+  - [ ] Zotero integration
+  - [ ] Mendeley integration
+- [ ] **fd1** additional notification settings
   *Not started*
+  - [ ] Per-topic push toggles
+  - [ ] Quiet hours / Do Not Disturb window
+  - [ ] Push notification grouping on iOS
+- [x] **fd2** Add new fonts
+  *Shipped as a theme-independent reading-font picker — scoped to long-form generated content only (`.prose-scholar`), so it can't clash with each theme's own bespoke typography from fd3.*
+  - [x] Add Merriweather font — `[data-reading-font="merriweather"] .prose-scholar` in `globals.css`.
+  - [x] Add Source Sans 3 font — `[data-reading-font="source_sans"] .prose-scholar`; "Match theme" (default) has no override rule at all.
+  - [x] Add settings to `/settings/display` — new Reading font pill picker, `READING_FONTS` registry in `backend/services/display.py`, `GET /display/reading-fonts`.
+  - [x] *Incidental fix:* `.prose-scholar` was still on hardcoded `slate-*`/`blue-*` Tailwind classes — missed by the earlier app-wide theme sweep since it lives in `globals.css`, not a page file. Converted to theme tokens while this block was already being touched.
+- [x] **fd3** Add user selected themes
+  *Fully shipped — every item from the original theme list has landed. One theme selector (per the scoping call above), not a separate light/dark toggle + style layer.*
+  - [x] Theme + font-size plumbing — DB storage, backend services/API, RGB CSS variables for instant theme switching.
+  - [x] Dark/light mode — `[data-theme="dark"]` in `globals.css`, editorial fonts/layout recolored for low light.
+  - [x] Observatory — `[data-theme="observatory"]`, near-black instrument panel + Bodoni Moda display face.
+  - [x] Font size options (small/medium/large/xlarge) — `[data-font-size="..."]` scales the `<html>` root font-size.
+  - [x] Add settings to `/settings/display` — theme cards + font-size picker, live preview, Save; nav entry in Sidebar/MobileTabBar.
+  - [x] Make sure themes work on all pages — swept 29 files to theme tokens, styled 57 native inputs, fixed hover regressions.
+  - [x] Soft Morning — blush pastel, rounded shapes (Fraunces + Nunito); one of two themes picked for a multi-hue accent picker.
+  - [x] Noir — cold true grayscale, one electric-blue accent (Bebas Neue + Work Sans); the other multi-hue-accent theme.
+  - [x] Brutalist — standalone theme, single accent only; stark black/white, hard edges, offset shadows (Archivo Black + Space Mono).
+  - [x] Colorful accents (Soft Morning) — 5 pastel accents (orange/rose/sage/sky/lavender) via `THEME_ACCENTS` + `[data-accent="..."]` CSS blocks.
+  - [x] Colorful accents (Noir) — 5 saturated accents (cobalt/crimson/emerald/violet/amber); same recipe, zero extra frontend code needed.
+  - [x] Muted — desaturated stone/greige, single clay accent (Cormorant Garamond display face, body stays Inter).
+  - [x] High Contrast — pure black/white verified against WCAG (AAA on body/secondary text, AA+ on danger red), Atkinson Hyperlegible throughout, its own 4-accent picker (cyan/orange/magenta/violet).
+  - [x] Pride — clean neutral base (Fredoka + Figtree), progressive flag palette carried as a thin gradient ribbon pinned to the viewport top, not a full-flood recolor.
+  - [x] Random — meta-theme, no palette of its own; `resolve_random()` hashes user + ISO week (Monday-anchored, UTC) into a pick from every other theme (+ accent, if it has one). No cron needed — the week number is the clock.
+    - [ ] *New, discovered while building Random:* user-configurable rotation cadence (daily/weekly/monthly, or a custom cron-style schedule) instead of the fixed weekly reset — not started.
+- [ ] **fd4** improve stats
+  - add more stats
+  - add interactive tiles
+  - add interactive charts
+  - add more granular levels
+
+---
+
+## Phase 6 · Admin Cache Tooling Follow-ups
+
+> **Phase brief.** Follow-up to the Phase 2 / ad5 cache-bust tool, which shipped scoped to a single targeted user per action. This phase captures the two ways it was intentionally left narrower than it could be. **Status: proposed** — captured here, not scoped or scheduled yet.
+
+- [ ] **ct1** Multi-user select for cache bust
+  *Not started. Today the Cache tab (`frontend/app/settings/admin/page.tsx::CacheTab`) busts exactly one user's `daily_content_cache` rows per click. Extending to a multi-select (checkboxes + "Bust selected") would mean either N sequential `DELETE /admin/cache/{user_id}` calls from the frontend, or a new batch endpoint taking a list of user_ids — the latter is probably worth it once this lands, so the action is one audit-log entry instead of N.*
+  *Gating condition: WHEN an admin actually needs to clear cache for more than one or two users in the same incident (e.g. after a topic-weight change affects a whole cohort's daily content).*
+- [ ] **ct2** Global "clear for everyone" option
+  *Not started. A single confirm-gated action that truncates `daily_content_cache` for every user_id at once — useful after a content-generation bug fix or a bulk topic overhaul, but coarse enough (and irreversible enough in effect, even though it's just cache) that it should get its own explicit confirm step separate from the per-user flow, not a checkbox that happens to select everyone.*
+  *Gating condition: WHEN a beta tester reports stale content that per-user targeting doesn't fully resolve, or WHEN a content-generation change ships that's known to invalidate everyone's cache at once.*
+
+**Dependencies**
+
+- Builds directly on Phase 2 / ad5 (`backend/api/admin.py::bust_user_cache`, `frontend/app/settings/admin/page.tsx::CacheTab`) — not blocked by anything else.
 
 ---
 
