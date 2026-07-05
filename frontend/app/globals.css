@@ -3,8 +3,11 @@
    observatory theme's display face (Phase 5 / fd3) — loaded here too so
    switching data-theme never triggers a network fetch. nunito (soft_morning),
    archivo black + space mono (brutalist), and bebas neue + work sans (noir)
-   are the three newer theme faces, same reasoning — all loaded up front. */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,30..100;1,9..144,400..600,30..100&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..600&family=Nunito:wght@400;600;700;800&family=Archivo+Black&family=Space+Mono:wght@400;700&family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&display=swap');
+   are the three newer theme faces, same reasoning — all loaded up front.
+   cormorant garamond (muted), atkinson hyperlegible (high_contrast — a
+   typeface built for low-vision readability, used for both display and
+   body), and fredoka + figtree (pride) are the final three. */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,30..100;1,9..144,400..600,30..100&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..600&family=Nunito:wght@400;600;700;800&family=Archivo+Black&family=Space+Mono:wght@400;700&family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fredoka:wght@500;600;700&family=Figtree:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -186,6 +189,115 @@
 [data-theme="noir"][data-accent="amber"] {
   --gold: 245 166 35;
   --gold-dark: 201 136 29;
+}
+
+/* muted — desaturated stone/greige, hairline rules, single accent (no
+   multi-hue picker, same pattern as brutalist). Only --font-serif
+   changes (Cormorant Garamond for headlines) — body stays the default
+   Inter, deliberately, so the "quiet" identity comes from restraint
+   rather than a totalizing font swap. */
+[data-theme="muted"] {
+  --font-serif: 'Cormorant Garamond', Georgia, serif;
+
+  --paper: 234 230 221;
+  --paper-2: 244 241 234;
+  --paper-3: 223 218 205;
+  --ink: 62 58 52;
+  --ink-2: 90 85 77;
+  --muted: 139 132 120;
+  --rule: 230 226 219;
+  --gold: 138 107 82;
+  --gold-dark: 110 84 62;
+  --rust: 163 74 58;
+  --moss: 107 133 88;
+  color-scheme: light;
+}
+
+/* high_contrast — pure black/white, verified against WCAG (body text
+   21:1, secondary 9.6:1, borders 4.1:1 — all clear AAA except danger
+   red at ~6.9:1, still well past AA). Atkinson Hyperlegible — a
+   typeface built for low-vision readability — replaces both the
+   display and body face. 4-option accent picker: cyan (baseline),
+   orange, magenta, violet — cyan/orange clear AAA (13.7:1 / 8.9:1
+   against black), magenta/violet clear AA (6.5:1 / 6.2:1). */
+[data-theme="high_contrast"] {
+  --font-serif: 'Atkinson Hyperlegible', Georgia, serif;
+  --font-inter: 'Atkinson Hyperlegible', system-ui, sans-serif;
+
+  --paper: 0 0 0;
+  --paper-2: 18 18 18;
+  --paper-3: 34 34 34;
+  --ink: 255 255 255;
+  --ink-2: 230 230 230;
+  --muted: 175 175 175;
+  --rule: 110 110 110;
+  --gold: 0 229 255;
+  --gold-dark: 0 183 204;
+  --rust: 255 92 92;
+  --moss: 74 222 128;
+  color-scheme: dark;
+}
+
+[data-theme="high_contrast"][data-accent="orange"] {
+  --gold: 255 138 0;
+  --gold-dark: 204 110 0;
+}
+
+[data-theme="high_contrast"][data-accent="magenta"] {
+  --gold: 255 62 165;
+  --gold-dark: 204 50 132;
+}
+
+[data-theme="high_contrast"][data-accent="violet"] {
+  --gold: 178 102 255;
+  --gold-dark: 142 82 204;
+}
+
+/* pride — clean warm-neutral base (Fredoka + Figtree), single solid
+   accent (vivid pink, used everywhere the app already reaches for
+   --gold/--gold-dark — buttons, borders, "Selected" labels). The
+   progressive flag's full palette shows up separately, decoratively,
+   as a thin gradient ribbon pinned to the top of the viewport (see
+   .app-shell::before below) — a ribbon, not a flood, per the design
+   review. */
+[data-theme="pride"] {
+  --font-serif: 'Fredoka', Georgia, serif;
+  --font-inter: 'Figtree', system-ui, sans-serif;
+
+  --paper: 255 253 249;
+  --paper-2: 255 255 255;
+  --paper-3: 251 247 238;
+  --ink: 36 31 26;
+  --ink-2: 74 64 54;
+  --muted: 138 128 114;
+  --rule: 235 229 218;
+  --gold: 236 72 153;
+  --gold-dark: 188 58 122;
+  --rust: 220 38 38;
+  --moss: 34 197 94;
+  color-scheme: light;
+}
+
+[data-theme="pride"] .app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 4px;
+  z-index: 40;
+  background: linear-gradient(
+    90deg,
+    #000000,
+    #603813,
+    #74d7ee,
+    #ffafc8,
+    #ffffff,
+    #e40303,
+    #ff8c00,
+    #ffed00,
+    #008026,
+    #004dff,
+    #732982
+  );
 }
 
 /* brutalist — standalone theme (single accent only, no multi-hue variant

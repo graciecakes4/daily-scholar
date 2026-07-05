@@ -1144,6 +1144,13 @@ export interface DisplaySettings {
   theme: string;
   font_size: string;
   accent: string | null;
+  // what should actually be painted (data-theme/data-accent) this week —
+  // equal to theme/accent for every normal theme; computed server-side
+  // when theme === "random" (see backend/services/display.py's
+  // resolve_random()). Always present, so the frontend never has to
+  // special-case "random" when deciding what to apply.
+  resolved_theme: string;
+  resolved_accent: string | null;
 }
 
 export async function listThemes(): Promise<{ themes: ThemeMeta[] }> {
