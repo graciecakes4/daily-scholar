@@ -1200,6 +1200,51 @@ def get_or_create_user_stats(user_id: str, session: Optional[Session] = None) ->
             session.close()
 
 
+def get_papers_and_pdfs_for_topic_review(
+    topic_review: "ArchivedTopicReview", session: Optional[Session] = None
+) -> list[tuple["ArchivedPaper", Optional["PaperPDF"]]]:
+    """
+    Resolve the archived papers (and downloaded PDF, if any) linked to a topic
+    review, for the NotebookLM export bundle (see FUTURE_FEATURES.md Phase 5 /
+    fd0).
+
+    `ArchivedTopicReview.linked_paper_ids` is a plain JSON list of
+    `ArchivedPaper.id` ints — a forward reference, unlike the reverse
+    `ArchivedPaper.linked_topic_ids` JSON column that `notifications.py` has to
+    filter in Python because it's unindexed and dialect-sensitive to query
+    directly. Here a normal indexed `IN` query works.
+
+    Pass an existing session to participate in its transaction; otherwise we
+    open and close our own. Papers are returned in no particular order;
+    callers needing a specific order should sort the result themselves.
+    """
+    own_session = session is None
+    if own_session:
+        session = get_session()
+    try:
+        paper_ids = topic_review.linked_paper_ids or []
+        if not paper_ids:
+            return []
+
+        papers = session.query(ArchivedPaper).filter(
+            ArchivedPaper.user_id == topic_review.user_id,
+            ArchivedPaper.id.in_(paper_ids),
+        ).all()
+
+        pdfs_by_paper_id = {
+            pdf.archived_paper_id: pdf
+            for pdf in session.query(PaperPDF).filter(
+                PaperPDF.user_id == topic_review.user_id,
+                PaperPDF.archived_paper_id.in_(paper_ids),
+            ).all()
+        }
+
+        return [(paper, pdfs_by_paper_id.get(paper.id)) for paper in papers]
+    finally:
+        if own_session:
+            session.close()
+
+
 def update_user_streak(user_id: str = DEFAULT_USER_ID):
     """Update this user's activity streak. Creates the stats row if absent."""
     session = get_session()
