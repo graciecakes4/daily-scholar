@@ -97,13 +97,30 @@ export default function DisplaySettingsPage() {
       const accent = accents.length === 0
         ? null
         : accents.some(a => a.key === prev.accent) ? prev.accent : accents[0].key;
-      return { ...prev, theme, accent };
+      // applyDisplaySettings paints resolved_theme/resolved_accent, not
+      // theme/accent directly (so "random" always resolves to a real
+      // palette) — mirror the click into those fields too, or picking a
+      // theme would do nothing visually until Save round-trips to the
+      // server. "random" is the one exception: there's no client-side
+      // hash, so its resolved fields can't be known until Save.
+      const isRandom = theme === 'random';
+      return {
+        ...prev,
+        theme,
+        accent,
+        resolved_theme: isRandom ? prev.resolved_theme : theme,
+        resolved_accent: isRandom ? prev.resolved_accent : accent,
+      };
     });
     setSuccess(null);
   }
 
   function pickAccent(accent: string) {
-    setSettings(prev => prev && { ...prev, accent });
+    setSettings(prev => prev && {
+      ...prev,
+      accent,
+      resolved_accent: prev.theme === 'random' ? prev.resolved_accent : accent,
+    });
     setSuccess(null);
   }
 
