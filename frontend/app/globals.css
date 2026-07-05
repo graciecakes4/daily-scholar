@@ -1,8 +1,10 @@
 /* font stack — fraunces drives editorial display type, ibm plex mono powers
    the small mono badges + byline, inter remains body/ui. bodoni moda is the
    observatory theme's display face (Phase 5 / fd3) — loaded here too so
-   switching data-theme never triggers a network fetch. */
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,30..100;1,9..144,400..600,30..100&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..600&display=swap');
+   switching data-theme never triggers a network fetch. nunito (soft_morning),
+   archivo black + space mono (brutalist), and bebas neue + work sans (noir)
+   are the three newer theme faces, same reasoning — all loaded up front. */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,30..100;1,9..144,400..600,30..100&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..600&family=Nunito:wght@400;600;700;800&family=Archivo+Black&family=Space+Mono:wght@400;700&family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -92,6 +94,79 @@
   --gold-dark: 181 119 42;
   --rust: 181 87 58;
   --moss: 107 143 90;
+}
+
+/* soft morning — blush pastel, rounded, coral accent. Picked (alongside
+   noir) as one of the two directions that will grow a multi-hue accent
+   picker later (red/blue/green/purple/orange, fd3 backlog) — for now it
+   ships with its one suited accent, same as every other theme here. */
+[data-theme="soft_morning"] {
+  --font-serif: 'Fraunces', Georgia, serif;
+  --font-inter: 'Nunito', system-ui, sans-serif;
+
+  --paper: 255 243 238;
+  --paper-2: 255 255 255;
+  --paper-3: 255 228 217;
+  --ink: 90 58 48;
+  --ink-2: 122 80 65;
+  --muted: 176 138 121;
+  --rule: 244 214 202;
+  --gold: 255 122 84;
+  --gold-dark: 214 89 58;
+  --rust: 199 68 68;
+  --moss: 122 148 103;
+  color-scheme: light;
+}
+
+/* noir — cold true grayscale (deliberately no warm undertone, unlike
+   observatory's amber-glow instrument panel) with one electric-blue
+   accent. The other of the two multi-hue-accent-candidate themes. */
+[data-theme="noir"] {
+  --font-serif: 'Bebas Neue', Georgia, serif;
+  --font-inter: 'Work Sans', system-ui, sans-serif;
+
+  --paper: 22 22 22;
+  --paper-2: 35 35 35;
+  --paper-3: 45 45 45;
+  --ink: 242 242 242;
+  --ink-2: 200 200 200;
+  --muted: 140 140 140;
+  --rule: 60 60 60;
+  --gold: 62 123 250;
+  --gold-dark: 41 94 214;
+  --rust: 224 74 74;
+  --moss: 86 168 118;
+  color-scheme: dark;
+}
+
+/* brutalist — standalone theme (single accent only, no multi-hue variant
+   planned). Stark white/black, thick hard-edge borders, offset shadows,
+   punchy red accent. --rule is reused as a solid near-black (rather than
+   a faint hairline) so every existing border-rule utility across the app
+   renders as a bold structural line for free; the block below then
+   zeroes out corner-rounding and soft shadows app-wide to match. */
+[data-theme="brutalist"] {
+  --font-serif: 'Archivo Black', Georgia, serif;
+  --font-inter: 'Space Mono', 'IBM Plex Mono', monospace;
+  --font-mono: 'Space Mono', 'IBM Plex Mono', monospace;
+
+  --paper: 255 255 255;
+  --paper-2: 255 255 255;
+  --paper-3: 244 244 244;
+  --ink: 17 17 17;
+  --ink-2: 51 51 51;
+  --muted: 102 102 102;
+  --rule: 17 17 17;
+  --gold: 232 53 43;
+  --gold-dark: 184 32 24;
+  --rust: 175 20 60;
+  --moss: 30 140 70;
+  color-scheme: light;
+}
+
+[data-theme="brutalist"] * {
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 
 /* ---------------------------------------------------------------------

@@ -12,6 +12,11 @@ high-contrast, pride, colorful accents, black-and-white, random) — this
 foundation slice ships the plumbing plus three real themes (editorial,
 dark, observatory) and four font sizes. The registry is exactly where the
 rest land next: append a THEMES entry, no other code changes needed.
+
+Three more themes landed after the foundation: soft_morning and noir
+(picked as the two directions that will later grow a multi-hue accent
+picker — red/blue/green/purple/orange per fd3's backlog) and brutalist
+(a standalone theme, single accent only, no multi-hue variant planned).
 """
 
 from __future__ import annotations
@@ -65,6 +70,24 @@ THEMES: dict[str, ThemeOption] = {
         label="Observatory",
         description="Near-black instrument panel with amber glow and italic serif numerals — a deliberate departure from editorial cream.",
         dark=True,
+    ),
+    "soft_morning": ThemeOption(
+        key="soft_morning",
+        label="Soft Morning",
+        description="Blush pastel warmth, rounded shapes, and a soft coral accent.",
+        dark=False,
+    ),
+    "noir": ThemeOption(
+        key="noir",
+        label="Noir",
+        description="Cold monochrome with a halftone grain and one electric-blue accent cutting through.",
+        dark=True,
+    ),
+    "brutalist": ThemeOption(
+        key="brutalist",
+        label="Brutalist",
+        description="Stark black-and-white, thick hard-edge borders, offset shadows, and a punchy red accent.",
+        dark=False,
     ),
 }
 
