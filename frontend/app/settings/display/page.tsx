@@ -16,6 +16,11 @@
  * matching [data-theme="..."] block in globals.css. Adding more is the
  * same recipe; this page just needed the theme-card grid to wrap wider
  * (grid-cols-2/3) since it renders one card per registry entry.
+ *
+ * soft_morning also grew fd3's "colorful accents" picker (orange/rose/
+ * sage/sky/lavender) — an extra section that only renders when the
+ * selected theme's `accents` array (from GET /display/themes) is
+ * non-empty. noir's set lands the same way, later.
  */
 
 import { useEffect, useState } from 'react';
@@ -72,7 +77,23 @@ export default function DisplaySettingsPage() {
   }, [settings]);
 
   function pickTheme(theme: string) {
-    setSettings(prev => prev && { ...prev, theme });
+    setSettings(prev => {
+      if (!prev) return prev;
+      // carry the accent over if it's still valid for the newly-picked
+      // theme (switching between two accent-capable themes someday);
+      // otherwise fall back to that theme's first accent, or none at
+      // all for themes with no accent picker.
+      const accents = themes.find(t => t.key === theme)?.accents ?? [];
+      const accent = accents.length === 0
+        ? null
+        : accents.some(a => a.key === prev.accent) ? prev.accent : accents[0].key;
+      return { ...prev, theme, accent };
+    });
+    setSuccess(null);
+  }
+
+  function pickAccent(accent: string) {
+    setSettings(prev => prev && { ...prev, accent });
     setSuccess(null);
   }
 
@@ -102,7 +123,12 @@ export default function DisplaySettingsPage() {
   if (loading) return <div className="text-muted">Loading…</div>;
   if (!settings) return <div className="text-rust">Failed to load settings: {error}</div>;
 
-  const dirty = saved && (settings.theme !== saved.theme || settings.font_size !== saved.font_size);
+  const dirty = saved && (
+    settings.theme !== saved.theme ||
+    settings.font_size !== saved.font_size ||
+    settings.accent !== saved.accent
+  );
+  const activeAccents = themes.find(t => t.key === settings.theme)?.accents ?? [];
 
   return (
     <div className="space-y-6">
@@ -142,6 +168,31 @@ export default function DisplaySettingsPage() {
           ))}
         </div>
       </section>
+
+      {/* accent — only rendered for themes with a multi-hue picker
+          (soft_morning today, noir later); the section disappears
+          entirely for editorial/dark/observatory/brutalist. */}
+      {activeAccents.length > 0 && (
+        <section className="bg-paper-2 border border-rule rounded-2xl p-6 shadow-[0_14px_34px_-18px_rgba(27,22,16,.18)] space-y-4">
+          <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-muted">Accent</h2>
+          <div className="flex flex-wrap gap-3">
+            {activeAccents.map(a => (
+              <button
+                key={a.key}
+                type="button"
+                onClick={() => pickAccent(a.key)}
+                title={a.label}
+                aria-label={a.label}
+                aria-pressed={settings.accent === a.key}
+                className={`w-9 h-9 rounded-full border-2 transition-transform hover:scale-110 ${
+                  settings.accent === a.key ? 'border-ink' : 'border-transparent'
+                }`}
+                style={{ backgroundColor: a.hex }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* font size */}
       <section className="bg-paper-2 border border-rule rounded-2xl p-6 shadow-[0_14px_34px_-18px_rgba(27,22,16,.18)] space-y-4">

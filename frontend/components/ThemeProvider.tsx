@@ -41,6 +41,15 @@ export function applyDisplaySettings(settings: DisplaySettings) {
   if (typeof document === 'undefined') return;
   document.documentElement.setAttribute('data-theme', settings.theme);
   document.documentElement.setAttribute('data-font-size', settings.font_size);
+  // accent only applies to themes with a multi-hue picker (soft_morning,
+  // eventually noir) — clear the attribute for every other theme so a
+  // stale accent from a previous theme can't leak into globals.css's
+  // [data-theme="..."][data-accent="..."] selectors.
+  if (settings.accent) {
+    document.documentElement.setAttribute('data-accent', settings.accent);
+  } else {
+    document.documentElement.removeAttribute('data-accent');
+  }
   const meta = document.querySelector('meta[name="theme-color"]');
   const color = THEME_COLORS[settings.theme] ?? THEME_COLORS.editorial;
   if (meta) meta.setAttribute('content', color);

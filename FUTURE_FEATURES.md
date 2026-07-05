@@ -190,25 +190,21 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   - Add settings to `/settings/display`
 - [ ] **fd3** Add user selected themes
   *Foundation shipped; the longer theme list is still open — kept unchecked at the fd3 level since it isn't fully landed. One theme selector (per the scoping call above), not a separate light/dark toggle + style layer.*
-  - [x] Theme + font-size plumbing — Added database storage, backend services, and API endpoints. Refactored Tailwind colors to use RGB CSS variables, enabling instant theme changes without breaking opacity modifiers.
-  - [x] Dark/light mode — `[data-theme="dark"]` in `globals.css`, same editorial fonts and layout, recolored for low light.
-  - [x] observatory (see `mockups/stats_bar_option3_observatory.html`) —`[data-theme="observatory"]`, near-black instrument-panel palette +Bodoni Moda display face (added to the existing Google Fonts `@import`).
-  - [x] Font size options (small / medium / large / extra large) —`[data-font-size="..."]` sets the `<html>` root font-size (15/17/19/21px); every rem-based Tailwind utility scales from it, no per-component changes.
-  - [x] Add settings to `/settings/display` — theme cards + font-size picker, live-previews on click, `Save` persists. Nav entry added to `Sidebar.tsx` and `MobileTabBar.tsx` under a new "Appearance" group.
-  - [x] Make sure themes work on all pages — Migrated legacy Tailwind colors to theme tokens across 29 files and styled 57 native input elements for dark/observatory themes. Resolved hover-state regressions and applied `color-scheme` to `globals.css` to style native OS/browser inputs.
-  - [x] Soft Morning — blush pastel, rounded shapes, soft coral accent (Fraunces + Nunito). One of the two themes picked to later grow a multi-hue accent picker.
-  - [x] Noir — cold true grayscale (no warm undertone, unlike observatory) with one electric-blue accent (Bebas Neue + Work Sans). The other multi-hue-accent candidate.
-  - [x] Brutalist — standalone theme, single accent only (no multi-hue variant planned). Stark black/white, thick hard-edge borders, offset shadows, punchy red accent (Archivo Black + Space Mono); `--rule` reused as solid near-black so borders read bold app-wide, plus a global corner-radius/shadow reset scoped to `[data-theme="brutalist"]`.
-  - [ ] Themes — *remaining backlog, registry ready for it (append to `THEMES` in `backend/services/display.py` + a matching `[data-theme="..."]` block)*
+  - [x] Theme + font-size plumbing — DB storage, backend services/API, RGB CSS variables for instant theme switching.
+  - [x] Dark/light mode — `[data-theme="dark"]` in `globals.css`, editorial fonts/layout recolored for low light.
+  - [x] Observatory — `[data-theme="observatory"]`, near-black instrument panel + Bodoni Moda display face.
+  - [x] Font size options (small/medium/large/xlarge) — `[data-font-size="..."]` scales the `<html>` root font-size.
+  - [x] Add settings to `/settings/display` — theme cards + font-size picker, live preview, Save; nav entry in Sidebar/MobileTabBar.
+  - [x] Make sure themes work on all pages — swept 29 files to theme tokens, styled 57 native inputs, fixed hover regressions.
+  - [x] Soft Morning — blush pastel, rounded shapes (Fraunces + Nunito); one of two themes picked for a multi-hue accent picker.
+  - [x] Noir — cold true grayscale, one electric-blue accent (Bebas Neue + Work Sans); the other multi-hue-accent theme.
+  - [x] Brutalist — standalone theme, single accent only; stark black/white, hard edges, offset shadows (Archivo Black + Space Mono).
+  - [x] Colorful accents (Soft Morning) — 5 pastel accents (orange/rose/sage/sky/lavender) via `THEME_ACCENTS` + `[data-accent="..."]` CSS blocks.
+  - [x] Colorful accents (Noir) — 5 saturated accents (cobalt/crimson/emerald/violet/amber); same recipe, zero extra frontend code needed.
+  - [ ] Themes — *remaining backlog, registry ready for it*
     - muted
     - high contrast
     - pride
-    - colorful accents (multi-hue picker for Soft Morning + Noir only)
-      - red
-      - blue
-      - green
-      - purple
-      - orange
     - random
 - [ ] **fd4** improve stats
   - add more stats

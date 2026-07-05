@@ -96,10 +96,14 @@
   --moss: 107 143 90;
 }
 
-/* soft morning — blush pastel, rounded, coral accent. Picked (alongside
-   noir) as one of the two directions that will grow a multi-hue accent
-   picker later (red/blue/green/purple/orange, fd3 backlog) — for now it
-   ships with its one suited accent, same as every other theme here. */
+/* soft morning — blush pastel, rounded shapes. The first of the two
+   themes (alongside noir) that grew a multi-hue accent picker (fd3
+   backlog's red/blue/green/purple/orange, under friendlier names) —
+   backend/services/display.py's THEME_ACCENTS registers 5 options:
+   orange (the baseline below, no data-accent attr needed), rose, sage,
+   sky, lavender (each an override block right after this one). Only
+   --gold/--gold-dark change between accents; everything else (paper,
+   ink, rust/moss danger-success colors) stays put. */
 [data-theme="soft_morning"] {
   --font-serif: 'Fraunces', Georgia, serif;
   --font-inter: 'Nunito', system-ui, sans-serif;
@@ -111,16 +115,41 @@
   --ink-2: 122 80 65;
   --muted: 176 138 121;
   --rule: 244 214 202;
-  --gold: 255 122 84;
-  --gold-dark: 214 89 58;
+  --gold: 217 130 46;
+  --gold-dark: 184 106 31;
   --rust: 199 68 68;
   --moss: 122 148 103;
   color-scheme: light;
 }
 
+[data-theme="soft_morning"][data-accent="rose"] {
+  --gold: 212 92 130;
+  --gold-dark: 184 68 104;
+}
+
+[data-theme="soft_morning"][data-accent="sage"] {
+  --gold: 107 143 88;
+  --gold-dark: 85 112 69;
+}
+
+[data-theme="soft_morning"][data-accent="sky"] {
+  --gold: 74 143 194;
+  --gold-dark: 57 111 155;
+}
+
+[data-theme="soft_morning"][data-accent="lavender"] {
+  --gold: 133 112 201;
+  --gold-dark: 107 88 168;
+}
+
 /* noir — cold true grayscale (deliberately no warm undertone, unlike
    observatory's amber-glow instrument panel) with one electric-blue
-   accent. The other of the two multi-hue-accent-candidate themes. */
+   accent. The other of the two multi-hue-accent themes — backend/
+   services/display.py's THEME_ACCENTS registers 5 options: cobalt (the
+   baseline below, no data-accent attr needed), crimson, emerald,
+   violet, amber (each an override block right after this one). Unlike
+   soft_morning's pastel set, these stay fully saturated — a washed-out
+   tint would vanish against near-black surfaces. */
 [data-theme="noir"] {
   --font-serif: 'Bebas Neue', Georgia, serif;
   --font-inter: 'Work Sans', system-ui, sans-serif;
@@ -137,6 +166,26 @@
   --rust: 224 74 74;
   --moss: 86 168 118;
   color-scheme: dark;
+}
+
+[data-theme="noir"][data-accent="crimson"] {
+  --gold: 240 69 90;
+  --gold-dark: 197 57 74;
+}
+
+[data-theme="noir"][data-accent="emerald"] {
+  --gold: 47 191 113;
+  --gold-dark: 39 157 93;
+}
+
+[data-theme="noir"][data-accent="violet"] {
+  --gold: 168 85 247;
+  --gold-dark: 138 70 203;
+}
+
+[data-theme="noir"][data-accent="amber"] {
+  --gold: 245 166 35;
+  --gold-dark: 201 136 29;
 }
 
 /* brutalist — standalone theme (single accent only, no multi-hue variant
