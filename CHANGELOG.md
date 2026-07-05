@@ -1,5 +1,89 @@
 # Changelog
 
+## [v2.6] — 2026-07-05
+
+Self-serve password reset + admin ops tooling + a from-scratch theming system release. **Password reset goes fully self-serve** — a real SMTP-delivered reset link (`li3b`) replaces the old ask-an-admin workaround, with a console-logged fallback so local dev needs zero setup. **The admin console gains its final three tabs**, closing out Phase 2 — Topics (import/export YAML, orphaned-topic filtering), Cache (per-user targeted cache-bust), and Stats (usage overview plus a full quiz-performance breakdown with leaderboards) (`ad4`/`ad5`). **Display settings go from zero to ten themes** — editorial/dark/observatory shipped as the foundation alongside font-size options and an app-wide legacy-color sweep, then Soft Morning, Noir, Brutalist, Muted, High Contrast, Pride, and Random landed on top, three of them (Soft Morning, Noir, High Contrast) with their own multi-hue accent picker and Random with a fully deterministic weekly rotation that needs no cron job at all. **Long-form generated content gets its own reading-font picker** (Merriweather / Source Sans 3), independent of theme (`fd2`). **Two new migrations, zero new dependencies, one new optional env-var family (`SMTP_*`, safe to leave unset in local dev).** Full release notes in [docs/releases/v2.6.md](docs/releases/v2.6.md).
+
+### Added
+
+#### Self-serve password reset via SMTP email (PR #59, li3b)
+
+- **`POST /auth/forgot-password`** (`backend/api/auth.py`) looks up the account by email via `backend/services/password_reset.py` and, if it's active, mints a single-use `password_reset_tokens` row (30 min TTL, migration `0013_password_reset`) and emails a reset link. Always returns the same generic response regardless of whether the email matched an account, so the endpoint can't be used to enumerate registered emails.
+- **`POST /auth/reset-password`** consumes the token and sets the new password.
+- **`backend/services/email.py`** — a stdlib `smtplib` wrapper, no third-party email SDK dependency. Configured via new `SMTP_*` settings in `backend/config.py` / `.env.example`; when `SMTP_HOST` is unset, the reset link is logged to the console instead of sent, so the whole flow is testable with zero email setup.
+- Both new endpoints are IP-rate-limited via the existing `backend/middleware/rate_limit.py`.
+- New pages: `frontend/app/forgot-password`, `frontend/app/reset-password`, matching the existing `AuthShell` styling; the login page now links to forgot-password.
+- An earlier iteration of this feature used an email+username knowledge check instead of real email (no proof of inbox ownership) — replaced once SMTP was wired up, since proving inbox ownership is the correctly-scoped identity check for a password reset.
+
+#### Admin Topics, Cache, and Stats tabs (PR #60, ad4 + ad5)
+
+- **Topics tab** — wires the already-existing `POST /topics/import-yaml`, `POST /topics/export-yaml`, and `GET /topics?include_orphaned=` endpoints into an actual UI: import/export buttons with a result summary, an orphaned-only filter, and active/orphaned/system-vs-user-owned badges per topic.
+- **Cache tab** — `DELETE /admin/cache/{user_id}` (`backend/api/admin.py`) clears every `daily_content_cache` row for one target user, looked up via the existing account list. Every bust is audit-logged (`EventType.CACHE_BUST`, `backend/services/audit_log.py`). Scoped to a single targeted user deliberately — see Followups.
+- **Stats tab** — `GET /admin/stats/overview` (user counts by status, content volume, 30-day signup trend) and `GET /admin/stats/quiz-performance` (overall/median/average score, score distribution, per-topic and per-difficulty accuracy breakdowns sorted worst-first, a 30-day score trend, and two leaderboards — most active, and highest accuracy gated behind a minimum-questions floor so one lucky quiz can't top the board). Derived entirely from the existing `ArchivedQuiz.questions` JSON — no new instrumentation needed. No charting library exists in this project, so the bars/sparklines/leaderboards are hand-rolled CSS rather than a new frontend dependency.
+
+#### Theme foundation: plumbing, three themes, font sizes, app-wide sweep (PR #61, fd3 foundation)
+
+- New `display_settings JSON` column on `user_settings` (migration `0014_display_settings`), backend registry (`backend/services/display.py`) and API (`backend/api/display.py`) for theme + font-size preferences.
+- Tailwind's color palette refactored to CSS custom properties as RGB-triplet strings, wrapped as `rgb(var(--x) / <alpha-value>)` in `tailwind.config.js` — the only pattern that keeps Tailwind's `/NN` opacity modifiers (`bg-rust/5`, etc.) working with CSS-variable-driven theme colors; a bare `var(--x)` hex string builds fine but silently drops any opacity-modified utility.
+- Three themes shipped: **editorial** (the existing look, now themeable), **dark** (same layout/fonts, recolored), **observatory** (near-black instrument panel, Bodoni Moda display face).
+- Four font sizes (small/medium/large/extra large) via `[data-font-size="..."]` scaling the `<html>` root font-size — every rem-based Tailwind utility scales automatically.
+- New `/settings/display` page (theme cards + font-size picker, live preview on click, single Save) and a new "Appearance" nav group in `Sidebar.tsx`/`MobileTabBar.tsx`.
+- App-wide legacy-color sweep: ~1,000 hardcoded Tailwind color-class occurrences converted to theme tokens across 29 files, plus background/text classes added to 57 native form controls that had none, so dark/observatory render correctly everywhere instead of just on the pages built after the sweep. `color-scheme` set in `globals.css` so native OS-drawn form chrome (select dropdowns, date pickers) also follows the active theme.
+
+#### Soft Morning, Noir, and Brutalist themes (PR #62, fd3)
+
+- **Soft Morning** — blush pastel, rounded shapes, Fraunces + Nunito.
+- **Noir** — cold true grayscale (deliberately no warm undertone, unlike Observatory's amber glow), Bebas Neue + Work Sans.
+- **Brutalist** — stark black/white, thick hard-edge borders, offset shadows, Archivo Black + Space Mono. `--rule` is reused as solid near-black so every existing `border-rule` utility renders bold for free, plus a `[data-theme="brutalist"] * { border-radius: 0; box-shadow: none; }` reset — no component edits needed for the hard-edge look.
+
+#### Colorful accents for Soft Morning and Noir (PR #63, fd3)
+
+- New `THEME_ACCENTS` registry (`backend/services/display.py`) and `[data-theme="..."][data-accent="..."]` CSS override blocks — only `--gold`/`--gold-dark` change between accents.
+- **Soft Morning**: orange (baseline), rose, sage, sky, lavender — pastel weight.
+- **Noir**: cobalt (baseline), crimson, emerald, violet, amber — fully saturated, since a pastel tint would disappear against Noir's near-black surfaces.
+- `/settings/display` grew a conditional Accent swatch section that only renders for themes with a non-empty accent list.
+
+#### Muted, High Contrast, Pride themes, and Random (PR #64, fd3)
+
+- **Muted** — desaturated stone/greige, single dusty-clay accent, Cormorant Garamond display face (body stays Inter deliberately, so the "quiet" identity comes from restraint, not a font swap).
+- **High Contrast** — pure black/white verified against WCAG (body text 21:1, secondary text 9.6:1, non-text borders 4.1:1, all clear AAA; danger red ~6.9:1 clears AA). Atkinson Hyperlegible — a typeface built for low-vision readability — replaces both the display and body face. Its own 4-option accent picker: cyan (baseline, 13.7:1) and orange (8.9:1) clear AAA; magenta (6.5:1) and violet (6.2:1) clear AA.
+- **Pride** — clean warm-neutral base, Fredoka + Figtree, single solid pink accent wired into the app's existing `--gold`/`--gold-dark` slot. The progressive pride flag's full palette (black/brown/light-blue/pink/white plus the classic six) shows up separately as a decorative 4px gradient ribbon pinned to the top of the viewport (`[data-theme="pride"] .app-shell::before`), not a full recolor.
+- **Random** — a meta-theme with no palette of its own. `resolve_random()` hashes `user_id` + a theme/accent purpose tag + the current ISO week (Monday-anchored, UTC) via `crc32` into a pick from every other registered theme (and that theme's accent pool, if it has one). No cron or stored rotation state needed — the ISO week number is the clock, so the weekly reset happens for free at the Sunday/Monday boundary, and each user's pick is independent. `/settings/display` shows a "This week: `<theme>` · `<accent>`" caption when Random is selected.
+
+#### Reading-font picker for generated content (PR #65, fd2)
+
+- New theme-independent `reading_font` setting — `theme` (no-op default), `merriweather`, `source_sans` — scoped to long-form generated content only (`.prose-scholar`, i.e. topic reviews and paper summaries), so it can't clash with any theme's own bespoke typography.
+- New `GET /display/reading-fonts` endpoint; `/settings/display` grew a Reading font pill picker that renders unconditionally, unlike the theme-gated Accent section.
+
+### Fixed
+
+- **`.prose-scholar` (generated topic reviews / paper summaries) was still on hardcoded `slate`/`blue` Tailwind classes** (PR #65) — a gap the fd3 app-wide sweep missed since this block lives in `globals.css` rather than a page file. Converted to theme tokens while this exact block was already being touched for the reading-font work; code blocks use `ink-2`/`paper-2` (inverted, neutral) rather than the `gold-dark` swap used for `slate-900` elsewhere, since a code block should read as a neutral dark surface on every theme, not an accent-colored one.
+- **`/settings/display`'s live click-preview stopped working** (PR #64 follow-up) — `applyDisplaySettings` needed to paint `resolved_theme`/`resolved_accent` instead of `theme`/`accent` directly (so Random always resolves to a real palette), but the page's `pickTheme`/`pickAccent` handlers only updated `theme`/`accent` locally. Clicking a theme card did nothing visually until Save's server round-trip returned a fresh `resolved_theme` — exactly matching what got reported (switches on save, not on click). Fixed by mirroring the click into `resolved_theme`/`resolved_accent` too, except when picking "random" itself, where there's no client-side hash and the resolved fields still only catch up after Save.
+- **`docker-compose.yml`'s `FRONTEND_URL` pointed at the compose-network-only `http://frontend:3000`** (PR #59) — broke the clickability of local-dev password-reset links (CORS still worked either way via a hardcoded `localhost` fallback, so this went unnoticed until a real link needed to be clicked). Changed to `http://localhost:3000`, the browser-reachable address.
+
+### Operations
+
+- **Two new migrations, both purely additive with idempotent guards**: `0013_password_reset` (new `password_reset_tokens` table) and `0014_display_settings` (new `display_settings JSON` column on `user_settings`, mirroring `notification_settings` from `0004`).
+- **Zero new Python or npm dependencies.** Email sending uses stdlib `smtplib`; no charting library was added for the Stats tab (hand-rolled CSS instead).
+- **New optional env-var family**: `SMTP_HOST` / `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_EMAIL` / `SMTP_FROM_NAME` (`.env.example`). All optional — leaving `SMTP_HOST` blank falls back to console-logging the reset link, so this is safe to skip in dev/CI, but **production needs it configured for password reset to actually send email.**
+- **`docs/DEPLOY.md`** updated: `SMTP_*` added to the "same in both environments" env-var group for the Railway dev+prod split (one mailbox/relay shared across envs is fine — reset emails aren't secret), and a note that `FRONTEND_URL` is also the base URL password-reset links point at, so a wrong value there sends users to the wrong environment's reset page.
+- **New Phase 6 in `FUTURE_FEATURES.md`** capturing the admin cache-bust follow-ups deliberately left out of this release (see Followups).
+
+### Decisions
+
+- **No cron or scheduler for Random.** The ISO week number itself is the clock — a `crc32` hash of `user_id` + purpose + ISO year/week gives a deterministic, different-per-user pick that resets for free at the week boundary. Verified via a standalone harness: same result on repeat calls within a week, flips exactly at the Sunday 23:59 → Monday 00:01 UTC boundary, and distributes roughly evenly across all 9 real themes over 2000 synthetic users.
+- **Reading-font picker scoped to generated content only, not a global override.** Every theme now has its own bespoke display/body typography (Bebas Neue for Noir, Archivo Black for Brutalist, Cormorant Garamond for Muted, etc.); a global font override would have undone all of that. Confirmed with the reviewer before implementing.
+- **Brutalist and Muted ship single-accent only; Soft Morning, Noir, and High Contrast get the multi-hue picker.** A deliberate split, not every theme needing the same treatment.
+- **Cache-bust scoped to single-user targeting for this release.** Multi-select and a global "clear for everyone" option are real, useful follow-ups, but coarse/irreversible enough (in effect, even though it's just cache) to deserve their own explicit design pass rather than being rushed in — captured as Phase 6 instead.
+- **`smtplib` over a third-party email SDK.** Matches li3b's original scoping and keeps `requirements.txt` unchanged.
+
+### Followups
+
+- **Phase 6 · Admin Cache Tooling** — multi-user select for cache bust (`ct1`) and a global "clear for everyone" option (`ct2`), both not started. See `FUTURE_FEATURES.md` for gating conditions.
+- **Random's rotation cadence is fixed at weekly.** A user-configurable cadence (daily/weekly/monthly, or a custom schedule) instead of the fixed weekly reset is noted in `FUTURE_FEATURES.md` under fd3; not started.
+- **fd0, fd1, and fd4** (the remaining Phase 5 frontend-enhancement items) are still not started.
+- **Should admin actions push-notify the affected user** (e.g. "an admin disabled your account")? Still an open question from Phase 2 — no such notification kind exists yet.
+
 ## [v2.5.1] — 2026-07-03
 
 Small polish release. **Admin-generated invite codes gain an optional custom-text option** — left blank, still a random `secrets.token_urlsafe` code as before; typed in, validated (3–32 chars, letters/digits/-/_) and used as-is. **The dashboard's stats bar is redesigned** to match the editorial theme (Fraunces numerals, roman-numeral eyebrows, hairline rule borders) instead of standing out as a leftover blue/indigo gradient, and **a flexbox bug clipping the sidebar's "in scope" card down to a sliver is fixed**. Also corrects stale deploy-config comments in `frontend/railway.toml`. **Zero new migrations, zero new dependencies, zero new environment variables.** Full release notes in [docs/releases/v2.5.1.md](docs/releases/v2.5.1.md).
