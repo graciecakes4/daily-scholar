@@ -18,17 +18,23 @@ const inter = Inter({ subsets: ["latin"] });
 // returning user's saved theme/font-size never flashes editorial-then-
 // their-theme. Reads the cache ThemeProvider maintains in localStorage;
 // falls back to the "editorial"/"medium" defaults (which already match
-// globals.css :root, so even a cold cache renders correctly).
+// globals.css :root, so even a cold cache renders correctly). Prefers
+// resolved_theme/resolved_accent when present so a user on "Random"
+// still gets this week's actual pick pre-painted instead of a generic
+// fallback; a stale cache (e.g. crossing into a new ISO week) briefly
+// shows last week's pick until ThemeProvider's effect re-fetches and
+// re-caches, same tradeoff as any other cross-device settings change.
 const THEME_INIT_SCRIPT = `
 (function () {
   try {
     var raw = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});
     var s = raw ? JSON.parse(raw) : null;
-    var theme = (s && s.theme) || 'editorial';
+    var theme = (s && (s.resolved_theme || s.theme)) || 'editorial';
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-font-size', (s && s.font_size) || 'medium');
-    if (s && s.accent) {
-      document.documentElement.setAttribute('data-accent', s.accent);
+    var accent = s && (s.resolved_accent || s.accent);
+    if (accent) {
+      document.documentElement.setAttribute('data-accent', accent);
     }
     var colors = ${JSON.stringify(THEME_COLORS)};
     var meta = document.querySelector('meta[name="theme-color"]');

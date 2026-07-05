@@ -25,7 +25,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 - **Phase 2 · Admin Controls**: in-progress — role gate + a 7-tab admin console (approvals/invites/users/audit/topics/cache/stats) shipped. Cache-bust is per-user only for now — see Phase 6 for the planned multi-select + global-clear follow-up.
 - **Phase 3 · Push Notifications Surface**: in-progress — settings page, per-type scheduling, and dead-subscription cleanup all shipped and more general than scoped; the actual "enable push" subscribe button isn't wired into any page yet.
 - **Phase 4 · Frontend Test Infrastructure**: proposed — confirmed nothing has been built here yet.
-- **Phase 5 · Frontend UI Enhancements**: in-progress — fd3's foundation shipped (theme + font-size plumbing, `/settings/display`) plus six themes (editorial, dark, observatory, soft morning, noir, brutalist); the rest of fd3's theme backlog and fd0/fd1/fd2/fd4 are all still not started. See fd3 entry for the split.
+- **Phase 5 · Frontend UI Enhancements**: in-progress — fd3 is fully shipped (10 themes: editorial, dark, observatory, soft morning, noir, brutalist, muted, high contrast, pride, random — plus multi-hue accent pickers on soft morning, noir, and high contrast); fd0/fd1/fd2/fd4 are all still not started. See fd3 entry for the one small new item discovered along the way (Random's rotation cadence).
 
 ---
 
@@ -188,8 +188,8 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   - Add Merriweather font
   - Add Source Sans 3 font
   - Add settings to `/settings/display`
-- [ ] **fd3** Add user selected themes
-  *Foundation shipped; the longer theme list is still open — kept unchecked at the fd3 level since it isn't fully landed. One theme selector (per the scoping call above), not a separate light/dark toggle + style layer.*
+- [x] **fd3** Add user selected themes
+  *Fully shipped — every item from the original theme list has landed. One theme selector (per the scoping call above), not a separate light/dark toggle + style layer.*
   - [x] Theme + font-size plumbing — DB storage, backend services/API, RGB CSS variables for instant theme switching.
   - [x] Dark/light mode — `[data-theme="dark"]` in `globals.css`, editorial fonts/layout recolored for low light.
   - [x] Observatory — `[data-theme="observatory"]`, near-black instrument panel + Bodoni Moda display face.
@@ -201,11 +201,11 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   - [x] Brutalist — standalone theme, single accent only; stark black/white, hard edges, offset shadows (Archivo Black + Space Mono).
   - [x] Colorful accents (Soft Morning) — 5 pastel accents (orange/rose/sage/sky/lavender) via `THEME_ACCENTS` + `[data-accent="..."]` CSS blocks.
   - [x] Colorful accents (Noir) — 5 saturated accents (cobalt/crimson/emerald/violet/amber); same recipe, zero extra frontend code needed.
-  - [ ] Themes — *remaining backlog, registry ready for it*
-    - muted
-    - high contrast
-    - pride
-    - random
+  - [x] Muted — desaturated stone/greige, single clay accent (Cormorant Garamond display face, body stays Inter).
+  - [x] High Contrast — pure black/white verified against WCAG (AAA on body/secondary text, AA+ on danger red), Atkinson Hyperlegible throughout, its own 4-accent picker (cyan/orange/magenta/violet).
+  - [x] Pride — clean neutral base (Fredoka + Figtree), progressive flag palette carried as a thin gradient ribbon pinned to the viewport top, not a full-flood recolor.
+  - [x] Random — meta-theme, no palette of its own; `resolve_random()` hashes user + ISO week (Monday-anchored, UTC) into a pick from every other theme (+ accent, if it has one). No cron needed — the week number is the clock.
+    - [ ] *New, discovered while building Random:* user-configurable rotation cadence (daily/weekly/monthly, or a custom cron-style schedule) instead of the fixed weekly reset — not started.
 - [ ] **fd4** improve stats
   - add more stats
   - add interactive tiles

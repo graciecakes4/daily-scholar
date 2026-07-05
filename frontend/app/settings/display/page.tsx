@@ -20,7 +20,17 @@
  * soft_morning also grew fd3's "colorful accents" picker (orange/rose/
  * sage/sky/lavender) — an extra section that only renders when the
  * selected theme's `accents` array (from GET /display/themes) is
- * non-empty. noir's set lands the same way, later.
+ * non-empty. noir and high_contrast's sets land the same way.
+ *
+ * "Random" is a meta-theme (see RANDOM_THEME_KEY in
+ * backend/services/display.py) — selecting it just stores theme:
+ * "random"; the backend resolves what to actually paint into
+ * resolved_theme/resolved_accent every time settings are fetched, and
+ * this page surfaces that as a small "This week: ..." caption so
+ * picking Random isn't a total mystery. One known gap: clicking Random
+ * before Save shows the caption from whatever was last fetched (the
+ * hash is computed server-side, not duplicated in JS), so the live
+ * preview only catches up to the true weekly pick after you Save.
  */
 
 import { useEffect, useState } from 'react';
@@ -87,13 +97,30 @@ export default function DisplaySettingsPage() {
       const accent = accents.length === 0
         ? null
         : accents.some(a => a.key === prev.accent) ? prev.accent : accents[0].key;
-      return { ...prev, theme, accent };
+      // applyDisplaySettings paints resolved_theme/resolved_accent, not
+      // theme/accent directly (so "random" always resolves to a real
+      // palette) — mirror the click into those fields too, or picking a
+      // theme would do nothing visually until Save round-trips to the
+      // server. "random" is the one exception: there's no client-side
+      // hash, so its resolved fields can't be known until Save.
+      const isRandom = theme === 'random';
+      return {
+        ...prev,
+        theme,
+        accent,
+        resolved_theme: isRandom ? prev.resolved_theme : theme,
+        resolved_accent: isRandom ? prev.resolved_accent : accent,
+      };
     });
     setSuccess(null);
   }
 
   function pickAccent(accent: string) {
-    setSettings(prev => prev && { ...prev, accent });
+    setSettings(prev => prev && {
+      ...prev,
+      accent,
+      resolved_accent: prev.theme === 'random' ? prev.resolved_accent : accent,
+    });
     setSuccess(null);
   }
 
@@ -129,6 +156,8 @@ export default function DisplaySettingsPage() {
     settings.accent !== saved.accent
   );
   const activeAccents = themes.find(t => t.key === settings.theme)?.accents ?? [];
+  const resolvedThemeMeta = themes.find(t => t.key === settings.resolved_theme);
+  const resolvedAccentMeta = resolvedThemeMeta?.accents.find(a => a.key === settings.resolved_accent);
 
   return (
     <div className="space-y-6">
@@ -145,6 +174,16 @@ export default function DisplaySettingsPage() {
       {/* theme */}
       <section className="bg-paper-2 border border-rule rounded-2xl p-6 shadow-[0_14px_34px_-18px_rgba(27,22,16,.18)] space-y-4">
         <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-muted">Theme</h2>
+        {settings.theme === 'random' && resolvedThemeMeta && (
+          <p className="text-xs text-muted -mt-2">
+            This week:{' '}
+            <span className="text-ink-2 font-semibold">
+              {resolvedThemeMeta.label}
+              {resolvedAccentMeta ? ` · ${resolvedAccentMeta.label}` : ''}
+            </span>
+            {' '}— resets Monday at midnight UTC, different for every user.
+          </p>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {themes.map(t => (
             <button

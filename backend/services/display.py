@@ -24,10 +24,27 @@ crimson/emerald/violet/amber) — same red/blue/green/purple/orange list
 from fd3's backlog, named to fit each theme's own palette. Noir's are
 fully saturated rather than pastel since a washed-out tint would
 disappear against its near-black surfaces.
+
+fd3's full theme list is now shipped: muted (quiet stone/greige,
+single clay accent), high_contrast (pure black/white verified against
+WCAG, its own 4-option accent picker — cyan/orange/magenta/violet),
+pride (clean neutral base, the progressive flag's palette carried as a
+thin ribbon rather than a flood — see its `.app-shell::before` rule in
+globals.css), and random — a meta-theme with no CSS block of its own.
+`resolve_random()` deterministically hashes user_id + the theme/accent
+purpose + the current ISO week (Monday-anchored, UTC) into a pick from
+every other registered theme (and that theme's accent pool, if any).
+No cron or stored rotation state needed — the week number itself is
+the clock, so the reset happens for free at the Sunday/Monday
+boundary. `get_display_settings`/`update_display_settings` always
+return `resolved_theme`/`resolved_accent` alongside the raw stored
+`theme`/`accent`, so the frontend never has to special-case "random"
+when deciding what to paint.
 """
 
 from __future__ import annotations
 
+import zlib
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
@@ -39,6 +56,8 @@ from ..database import (
     get_session,
 )
 
+RANDOM_THEME_KEY = "random"
+
 
 @dataclass(frozen=True)
 class ThemeOption:
@@ -46,6 +65,9 @@ class ThemeOption:
     label: str           # human-facing label for the settings UI
     description: str     # one-line help text
     dark: bool            # drives the browser theme-color / status bar hint
+    is_random: bool = False  # True only for the "random" meta-theme — has
+                               # no [data-theme="..."] CSS block of its own;
+                               # resolve_random() picks a real theme instead
 
 
 @dataclass(frozen=True)
@@ -107,6 +129,31 @@ THEMES: dict[str, ThemeOption] = {
         description="Stark black-and-white, thick hard-edge borders, offset shadows, and a punchy red accent.",
         dark=False,
     ),
+    "muted": ThemeOption(
+        key="muted",
+        label="Muted",
+        description="Desaturated stone and greige, hairline rules, a dusty clay accent — an old-library hush.",
+        dark=False,
+    ),
+    "high_contrast": ThemeOption(
+        key="high_contrast",
+        label="High Contrast",
+        description="Pure black and white verified against WCAG, thick borders, and a 4-color accent picker.",
+        dark=True,
+    ),
+    "pride": ThemeOption(
+        key="pride",
+        label="Pride",
+        description="Clean neutral base with the progressive flag's palette carried as a thin ribbon, not a flood.",
+        dark=False,
+    ),
+    "random": ThemeOption(
+        key="random",
+        label="Random",
+        description="A new theme (and accent, if it has one) every week — resets Mondays at midnight UTC, different for every user.",
+        dark=False,
+        is_random=True,
+    ),
 }
 
 FONT_SIZES: dict[str, FontSizeOption] = {
@@ -136,11 +183,18 @@ THEME_ACCENTS: dict[str, dict[str, AccentOption]] = {
         "violet": AccentOption(key="violet", label="Violet", hex="#A855F7"),
         "amber": AccentOption(key="amber", label="Amber", hex="#F5A623"),
     },
+    "high_contrast": {
+        "cyan": AccentOption(key="cyan", label="Cyan", hex="#00E5FF"),
+        "orange": AccentOption(key="orange", label="Orange", hex="#FF8A00"),
+        "magenta": AccentOption(key="magenta", label="Magenta", hex="#FF3EA5"),
+        "violet": AccentOption(key="violet", label="Violet", hex="#B266FF"),
+    },
 }
 
 DEFAULT_ACCENTS: dict[str, str] = {
     "soft_morning": "orange",
     "noir": "cobalt",
+    "high_contrast": "cyan",
 }
 
 DEFAULT_DISPLAY_SETTINGS: dict[str, Any] = {
@@ -176,6 +230,40 @@ def list_font_sizes() -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# Random — a meta-theme with no palette of its own. Deterministic, so no
+# cron/scheduler or stored rotation state is needed: the ISO week number
+# (Monday-anchored, UTC) is the clock, and CRC32 over a per-purpose key
+# gives a stable-for-the-week, different-per-user pick.
+# ---------------------------------------------------------------------------
+
+
+def _week_hash(*parts: str, now: Optional[datetime] = None) -> int:
+    now = now or datetime.utcnow()
+    iso_year, iso_week, _ = now.isocalendar()
+    key = ":".join([*parts, str(iso_year), str(iso_week)])
+    return zlib.crc32(key.encode())
+
+
+def resolve_random(user_id: str, now: Optional[datetime] = None) -> tuple[str, Optional[str]]:
+    """
+    What "random" resolves to for `user_id` this ISO week. Picks from every
+    theme except random itself; if the picked theme has an accent pool,
+    picks one of those too (independently seeded, so theme and accent
+    don't always land on the same index).
+    """
+    pool = [key for key in THEMES if key != RANDOM_THEME_KEY]
+    theme = pool[_week_hash(user_id, "theme", now=now) % len(pool)]
+
+    accents = THEME_ACCENTS.get(theme)
+    if not accents:
+        return theme, None
+
+    accent_keys = list(accents)
+    accent = accent_keys[_week_hash(user_id, "accent", now=now) % len(accent_keys)]
+    return theme, accent
+
+
+# ---------------------------------------------------------------------------
 # Per-user settings
 # ---------------------------------------------------------------------------
 
@@ -208,10 +296,25 @@ def ensure_settings_shape(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
     return {"theme": theme, "font_size": font_size, "accent": accent}
 
 
+def _with_resolved(user_id: str, normalized: dict[str, Any]) -> dict[str, Any]:
+    """
+    Adds resolved_theme/resolved_accent — what should actually be painted
+    (data-theme/data-accent) this week. Equal to theme/accent for every
+    normal theme; computed via resolve_random() when theme == "random",
+    so the frontend never has to special-case "random" itself.
+    """
+    if normalized["theme"] == RANDOM_THEME_KEY:
+        resolved_theme, resolved_accent = resolve_random(user_id)
+    else:
+        resolved_theme, resolved_accent = normalized["theme"], normalized["accent"]
+    return {**normalized, "resolved_theme": resolved_theme, "resolved_accent": resolved_accent}
+
+
 def get_display_settings(user_id: str = DEFAULT_USER_ID) -> dict[str, Any]:
     """Read + normalize the display_settings blob for `user_id`."""
     settings = get_or_create_user_settings(user_id)
-    return ensure_settings_shape(settings.display_settings)
+    normalized = ensure_settings_shape(settings.display_settings)
+    return _with_resolved(user_id, normalized)
 
 
 def update_display_settings(user_id: str, new_settings: dict[str, Any]) -> dict[str, Any]:
@@ -233,4 +336,4 @@ def update_display_settings(user_id: str, new_settings: dict[str, Any]) -> dict[
         session.commit()
     finally:
         session.close()
-    return normalized
+    return _with_resolved(user_id, normalized)

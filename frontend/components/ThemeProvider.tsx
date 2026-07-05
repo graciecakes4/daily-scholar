@@ -35,23 +35,32 @@ export const THEME_COLORS: Record<string, string> = {
   soft_morning: '#FFF3EE',
   noir: '#161616',
   brutalist: '#FFFFFF',
+  muted: '#EAE6DD',
+  high_contrast: '#000000',
+  pride: '#FFFDF9',
 };
 
 export function applyDisplaySettings(settings: DisplaySettings) {
   if (typeof document === 'undefined') return;
-  document.documentElement.setAttribute('data-theme', settings.theme);
+  // "random" has no CSS block of its own — resolved_theme/resolved_accent
+  // (computed server-side, see backend/services/display.py's
+  // resolve_random()) are what actually get painted. They equal
+  // theme/accent for every other theme, so this is safe unconditionally.
+  const theme = settings.resolved_theme || settings.theme;
+  const accent = settings.resolved_accent ?? settings.accent;
+  document.documentElement.setAttribute('data-theme', theme);
   document.documentElement.setAttribute('data-font-size', settings.font_size);
-  // accent only applies to themes with a multi-hue picker (soft_morning,
-  // eventually noir) — clear the attribute for every other theme so a
-  // stale accent from a previous theme can't leak into globals.css's
-  // [data-theme="..."][data-accent="..."] selectors.
-  if (settings.accent) {
-    document.documentElement.setAttribute('data-accent', settings.accent);
+  // accent only applies to themes with a multi-hue picker — clear the
+  // attribute for every other theme so a stale accent from a previous
+  // theme can't leak into globals.css's [data-theme="..."][data-accent="..."]
+  // selectors.
+  if (accent) {
+    document.documentElement.setAttribute('data-accent', accent);
   } else {
     document.documentElement.removeAttribute('data-accent');
   }
   const meta = document.querySelector('meta[name="theme-color"]');
-  const color = THEME_COLORS[settings.theme] ?? THEME_COLORS.editorial;
+  const color = THEME_COLORS[theme] ?? THEME_COLORS.editorial;
   if (meta) meta.setAttribute('content', color);
 }
 
