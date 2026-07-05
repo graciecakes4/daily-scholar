@@ -31,6 +31,11 @@
  * before Save shows the caption from whatever was last fetched (the
  * hash is computed server-side, not duplicated in JS), so the live
  * preview only catches up to the true weekly pick after you Save.
+ *
+ * fd2's reading-font picker (Match theme / Merriweather / Source Sans
+ * 3) is theme-independent — it only affects long-form generated
+ * content (.prose-scholar in globals.css), so it renders unconditionally
+ * as its own section rather than being gated on the selected theme.
  */
 
 import { useEffect, useState } from 'react';
@@ -39,15 +44,18 @@ import {
   updateDisplaySettings,
   listThemes,
   listFontSizes,
+  listReadingFonts,
   type DisplaySettings,
   type ThemeMeta,
   type FontSizeMeta,
+  type ReadingFontMeta,
 } from '@/lib/api';
 import { applyDisplaySettings } from '@/components/ThemeProvider';
 
 export default function DisplaySettingsPage() {
   const [themes, setThemes] = useState<ThemeMeta[]>([]);
   const [fontSizes, setFontSizes] = useState<FontSizeMeta[]>([]);
+  const [readingFonts, setReadingFonts] = useState<ReadingFontMeta[]>([]);
   const [settings, setSettings] = useState<DisplaySettings | null>(null);
   const [saved, setSaved] = useState<DisplaySettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,13 +66,15 @@ export default function DisplaySettingsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [themesRes, fontSizesRes, settingsRes] = await Promise.all([
+        const [themesRes, fontSizesRes, readingFontsRes, settingsRes] = await Promise.all([
           listThemes(),
           listFontSizes(),
+          listReadingFonts(),
           getDisplaySettings(),
         ]);
         setThemes(themesRes.themes);
         setFontSizes(fontSizesRes.font_sizes);
+        setReadingFonts(readingFontsRes.reading_fonts);
         setSettings(settingsRes);
         setSaved(settingsRes);
       } catch (e: any) {
@@ -129,6 +139,11 @@ export default function DisplaySettingsPage() {
     setSuccess(null);
   }
 
+  function pickReadingFont(reading_font: string) {
+    setSettings(prev => prev && { ...prev, reading_font });
+    setSuccess(null);
+  }
+
   async function save() {
     if (!settings) return;
     setSaving(true);
@@ -153,7 +168,8 @@ export default function DisplaySettingsPage() {
   const dirty = saved && (
     settings.theme !== saved.theme ||
     settings.font_size !== saved.font_size ||
-    settings.accent !== saved.accent
+    settings.accent !== saved.accent ||
+    settings.reading_font !== saved.reading_font
   );
   const activeAccents = themes.find(t => t.key === settings.theme)?.accents ?? [];
   const resolvedThemeMeta = themes.find(t => t.key === settings.resolved_theme);
@@ -247,6 +263,29 @@ export default function DisplaySettingsPage() {
               }`}
             >
               {f.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* reading font — theme-independent (fd2), only affects long-form
+          generated content (topic reviews, paper summaries), so it
+          always renders regardless of the selected theme. */}
+      <section className="bg-paper-2 border border-rule rounded-2xl p-6 shadow-[0_14px_34px_-18px_rgba(27,22,16,.18)] space-y-4">
+        <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-muted">Reading font</h2>
+        <p className="text-xs text-muted -mt-2">Only affects generated topic reviews and paper summaries.</p>
+        <div className="inline-flex flex-wrap bg-paper border border-rule rounded-full p-1 gap-1">
+          {readingFonts.map(r => (
+            <button
+              key={r.key}
+              type="button"
+              onClick={() => pickReadingFont(r.key)}
+              title={r.description}
+              className={`px-4 py-2 text-[13px] font-semibold rounded-full transition-colors ${
+                settings.reading_font === r.key ? 'bg-ink text-paper-2' : 'text-muted hover:text-ink-2'
+              }`}
+            >
+              {r.label}
             </button>
           ))}
         </div>

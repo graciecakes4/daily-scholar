@@ -1,11 +1,12 @@
 """
-Display preferences API (Phase 5 / fd3, foundation slice).
+Display preferences API (Phase 5 / fd3 + fd2).
 
-Read/write the per-user display_settings blob (theme + font size), and
-list the registries that drive the /settings/display picker UI. Same
-shape as backend/api/notifications.py's settings endpoints, minus the
-scheduler side effect (nothing to reload — the frontend applies the
-theme/font-size attributes directly on save).
+Read/write the per-user display_settings blob (theme, font size,
+accent, reading font), and list the registries that drive the
+/settings/display picker UI. Same shape as
+backend/api/notifications.py's settings endpoints, minus the scheduler
+side effect (nothing to reload — the frontend applies the
+theme/font-size/accent/reading-font attributes directly on save).
 """
 
 from __future__ import annotations
@@ -35,6 +36,10 @@ class DisplaySettingsBody(BaseModel):
         default=None,
         description="Registry key from the selected theme's `accents` list (GET /display/themes). Ignored/normalized to None for themes with no accent options.",
     )
+    reading_font: str = Field(
+        default="theme",
+        description="Registry key from GET /display/reading-fonts. Theme-independent — only affects long-form generated content (topic reviews, paper summaries), not the app's own typography.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +57,12 @@ def list_themes() -> dict[str, Any]:
 def list_font_sizes() -> dict[str, Any]:
     """Registry of available font sizes. Drives the font-size picker."""
     return {"font_sizes": display_svc.list_font_sizes()}
+
+
+@display_router.get("/reading-fonts")
+def list_reading_fonts() -> dict[str, Any]:
+    """Registry of available reading fonts (fd2). Drives the reading-font picker."""
+    return {"reading_fonts": display_svc.list_reading_fonts()}
 
 
 @display_router.get("/settings")

@@ -25,7 +25,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 - **Phase 2 · Admin Controls**: in-progress — role gate + a 7-tab admin console (approvals/invites/users/audit/topics/cache/stats) shipped. Cache-bust is per-user only for now — see Phase 6 for the planned multi-select + global-clear follow-up.
 - **Phase 3 · Push Notifications Surface**: in-progress — settings page, per-type scheduling, and dead-subscription cleanup all shipped and more general than scoped; the actual "enable push" subscribe button isn't wired into any page yet.
 - **Phase 4 · Frontend Test Infrastructure**: proposed — confirmed nothing has been built here yet.
-- **Phase 5 · Frontend UI Enhancements**: in-progress — fd3 is fully shipped (10 themes: editorial, dark, observatory, soft morning, noir, brutalist, muted, high contrast, pride, random — plus multi-hue accent pickers on soft morning, noir, and high contrast); fd0/fd1/fd2/fd4 are all still not started. See fd3 entry for the one small new item discovered along the way (Random's rotation cadence).
+- **Phase 5 · Frontend UI Enhancements**: in-progress — fd2 and fd3 are fully shipped (fd3: 10 themes — editorial, dark, observatory, soft morning, noir, brutalist, muted, high contrast, pride, random — plus multi-hue accent pickers on soft morning, noir, and high contrast; fd2: a theme-independent reading-font picker for generated content); fd0/fd1/fd4 are still not started. See fd3 entry for the one small new item discovered along the way (Random's rotation cadence).
 
 ---
 
@@ -183,11 +183,12 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   - [ ] Per-topic push toggles
   - [ ] Quiet hours / Do Not Disturb window
   - [ ] Push notification grouping on iOS
-- [ ] **fd2** Add new fonts
-  *Not started*
-  - Add Merriweather font
-  - Add Source Sans 3 font
-  - Add settings to `/settings/display`
+- [x] **fd2** Add new fonts
+  *Shipped as a theme-independent reading-font picker — scoped to long-form generated content only (`.prose-scholar`), so it can't clash with each theme's own bespoke typography from fd3.*
+  - [x] Add Merriweather font — `[data-reading-font="merriweather"] .prose-scholar` in `globals.css`.
+  - [x] Add Source Sans 3 font — `[data-reading-font="source_sans"] .prose-scholar`; "Match theme" (default) has no override rule at all.
+  - [x] Add settings to `/settings/display` — new Reading font pill picker, `READING_FONTS` registry in `backend/services/display.py`, `GET /display/reading-fonts`.
+  - [x] *Incidental fix:* `.prose-scholar` was still on hardcoded `slate-*`/`blue-*` Tailwind classes — missed by the earlier app-wide theme sweep since it lives in `globals.css`, not a page file. Converted to theme tokens while this block was already being touched.
 - [x] **fd3** Add user selected themes
   *Fully shipped — every item from the original theme list has landed. One theme selector (per the scoping call above), not a separate light/dark toggle + style layer.*
   - [x] Theme + font-size plumbing — DB storage, backend services/API, RGB CSS variables for instant theme switching.
