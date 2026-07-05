@@ -17,6 +17,13 @@ Three more themes landed after the foundation: soft_morning and noir
 (picked as the two directions that will later grow a multi-hue accent
 picker — red/blue/green/purple/orange per fd3's backlog) and brutalist
 (a standalone theme, single accent only, no multi-hue variant planned).
+
+Both multi-hue rollouts are in: THEME_ACCENTS registers five options
+each for soft_morning (orange/rose/sage/sky/lavender) and noir (cobalt/
+crimson/emerald/violet/amber) — same red/blue/green/purple/orange list
+from fd3's backlog, named to fit each theme's own palette. Noir's are
+fully saturated rather than pastel since a washed-out tint would
+disappear against its near-black surfaces.
 """
 
 from __future__ import annotations
@@ -46,6 +53,17 @@ class FontSizeOption:
     key: str
     label: str
     root_px: int         # <html> base font-size in px for this option
+
+
+@dataclass(frozen=True)
+class AccentOption:
+    key: str    # stable id; used in settings JSON + the data-accent attr
+    label: str   # human-facing label for the accent swatch
+    hex: str      # swatch fill color for the picker UI — the matching
+                   # --gold/--gold-dark CSS variables live in globals.css's
+                   # [data-theme="..."][data-accent="..."] blocks and must
+                   # be kept in sync with this by hand (no single source of
+                   # truth yet; small enough registry that this is fine).
 
 
 # ---------------------------------------------------------------------------
@@ -98,15 +116,54 @@ FONT_SIZES: dict[str, FontSizeOption] = {
     "xlarge": FontSizeOption(key="xlarge", label="Extra large", root_px=21),
 }
 
+# Per-theme accent registry — only themes picked for the multi-hue accent
+# treatment (fd3 backlog) get an entry here. soft_morning's own baseline
+# --gold/--gold-dark (the "orange" values, see globals.css) is the
+# implicit default and isn't repeated as an accent option; the other four
+# are selected via the data-accent attribute layered on top of the theme.
+THEME_ACCENTS: dict[str, dict[str, AccentOption]] = {
+    "soft_morning": {
+        "orange": AccentOption(key="orange", label="Orange", hex="#D9822E"),
+        "rose": AccentOption(key="rose", label="Rose", hex="#D45C82"),
+        "sage": AccentOption(key="sage", label="Sage", hex="#6B8F58"),
+        "sky": AccentOption(key="sky", label="Sky", hex="#4A8FC2"),
+        "lavender": AccentOption(key="lavender", label="Lavender", hex="#8570C9"),
+    },
+    "noir": {
+        "cobalt": AccentOption(key="cobalt", label="Cobalt", hex="#3E7BFA"),
+        "crimson": AccentOption(key="crimson", label="Crimson", hex="#F0455A"),
+        "emerald": AccentOption(key="emerald", label="Emerald", hex="#2FBF71"),
+        "violet": AccentOption(key="violet", label="Violet", hex="#A855F7"),
+        "amber": AccentOption(key="amber", label="Amber", hex="#F5A623"),
+    },
+}
+
+DEFAULT_ACCENTS: dict[str, str] = {
+    "soft_morning": "orange",
+    "noir": "cobalt",
+}
+
 DEFAULT_DISPLAY_SETTINGS: dict[str, Any] = {
     "theme": "editorial",
     "font_size": "medium",
+    "accent": None,
 }
+
+
+def list_accents(theme: str) -> list[dict[str, Any]]:
+    accents = THEME_ACCENTS.get(theme, {})
+    return [{"key": a.key, "label": a.label, "hex": a.hex} for a in accents.values()]
 
 
 def list_themes() -> list[dict[str, Any]]:
     return [
-        {"key": t.key, "label": t.label, "description": t.description, "dark": t.dark}
+        {
+            "key": t.key,
+            "label": t.label,
+            "description": t.description,
+            "dark": t.dark,
+            "accents": list_accents(t.key),
+        }
         for t in THEMES.values()
     ]
 
@@ -139,7 +196,16 @@ def ensure_settings_shape(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
     if font_size not in FONT_SIZES:
         font_size = DEFAULT_DISPLAY_SETTINGS["font_size"]
 
-    return {"theme": theme, "font_size": font_size}
+    # accent only applies to themes registered in THEME_ACCENTS; themes
+    # without a multi-hue treatment always normalize to None so a stale
+    # accent doesn't survive a theme switch (e.g. soft_morning -> editorial).
+    theme_accents = THEME_ACCENTS.get(theme)
+    accent: Optional[str] = None
+    if theme_accents:
+        candidate = raw.get("accent")
+        accent = candidate if candidate in theme_accents else DEFAULT_ACCENTS.get(theme)
+
+    return {"theme": theme, "font_size": font_size, "accent": accent}
 
 
 def get_display_settings(user_id: str = DEFAULT_USER_ID) -> dict[str, Any]:

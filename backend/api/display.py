@@ -10,7 +10,7 @@ theme/font-size attributes directly on save).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -31,6 +31,10 @@ class DisplaySettingsBody(BaseModel):
 
     theme: str = Field(default="editorial", description="Registry key from GET /display/themes.")
     font_size: str = Field(default="medium", description="Registry key from GET /display/font-sizes.")
+    accent: Optional[str] = Field(
+        default=None,
+        description="Registry key from the selected theme's `accents` list (GET /display/themes). Ignored/normalized to None for themes with no accent options.",
+    )
 
 
 # ---------------------------------------------------------------------------

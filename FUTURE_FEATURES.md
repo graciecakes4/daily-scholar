@@ -199,16 +199,12 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   - [x] Soft Morning — blush pastel, rounded shapes, soft coral accent (Fraunces + Nunito). One of the two themes picked to later grow a multi-hue accent picker.
   - [x] Noir — cold true grayscale (no warm undertone, unlike observatory) with one electric-blue accent (Bebas Neue + Work Sans). The other multi-hue-accent candidate.
   - [x] Brutalist — standalone theme, single accent only (no multi-hue variant planned). Stark black/white, thick hard-edge borders, offset shadows, punchy red accent (Archivo Black + Space Mono); `--rule` reused as solid near-black so borders read bold app-wide, plus a global corner-radius/shadow reset scoped to `[data-theme="brutalist"]`.
-  - [ ] Themes — *remaining backlog, registry ready for it (append to `THEMES` in `backend/services/display.py` + a matching `[data-theme="..."]` block)*
+  - [x] Colorful accents (Soft Morning) — 5-option accent picker (orange/rose/sage/sky/lavender, covering the red/blue/green/purple/orange list) layered on top of the Soft Morning theme via `THEME_ACCENTS` in `backend/services/display.py` + `[data-theme="soft_morning"][data-accent="..."]` blocks in `globals.css`. Only `--gold`/`--gold-dark` change between accents. Settings page grew a conditional Accent swatch section that only renders for accent-capable themes.
+  - [x] Colorful accents (Noir) — same recipe, 5 options (cobalt/crimson/emerald/violet/amber), fully saturated rather than pastel since Noir's near-black surfaces would wash out a soft tint. The settings page's Accent section, `ThemeProvider`, and the no-FOUC init script were all built theme-agnostic the first time, so this needed zero frontend code changes beyond the registry + CSS.
+  - [ ] Themes — *remaining backlog, registry ready for it*
     - muted
     - high contrast
     - pride
-    - colorful accents (multi-hue picker for Soft Morning + Noir only)
-      - red
-      - blue
-      - green
-      - purple
-      - orange
     - random
 - [ ] **fd4** improve stats
   - add more stats

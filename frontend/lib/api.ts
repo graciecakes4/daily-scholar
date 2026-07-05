@@ -1120,11 +1120,18 @@ export async function listNotificationJobs(): Promise<{
 // Display preferences (Phase 5 / fd3, foundation slice)
 // -----------------------------------------------------------------------------
 
+export interface AccentMeta {
+  key: string;
+  label: string;
+  hex: string;
+}
+
 export interface ThemeMeta {
   key: string;
   label: string;
   description: string;
   dark: boolean;
+  accents: AccentMeta[];
 }
 
 export interface FontSizeMeta {
@@ -1136,6 +1143,7 @@ export interface FontSizeMeta {
 export interface DisplaySettings {
   theme: string;
   font_size: string;
+  accent: string | null;
 }
 
 export async function listThemes(): Promise<{ themes: ThemeMeta[] }> {

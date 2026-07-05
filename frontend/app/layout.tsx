@@ -27,6 +27,9 @@ const THEME_INIT_SCRIPT = `
     var theme = (s && s.theme) || 'editorial';
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-font-size', (s && s.font_size) || 'medium');
+    if (s && s.accent) {
+      document.documentElement.setAttribute('data-accent', s.accent);
+    }
     var colors = ${JSON.stringify(THEME_COLORS)};
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', colors[theme] || colors.editorial);
