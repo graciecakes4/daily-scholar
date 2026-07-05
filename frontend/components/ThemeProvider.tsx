@@ -32,6 +32,9 @@ export const THEME_COLORS: Record<string, string> = {
   editorial: '#F2EBDD',
   dark: '#1C1812',
   observatory: '#0C0B09',
+  soft_morning: '#FFF3EE',
+  noir: '#161616',
+  brutalist: '#FFFFFF',
 };
 
 export function applyDisplaySettings(settings: DisplaySettings) {

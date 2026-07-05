@@ -9,11 +9,13 @@
  * immediately on click (via ThemeProvider's applyDisplaySettings) so the
  * picker doubles as a live preview — Save just persists it past reload.
  *
- * fd3 scoped a longer theme list than what's here (pastel, muted,
- * high-contrast, pride, colorful accents, black-and-white, random) —
- * those are a registry addition in backend/services/display.py plus a
- * matching [data-theme="..."] block in globals.css, no changes needed
- * on this page.
+ * fd3 scoped a longer theme list than what shipped in the foundation
+ * slice (pastel, muted, high-contrast, pride, colorful accents,
+ * black-and-white, random) — soft_morning, noir, and brutalist landed
+ * next as a registry addition in backend/services/display.py plus a
+ * matching [data-theme="..."] block in globals.css. Adding more is the
+ * same recipe; this page just needed the theme-card grid to wrap wider
+ * (grid-cols-2/3) since it renders one card per registry entry.
  */
 
 import { useEffect, useState } from 'react';
@@ -117,7 +119,7 @@ export default function DisplaySettingsPage() {
       {/* theme */}
       <section className="bg-paper-2 border border-rule rounded-2xl p-6 shadow-[0_14px_34px_-18px_rgba(27,22,16,.18)] space-y-4">
         <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-muted">Theme</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {themes.map(t => (
             <button
               key={t.key}
@@ -168,7 +170,7 @@ export default function DisplaySettingsPage() {
         <button
           onClick={save}
           disabled={saving || !dirty}
-          className="px-6 py-2.5 bg-gold-dark text-white rounded-full text-sm font-semibold hover:bg-[#734f14] disabled:opacity-50 transition-colors"
+          className="px-6 py-2.5 bg-gold-dark text-white rounded-full text-sm font-semibold hover:brightness-90 disabled:opacity-50 transition-colors"
         >
           {saving ? 'Saving…' : 'Save display settings'}
         </button>
