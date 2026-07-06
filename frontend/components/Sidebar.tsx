@@ -359,7 +359,7 @@ export default function Sidebar() {
         </span>
       </Link>
       <div className="mx-1.5 mt-1 mb-6 font-serif text-[12px] italic tracking-[0.04em] text-muted">
-        A daily reading practice
+        daily study tool
       </div>
 
       <ActiveScopeChip />
