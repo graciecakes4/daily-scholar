@@ -658,6 +658,16 @@ export async function deleteArchivedTopic(topicDbId: number): Promise<void> {
   await fetchAPI(`/archive/topics/${topicDbId}`, { method: 'DELETE' });
 }
 
+/**
+ * URL for the NotebookLM export zip (review.md + linked paper PDFs). Plain
+ * download, not a fetchAPI call — a normal navigation/anchor click sends the
+ * session cookie the same way a fetch with credentials:'include' would, and
+ * skips having to buffer a binary blob through JS just to save it.
+ */
+export function getNotebookLMExportUrl(topicDbId: number): string {
+  return `${API_BASE}/archive/topics/${topicDbId}/export-notebooklm`;
+}
+
 // -----------------------------------------------------------------------------
 // Topic Status & Rotation (New)
 // -----------------------------------------------------------------------------

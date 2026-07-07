@@ -12,6 +12,7 @@ Full paper lifecycle with:
 from contextlib import asynccontextmanager
 from datetime import datetime, date
 from pathlib import Path
+import io
 import random
 import json
 import shutil
@@ -20,7 +21,7 @@ import httpx
 
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
 
@@ -1109,6 +1110,42 @@ async def delete_archived_topic(
         session.delete(topic)
         session.commit()
         return {"message": "Topic deleted"}
+    finally:
+        session.close()
+
+
+@app.get("/archive/topics/{topic_db_id}/export-notebooklm", tags=["Archive"])
+async def export_topic_for_notebooklm(
+    topic_db_id: int,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Bundle this topic review (rendered as markdown) plus its linked papers'
+    downloaded PDFs into a zip, for the user to manually drag into a new
+    NotebookLM notebook. NotebookLM has no public consumer API, so this is a
+    download, not a live integration — see FUTURE_FEATURES.md Phase 5 / fd0.
+    """
+    from .services.notebooklm_export import build_notebooklm_export_zip
+
+    session = get_session()
+    try:
+        topic = session.query(ArchivedTopicReview).filter(
+            ArchivedTopicReview.user_id == user_id,
+            ArchivedTopicReview.id == topic_db_id,
+        ).first()
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
+        zip_bytes, filename = build_notebooklm_export_zip(topic, session=session)
+        return StreamingResponse(
+            io.BytesIO(zip_bytes),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         session.close()
 
