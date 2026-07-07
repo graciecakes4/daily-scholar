@@ -311,7 +311,7 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-ink">Daily Scholar</h1>
+          <h1 className="font-serif text-3xl font-bold text-ink">Daily Scholar</h1>
           <p className="text-ink-2 mt-1">{dailyContent?.date}</p>
         </div>
       </div>
@@ -381,7 +381,7 @@ export default function DashboardPage() {
                         </span>
                       )}
                     </div>
-                    <h2 className="text-xl font-bold text-ink mb-2">{dailyContent.paper.title}</h2>
+                    <h2 className="font-serif text-xl font-bold text-ink mb-2">{dailyContent.paper.title}</h2>
                     <p className="text-sm text-ink-2 mb-4">
                       {dailyContent.paper.authors?.slice(0, 4).join(', ')}
                       {dailyContent.paper.authors?.length > 4 && ' et al.'}
@@ -473,7 +473,7 @@ export default function DashboardPage() {
                     <span className="px-2 py-1 bg-moss/10 text-moss text-xs font-medium rounded">
                       {tr.topic.course_name}
                     </span>
-                    <h2 className="text-xl font-bold text-ink mt-2 break-words">{tr.topic.name}</h2>
+                    <h2 className="font-serif text-xl font-bold text-ink mt-2 break-words">{tr.topic.name}</h2>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     {index === 0 && (
@@ -538,7 +538,7 @@ export default function DashboardPage() {
             <div className="bg-paper-2 rounded-2xl border border-rule overflow-hidden">
               <div className="p-4 border-b border-rule flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
-                  <h2 className="text-lg font-bold text-ink">Knowledge Check</h2>
+                  <h2 className="font-serif text-lg font-bold text-ink">Knowledge Check</h2>
                   <p className="text-sm text-muted">{quizQuestions.length} questions • {quizTotalPoints} points</p>
                 </div>
                 <div className="flex gap-2 flex-wrap">

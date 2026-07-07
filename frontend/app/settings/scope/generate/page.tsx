@@ -170,7 +170,7 @@ export default function GenerateScopePage() {
   return (
     <div className="max-w-2xl space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-ink">Generate a scope</h1>
+        <h1 className="font-serif text-3xl font-bold text-ink">Generate a scope</h1>
         <p className="text-ink-2 mt-1">
           Describe what you want to study. We'll draft the search keywords and arXiv
           categories for you — nothing is saved until you approve it.

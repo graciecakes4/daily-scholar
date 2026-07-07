@@ -161,7 +161,7 @@ export default function TopicsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-ink">Topic Reviews</h1>
+          <h1 className="font-serif text-3xl font-bold text-ink">Topic Reviews</h1>
           <p className="text-ink-2 mt-1">
             {topics.length} topics reviewed • {topics.reduce((sum, t) => sum + t.review_count, 0)} total reviews
           </p>
@@ -233,7 +233,7 @@ export default function TopicsPage() {
       ) : (
         Object.entries(topicsByCourse).map(([courseName, courseTopics]) => (
           <div key={courseName} className="space-y-4">
-            <h2 className="text-lg font-bold text-ink flex items-center gap-2">
+            <h2 className="font-serif text-lg font-bold text-ink flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-moss"></span>
               {courseName}
               <span className="text-sm font-normal text-muted">({courseTopics.length} topics)</span>

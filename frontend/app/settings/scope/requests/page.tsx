@@ -87,7 +87,7 @@ export default function AccessRequestsPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-ink">Access requests</h1>
+        <h1 className="font-serif text-3xl font-bold text-ink">Access requests</h1>
         <p className="text-ink-2 mt-1">
           Approve or deny requests for your private scopes, and track the requests you've sent.
         </p>

@@ -14,7 +14,7 @@ export default function OfflinePage() {
     <div className="min-h-[60vh] flex items-center justify-center">
       <div className="max-w-md text-center space-y-4">
         <div className="text-6xl">📡</div>
-        <h1 className="text-2xl font-bold text-ink">You're offline</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink">You're offline</h1>
         <p className="text-ink-2">
           This page isn't cached yet. Try one of these — pages you've already
           visited still work without a connection.
