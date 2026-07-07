@@ -59,7 +59,7 @@ export default function DiscoverPage() {
     <div className="space-y-6">
       <header className="flex items-baseline justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-ink">Discover topics</h1>
+          <h1 className="font-serif text-3xl font-bold text-ink">Discover topics</h1>
           <p className="text-ink-2 mt-1">
             Find public topics shared by other Daily Scholar users.
             Subscribing adds them to your scope — when the owner updates

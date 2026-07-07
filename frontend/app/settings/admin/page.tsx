@@ -71,7 +71,7 @@ export default function AdminSettingsPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-ink">Admin</h1>
+        <h1 className="font-serif text-3xl font-bold text-ink">Admin</h1>
         <p className="text-ink-2 mt-1">
           Approve new signups and manage invite codes.
         </p>
@@ -137,7 +137,7 @@ function TabButton({
 function NotAuthorized({ message }: { message: string }) {
   return (
     <div className="max-w-md mx-auto mt-12 bg-paper-2 border border-rule rounded-lg p-6 text-center space-y-3">
-      <h1 className="text-xl font-bold text-ink">Not authorized</h1>
+      <h1 className="font-serif text-xl font-bold text-ink">Not authorized</h1>
       <p className="text-sm text-ink-2">{message}</p>
       <Link href="/" className="inline-block px-4 py-2 bg-gold-dark text-white rounded text-sm">
         Back to app

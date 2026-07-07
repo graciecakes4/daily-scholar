@@ -24,7 +24,7 @@ export default function SuspendedPage() {
     <div className="max-w-md mx-auto mt-12">
       <div className="bg-paper-2 border border-rust/25 rounded-lg p-6 shadow-sm space-y-4 text-center">
         <div className="text-4xl">🚫</div>
-        <h1 className="text-2xl font-bold text-ink">Account suspended</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink">Account suspended</h1>
         <p className="text-sm text-ink-2">
           Your Daily Scholar account has been suspended. Contact the administrator
           if you believe this was a mistake.

@@ -24,7 +24,7 @@ export default function PendingPage() {
     <div className="max-w-md mx-auto mt-12">
       <div className="bg-paper-2 border border-rule rounded-lg p-6 shadow-sm space-y-4 text-center">
         <div className="text-4xl">⏳</div>
-        <h1 className="text-2xl font-bold text-ink">Awaiting approval</h1>
+        <h1 className="font-serif text-2xl font-bold text-ink">Awaiting approval</h1>
         <p className="text-sm text-ink-2">
           Your account has been created and is waiting for an administrator to approve it.
           You'll be able to use Daily Scholar as soon as that happens — usually within a day.

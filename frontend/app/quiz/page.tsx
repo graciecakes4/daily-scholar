@@ -69,7 +69,7 @@ export default function QuizHistoryPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-ink">📝 Quiz History</h1>
+          <h1 className="font-serif text-3xl font-bold text-ink">📝 Quiz History</h1>
           <p className="text-ink-2 mt-1">{totalQuizzes} quizzes completed</p>
         </div>
         <a href="/" className="px-4 py-2 bg-paper-3 text-ink-2 rounded-lg hover:bg-rule">
@@ -102,7 +102,7 @@ export default function QuizHistoryPage() {
       {/* Score Distribution Chart */}
       {quizzes.length > 0 && (
         <div className="bg-paper-2 rounded-xl border border-rule p-6">
-          <h2 className="font-bold text-ink mb-4">Score Distribution</h2>
+          <h2 className="font-serif font-bold text-ink mb-4">Score Distribution</h2>
           <div className="flex items-end gap-1 h-32">
             {quizzes.slice(0, 20).reverse().map((quiz, i) => (
               <div

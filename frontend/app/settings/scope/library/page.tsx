@@ -106,7 +106,7 @@ function MyScopesInner() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-ink">My scopes</h1>
+        <h1 className="font-serif text-3xl font-bold text-ink">My scopes</h1>
         <p className="text-ink-2 mt-1">
           Saved views that decide which topics drive your discovery, reviews, and quizzes.
         </p>
