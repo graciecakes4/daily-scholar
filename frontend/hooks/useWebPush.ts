@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, csrfHeader } from "@/lib/api";
 
 type Permission = "default" | "granted" | "denied" | "unsupported";
 
@@ -106,7 +106,7 @@ export function useWebPush() {
       const res = await fetch(`${API_BASE}/push/subscribe`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...csrfHeader() },
         body: JSON.stringify({
           endpoint: json.endpoint,
           keys: { p256dh: json.keys?.p256dh, auth: json.keys?.auth },
@@ -136,7 +136,7 @@ export function useWebPush() {
         await fetch(`${API_BASE}/push/unsubscribe`, {
           method: "POST",
           credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...csrfHeader() },
           body: JSON.stringify({ endpoint: sub.endpoint }),
         });
         await sub.unsubscribe();
@@ -156,7 +156,7 @@ export function useWebPush() {
       const res = await fetch(`${API_BASE}/push/test`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...csrfHeader() },
         body: JSON.stringify({
           title: "Daily Scholar test",
           body: "If you see this, push notifications are wired up.",

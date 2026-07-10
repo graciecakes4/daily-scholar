@@ -30,6 +30,7 @@ import {
   type NotificationTypeMeta,
   type NotificationJob,
 } from '@/lib/api';
+import { useWebPush } from '@/hooks/useWebPush';
 
 const COMMON_TIMEZONES = [
   'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
@@ -186,6 +187,8 @@ export default function NotificationsSettingsPage() {
       {error && <div className="bg-rust/5 border border-rust/25 text-rust rounded-xl px-4 py-2.5 text-sm">{error}</div>}
       {success && <div className="bg-moss/5 border border-moss/25 text-moss rounded-xl px-4 py-2.5 text-sm">{success}</div>}
 
+      <ThisDeviceCard />
+
       {/* timezone */}
       <section className="bg-paper-2 border border-rule rounded-2xl p-6 shadow-[0_14px_34px_-18px_rgba(27,22,16,.18)] space-y-3">
         <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-muted">Timezone</h2>
@@ -252,6 +255,106 @@ export default function NotificationsSettingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// ---------- this device ----------
+
+// iOS Safari only exposes the Push API to installed (Add to Home Screen) PWAs.
+// a plain browser tab reports "supported" as false even though the device
+// itself is capable, so we detect that case separately to give a useful hint.
+function isIosNotStandalone(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  const iOS = /iPad|iPhone|iPod/.test(ua) && !(navigator as any).MSStream;
+  const standalone = (navigator as any).standalone === true
+    || window.matchMedia?.('(display-mode: standalone)').matches;
+  return iOS && !standalone;
+}
+
+function ThisDeviceCard() {
+  const { supported, permission, subscribed, busy, error, subscribe, unsubscribe, sendTest } = useWebPush();
+  const [testFeedback, setTestFeedback] = useState<string | null>(null);
+
+  async function doSendTest() {
+    setTestFeedback(null);
+    await sendTest();
+    setTestFeedback('Test push sent — check this device.');
+  }
+
+  return (
+    <section className="bg-paper-2 border border-rule rounded-2xl p-6 shadow-[0_14px_34px_-18px_rgba(27,22,16,.18)] space-y-3">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-muted">This device</h2>
+          <p className="text-xs text-muted mt-1 max-w-[52ch]">
+            Notification types below only fire on devices that are subscribed. Subscribe this device to
+            start receiving pushes here.
+          </p>
+        </div>
+        {subscribed && (
+          <span className="text-xs font-semibold text-moss bg-moss/10 border border-moss/25 rounded-full px-3 py-1 flex-shrink-0">
+            Subscribed
+          </span>
+        )}
+      </div>
+
+      {!supported && isIosNotStandalone() && (
+        <p className="text-xs text-gold-dark bg-gold/5 border border-gold/30 rounded-xl px-3.5 py-2.5">
+          iOS only allows push notifications for installed apps. Tap Share → <strong>Add to Home Screen</strong>,
+          then open Daily Scholar from the home screen icon and try again.
+        </p>
+      )}
+      {!supported && !isIosNotStandalone() && (
+        <p className="text-xs text-muted bg-paper border border-rule rounded-xl px-3.5 py-2.5">
+          This browser doesn't support push notifications.
+        </p>
+      )}
+
+      {supported && permission === 'denied' && (
+        <p className="text-xs text-rust bg-rust/5 border border-rust/25 rounded-xl px-3.5 py-2.5">
+          Notifications are blocked for this site in your browser settings. Allow notifications for
+          Daily Scholar, then reload this page.
+        </p>
+      )}
+
+      {error && <p className="text-xs text-rust">{error}</p>}
+      {testFeedback && <p className="text-xs text-moss">{testFeedback}</p>}
+
+      {supported && permission !== 'denied' && (
+        <div className="flex items-center gap-2.5 flex-wrap pt-1">
+          {!subscribed ? (
+            <button
+              type="button"
+              onClick={subscribe}
+              disabled={busy}
+              className="px-5 py-2.5 bg-gold-dark text-white rounded-full text-sm font-semibold hover:bg-[#734f14] disabled:opacity-50 transition-colors"
+            >
+              {busy ? 'Enabling…' : 'Enable push on this device'}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={doSendTest}
+                disabled={busy}
+                className="px-4 py-2 text-xs font-semibold bg-paper border border-rule text-ink-2 rounded-full hover:border-gold disabled:opacity-50 transition-colors"
+              >
+                {busy ? 'Sending…' : 'Send test push'}
+              </button>
+              <button
+                type="button"
+                onClick={unsubscribe}
+                disabled={busy}
+                className="px-4 py-2 text-xs font-semibold text-muted hover:text-rust disabled:opacity-50 transition-colors"
+              >
+                Turn off on this device
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

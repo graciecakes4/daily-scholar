@@ -677,9 +677,14 @@ class Session(Base):
     expires_at = Column(DateTime, nullable=False)
     revoked_at = Column(DateTime, nullable=True)
 
-    # captured at login for the session-list UI in a follow-up phase
+    # captured at login for the session-list UI
     user_agent = Column(String(500), nullable=True)
     ip = Column(String(64), nullable=True)
+
+    # throttled write (see SESSION_LAST_SEEN_THROTTLE in auth_sessions.py) so
+    # the session-list UI can show "active 2 min ago" without an UPDATE on
+    # every single request
+    last_seen_at = Column(DateTime, nullable=True)
 
 
 # =============================================================================
