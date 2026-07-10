@@ -111,6 +111,13 @@ const AtIcon = () => (
   </svg>
 );
 
+const DeviceIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <rect x="3" y="4" width="18" height="12" rx="2" />
+    <path d="M8 20h8M12 16v4" />
+  </svg>
+);
+
 const ShieldIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
     <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />
@@ -210,6 +217,7 @@ export default function MobileTabBar() {
         { href: '/settings/account/profile', label: 'Profile', icon: <ProfileIcon /> },
         { href: '/settings/account/password', label: 'Password', icon: <KeyIcon /> },
         { href: '/settings/account/username', label: 'Username', icon: <AtIcon /> },
+        { href: '/settings/account/sessions', label: 'Sessions', icon: <DeviceIcon /> },
       ],
     },
     {

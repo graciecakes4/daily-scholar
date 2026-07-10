@@ -47,10 +47,12 @@ from ..services.auth_security import (
 )
 from ..services.auth_sessions import (
     create_session,
+    list_sessions_for_user,
     lookup_session_user,
     revoke_all_sessions_for_user,
     revoke_other_sessions_for_user,
     revoke_session,
+    revoke_session_by_id,
 )
 from ..services.password_reset import (
     ResetTokenInvalid,
@@ -418,6 +420,91 @@ def me(
     if user is None:
         raise HTTPException(status_code=401, detail="Session expired or invalid")
     return {"profile": _profile(user).model_dump()}
+
+
+# ---------------------------------------------------------------------------
+# Session (device) management — /settings/account/sessions
+# ---------------------------------------------------------------------------
+
+
+class SessionInfo(BaseModel):
+    """One row in the /settings/account/sessions list."""
+
+    id: int
+    user_agent: Optional[str] = None
+    ip: Optional[str] = None
+    created_at: datetime
+    last_seen_at: Optional[datetime] = None
+    expires_at: datetime
+    is_current: bool = Field(
+        description="True for the session tied to the cookie on this request."
+    )
+
+
+@auth_router.get("/sessions")
+def list_my_sessions(
+    ds_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+) -> dict:
+    """
+    List the caller's active (not revoked, not expired) sessions, most-
+    recently-active first. Each entry only exposes what's needed to tell
+    devices apart — user_agent, ip, timestamps — never the session token
+    itself, so a leaked response body can't be used to hijack a session.
+    """
+    user = _require_authed_user(ds_session)
+    rows = list_sessions_for_user(user.id)
+    return {
+        "sessions": [
+            SessionInfo(
+                id=row.id,
+                user_agent=row.user_agent or None,
+                ip=row.ip or None,
+                created_at=row.created_at,
+                last_seen_at=row.last_seen_at,
+                expires_at=row.expires_at,
+                is_current=(row.token == ds_session),
+            ).model_dump()
+            for row in rows
+        ]
+    }
+
+
+@auth_router.post("/sessions/{session_id}/revoke")
+def revoke_my_session(
+    session_id: int,
+    response: Response,
+    ds_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+) -> dict:
+    """
+    Revoke one of the caller's own sessions by id. 404 if the id doesn't
+    exist or belongs to someone else — same shape either way so this
+    can't be used to enumerate other users' session ids.
+
+    If the revoked session is the one making this request, we also clear
+    the cookie so the client's logged-in state matches reality
+    immediately instead of surviving until the next request 401s.
+    """
+    user = _require_authed_user(ds_session)
+    revoked_token = revoke_session_by_id(session_id, user.id)
+    if revoked_token is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if revoked_token == ds_session:
+        _clear_session_cookie(response)
+    return {"ok": True, "revoked_current": revoked_token == ds_session}
+
+
+@auth_router.post("/sessions/log-out-everywhere")
+def log_out_everywhere(
+    ds_session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+) -> dict:
+    """
+    Revoke every OTHER active session for the caller — the device making
+    this request stays logged in (self-reauth pattern, same as the
+    session cleanup on a self-service password change).
+    """
+    user = _require_authed_user(ds_session)
+    revoked = revoke_other_sessions_for_user(user.id, except_token=ds_session or "")
+    return {"ok": True, "revoked": revoked}
 
 
 # ---------------------------------------------------------------------------

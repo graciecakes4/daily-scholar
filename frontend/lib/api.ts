@@ -382,6 +382,18 @@ function readCookie(name: string): string | null {
   return null;
 }
 
+/**
+ * X-CSRF-Token header for a mutating request, or {} if the ds_csrf cookie
+ * isn't set yet. For callers (like useWebPush) that hit the backend with
+ * their own fetch() instead of going through fetchAPI() below — fetchAPI
+ * attaches this automatically, raw fetch() calls need to spread it in by
+ * hand: `headers: { ...csrfHeader(), 'Content-Type': 'application/json' }`.
+ */
+export function csrfHeader(): Record<string, string> {
+  const csrf = readCookie(CSRF_COOKIE_NAME);
+  return csrf ? { [CSRF_HEADER_NAME]: csrf } : {};
+}
+
 async function fetchAPI<T>(endpoint: string, options?: RequestInit, _retried = false): Promise<T> {
   const method = (options?.method || 'GET').toUpperCase();
 
@@ -1261,6 +1273,39 @@ export async function logout(): Promise<{ ok: boolean; revoked: boolean }> {
 
 export async function getMe(): Promise<{ profile: AuthUser }> {
   return fetchAPI('/auth/me');
+}
+
+// -----------------------------------------------------------------------------
+// Session (device) management — /settings/account/sessions
+// -----------------------------------------------------------------------------
+
+export interface SessionInfo {
+  id: number;
+  user_agent: string | null;
+  ip: string | null;
+  created_at: string;
+  last_seen_at: string | null;
+  expires_at: string;
+  is_current: boolean;
+}
+
+export async function listSessions(): Promise<{ sessions: SessionInfo[] }> {
+  return fetchAPI('/auth/sessions');
+}
+
+export async function revokeSession(sessionId: number): Promise<{ ok: boolean; revoked_current: boolean }> {
+  const result = await fetchAPI<{ ok: boolean; revoked_current: boolean }>(
+    `/auth/sessions/${sessionId}/revoke`,
+    { method: 'POST' },
+  );
+  // revoking your own current session logs you out — let the layout's
+  // UserMenu (and anything else with a useAuth() instance) know right away
+  if (result.revoked_current) emitAuthChanged();
+  return result;
+}
+
+export async function logOutEverywhere(): Promise<{ ok: boolean; revoked: number }> {
+  return fetchAPI('/auth/sessions/log-out-everywhere', { method: 'POST' });
 }
 
 // -----------------------------------------------------------------------------

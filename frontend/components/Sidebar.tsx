@@ -118,6 +118,13 @@ const AtIcon = ({ className }: IconProps) => (
   </svg>
 );
 
+const DeviceIcon = ({ className }: IconProps) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7}>
+    <rect x="3" y="4" width="18" height="12" rx="2" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8 20h8M12 16v4" />
+  </svg>
+);
+
 const ShieldIcon = ({ className }: IconProps) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" />
@@ -183,6 +190,7 @@ const ACCOUNT_ITEMS: NavItem[] = [
   { href: '/settings/account/profile', label: 'Profile', icon: <ProfileIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/account/profile') },
   { href: '/settings/account/password', label: 'Password', icon: <KeyIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/account/password') },
   { href: '/settings/account/username', label: 'Username', icon: <AtIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/account/username') },
+  { href: '/settings/account/sessions', label: 'Sessions', icon: <DeviceIcon className="h-4 w-4" />, isActive: isRoutePrefix('/settings/account/sessions') },
 ];
 
 // Phase 5 / fd3 (foundation)
