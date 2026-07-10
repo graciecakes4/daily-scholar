@@ -6,12 +6,12 @@ Push notifications finally get a way to turn them on, plus a device-management p
 
 ### Added
 
-#### Push notification subscribe UI (PR #66, pn1)
+#### Push notification subscribe UI (PR #70, pn1)
 
 - Wired `frontend/hooks/useWebPush.ts` into a new "This device" card on `frontend/app/settings/notifications/page.tsx` — permission request, subscribe/unsubscribe, and a "Send test push" button, plus messaging for unsupported browsers and for iOS Safari specifically when the app hasn't been added to the home screen yet (push only reaches installed PWAs on iOS 16.4+).
 - The hook itself was fully implemented since an earlier Phase 3 round (permission → `pushManager.subscribe()` → `POST /push/subscribe`, graceful 503 handling, `sendTest()`) but never called from any page or component — confirmed via a repo-wide grep, matching `FUTURE_FEATURES.md`'s own `pn1` entry, which had it flagged as scaffolded-but-dead-code. This PR is purely the missing UI; no backend changes.
 
-#### Session (device) management (PR #66, li6)
+#### Session (device) management (PR #70, li6)
 
 - New `/settings/account/sessions` page lists active login sessions — device/browser parsed from the stored user-agent, raw IP, and relative last-active time — with a per-session revoke button and a "log out everywhere else" action (self-reauth pattern: your current session stays alive, same as the existing password-change flow).
 - Backend: `list_sessions_for_user()` / `revoke_session_by_id()` (`backend/services/auth_sessions.py`), three new endpoints on `auth_router` (`GET /auth/sessions`, `POST /auth/sessions/{id}/revoke`, `POST /auth/sessions/log-out-everywhere`), and a `last_seen_at` column on `Session` (migration `0015_session_last_seen`) written on a 15-minute throttle so the "active N min ago" display doesn't cost a DB write on every request.
@@ -20,7 +20,7 @@ Push notifications finally get a way to turn them on, plus a device-management p
 
 ### Fixed
 
-- **Push subscribe/unsubscribe/test 403'd with "CSRF token missing or invalid"** (PR #66) — `useWebPush.ts` made raw `fetch()` calls that bypassed `lib/api.ts`'s automatic CSRF header injection (`fetchAPI()` normally attaches `X-CSRF-Token` on every mutating request; the hook's hand-rolled fetches didn't). Invisible until the subscribe UI above actually shipped and got exercised for the first time — this is exactly the kind of gap that stays hidden in dead code. Fixed by exporting a `csrfHeader()` helper from `lib/api.ts` and applying it to all three of the hook's POST calls. `uploadPdfToPaper` / `uploadStandalonePdf` in `lib/api.ts` have the same raw-`fetch()`-bypasses-CSRF pattern; not touched in this release, flagged as a followup.
+- **Push subscribe/unsubscribe/test 403'd with "CSRF token missing or invalid"** (PR #70) — `useWebPush.ts` made raw `fetch()` calls that bypassed `lib/api.ts`'s automatic CSRF header injection (`fetchAPI()` normally attaches `X-CSRF-Token` on every mutating request; the hook's hand-rolled fetches didn't). Invisible until the subscribe UI above actually shipped and got exercised for the first time — this is exactly the kind of gap that stays hidden in dead code. Fixed by exporting a `csrfHeader()` helper from `lib/api.ts` and applying it to all three of the hook's POST calls. `uploadPdfToPaper` / `uploadStandalonePdf` in `lib/api.ts` have the same raw-`fetch()`-bypasses-CSRF pattern; not touched in this release, flagged as a followup.
 
 ### Operations
 
