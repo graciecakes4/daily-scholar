@@ -1,5 +1,48 @@
 # Changelog
 
+## [v2.7] — 2026-07-10
+
+Push notifications finally get a way to turn them on, plus a device-management page for logins. **The push-subscribe UI ships** (`pn1`) — `useWebPush.ts` was fully built back in Phase 3 but never called from any page; it now lives as a "This device" card on `/settings/notifications`, with explicit messaging for iOS Safari's install-first requirement. **A CSRF gap in the push endpoints is fixed** — found while manually testing the subscribe flow above, since the hook's raw `fetch()` calls skipped the app's automatic CSRF header. **Session (device) management ships** (`li6`) — a new `/settings/account/sessions` page lists active logins with device/browser, IP, and last-active time, with per-device revoke and a "log out everywhere else" option, built on top of session infrastructure (`li2`) that already existed but had no UI. **One new migration, zero new dependencies, zero new environment variables.** Full release notes in [docs/releases/v2.7.md](docs/releases/v2.7.md).
+
+### Added
+
+#### Push notification subscribe UI (PR #66, pn1)
+
+- Wired `frontend/hooks/useWebPush.ts` into a new "This device" card on `frontend/app/settings/notifications/page.tsx` — permission request, subscribe/unsubscribe, and a "Send test push" button, plus messaging for unsupported browsers and for iOS Safari specifically when the app hasn't been added to the home screen yet (push only reaches installed PWAs on iOS 16.4+).
+- The hook itself was fully implemented since an earlier Phase 3 round (permission → `pushManager.subscribe()` → `POST /push/subscribe`, graceful 503 handling, `sendTest()`) but never called from any page or component — confirmed via a repo-wide grep, matching `FUTURE_FEATURES.md`'s own `pn1` entry, which had it flagged as scaffolded-but-dead-code. This PR is purely the missing UI; no backend changes.
+
+#### Session (device) management (PR #66, li6)
+
+- New `/settings/account/sessions` page lists active login sessions — device/browser parsed from the stored user-agent, raw IP, and relative last-active time — with a per-session revoke button and a "log out everywhere else" action (self-reauth pattern: your current session stays alive, same as the existing password-change flow).
+- Backend: `list_sessions_for_user()` / `revoke_session_by_id()` (`backend/services/auth_sessions.py`), three new endpoints on `auth_router` (`GET /auth/sessions`, `POST /auth/sessions/{id}/revoke`, `POST /auth/sessions/log-out-everywhere`), and a `last_seen_at` column on `Session` (migration `0015_session_last_seen`) written on a 15-minute throttle so the "active N min ago" display doesn't cost a DB write on every request.
+- The `sessions` table already had `user_agent`/`ip`/`created_at`/`expires_at`/`revoked_at` and a full revoke service layer built for the password-change flow — its own docstring called the session-list UI out as "a follow-up phase." This exposes that existing plumbing as real UI for the first time. Deliberately kept separate from the push-subscription "This device" card above — different table, different identity shape (`PushSubscription.user_id` is a string handle, `Session.user_id` is an integer FK), different lifecycle.
+- New nav entry ("Sessions") added to `Sidebar.tsx` / `MobileTabBar.tsx`'s Account group, alongside Profile/Password/Username.
+
+### Fixed
+
+- **Push subscribe/unsubscribe/test 403'd with "CSRF token missing or invalid"** (PR #66) — `useWebPush.ts` made raw `fetch()` calls that bypassed `lib/api.ts`'s automatic CSRF header injection (`fetchAPI()` normally attaches `X-CSRF-Token` on every mutating request; the hook's hand-rolled fetches didn't). Invisible until the subscribe UI above actually shipped and got exercised for the first time — this is exactly the kind of gap that stays hidden in dead code. Fixed by exporting a `csrfHeader()` helper from `lib/api.ts` and applying it to all three of the hook's POST calls. `uploadPdfToPaper` / `uploadStandalonePdf` in `lib/api.ts` have the same raw-`fetch()`-bypasses-CSRF pattern; not touched in this release, flagged as a followup.
+
+### Operations
+
+- **One new migration, purely additive with an idempotent guard**: `0015_session_last_seen` (new `last_seen_at` column on `sessions`).
+- **Zero new Python or npm dependencies.**
+- **Zero new environment variables.** `VAPID_SUBJECT` (documented since an earlier release) was already set correctly in production; only a local `.env` needed a one-line uncomment to unblock local testing, not tracked in git since `.env` is gitignored.
+- `docs/PWA.md` and `README.md` updated — both previously described enabling push via `/settings/scope`, a flow that never actually existed since the subscribe button was dead code until this release; now describe the real `/settings/notifications` "This device" card.
+- `FUTURE_FEATURES.md`: `pn1` marked fully shipped (previously flagged scaffolded-not-wired-up); new `li6` entry added under Phase 1 for session management; Phase 1/Phase 3 status-overview lines updated to match.
+
+### Decisions
+
+- **Session management is its own page, not merged into the push-subscription "This device" card.** They're deliberately separate concepts — a device can be logged in without push enabled, or push-subscribed on a tab that's since logged out — and the two underlying tables don't even share an identity representation (string handle vs. integer FK), which would make a unified view awkward beyond just the UX question.
+- **`last_seen_at` written on a 15-minute throttle, not every request.** Keeps the "active N min ago" display reasonably fresh without turning every authenticated request into a `sessions` table UPDATE.
+- **No concurrent-session limit added.** Consistent with existing (unlimited) behavior; not scoped for this release.
+
+### Followups
+
+- **No automated test coverage added** for `revoke_session_by_id` / `list_sessions_for_user` — same gap noted in prior releases (no frontend test framework; backend `pytest` suite not wired into CI).
+- **`uploadPdfToPaper` / `uploadStandalonePdf` likely have the same CSRF gap** fixed for the push endpoints in this release (raw `fetch()`, no `X-CSRF-Token`) — not confirmed against a live 403, not fixed here.
+- **VAPID key rotation story still undocumented** — carried forward from Phase 3's open questions in `FUTURE_FEATURES.md`.
+- **Production `next build` not verified in the environment this was built in** — a sandboxed build hit permission conflicts against a live `.next/` directory; confirm manually before/after deploy.
+
 ## [v2.6] — 2026-07-05
 
 Self-serve password reset + admin ops tooling + a from-scratch theming system release. **Password reset goes fully self-serve** — a real SMTP-delivered reset link (`li3b`) replaces the old ask-an-admin workaround, with a console-logged fallback so local dev needs zero setup. **The admin console gains its final three tabs**, closing out Phase 2 — Topics (import/export YAML, orphaned-topic filtering), Cache (per-user targeted cache-bust), and Stats (usage overview plus a full quiz-performance breakdown with leaderboards) (`ad4`/`ad5`). **Display settings go from zero to ten themes** — editorial/dark/observatory shipped as the foundation alongside font-size options and an app-wide legacy-color sweep, then Soft Morning, Noir, Brutalist, Muted, High Contrast, Pride, and Random landed on top, three of them (Soft Morning, Noir, High Contrast) with their own multi-hue accent picker and Random with a fully deterministic weekly rotation that needs no cron job at all. **Long-form generated content gets its own reading-font picker** (Merriweather / Source Sans 3), independent of theme (`fd2`). **Two new migrations, zero new dependencies, one new optional env-var family (`SMTP_*`, safe to leave unset in local dev).** Full release notes in [docs/releases/v2.6.md](docs/releases/v2.6.md).

@@ -117,7 +117,7 @@ make vapid                           # generates VAPID_PUBLIC_KEY / VAPID_PRIVAT
 # paste the three printed lines into .env, then restart with make start
 ```
 
-Enable notifications under Notifications on `/settings/scope`. Regenerating the keypair invalidates every active browser subscription — treat the keys like an API secret. Full PWA + push walkthrough in [docs/PWA.md](docs/PWA.md).
+Visit `/settings/notifications` and click **Enable push on this device** in the "This device" card. Regenerating the keypair invalidates every active browser subscription — treat the keys like an API secret. Full PWA + push walkthrough in [docs/PWA.md](docs/PWA.md).
 
 ---
 

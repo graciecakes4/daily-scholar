@@ -51,15 +51,15 @@ make start
 
 ### Enabling notifications in the app
 
-Visit `/settings/scope` and click **Enable notifications** under the Notifications section. The browser will:
+Visit `/settings/notifications` — the **This device** card at the top handles subscribing this specific browser/device. Click **Enable push on this device** and the browser will:
 
 1. Ask permission to send notifications.
 2. Subscribe to push events with your server's VAPID public key.
 3. POST the subscription to the backend (`/push/subscribe`).
 
-After that, every time `/daily` generates a fresh paper (either nightly or via the **New paper** button), all your subscribed devices get a push: *"Today's paper is ready — «title»"*. Tapping it opens (or focuses) the dashboard.
+Once subscribed, the card shows a "Subscribed" badge plus **Send test push** and **Turn off on this device** buttons. The notification-type cards further down the same page (study reminders, paper drops, weekly recaps, etc.) control *what* gets sent and *when* — the "This device" card controls *whether this device receives anything at all*. A device can have notification types enabled with push never turned on, or vice versa; they're independent settings.
 
-There's a **Send test** button in the same settings section to fire a sanity-check push without waiting for a real paper.
+After a device is subscribed, every time `/daily` generates a fresh paper (either nightly or via the **New paper** button), it gets a push: *"Today's paper is ready — «title»"*. Tapping it opens (or focuses) the dashboard.
 
 ### Per-platform support
 
