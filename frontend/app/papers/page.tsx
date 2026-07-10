@@ -156,7 +156,7 @@ export default function PapersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-ink">📚 Paper Archive</h1>
+          <h1 className="font-serif text-3xl font-bold text-ink">📚 Paper Archive</h1>
           <p className="text-ink-2 mt-1">{papers.length} papers saved</p>
         </div>
         <div className="flex gap-2">
@@ -309,7 +309,7 @@ export default function PapersPage() {
       {showUploadModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-paper-2 rounded-2xl p-6 max-w-md w-full mx-4">
-            <h2 className="text-xl font-bold text-ink mb-4">Upload a Paper</h2>
+            <h2 className="font-serif text-xl font-bold text-ink mb-4">Upload a Paper</h2>
             <p className="text-ink-2 text-sm mb-4">
               Upload a PDF to add it to your reading archive.
             </p>

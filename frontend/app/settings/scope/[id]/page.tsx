@@ -265,7 +265,7 @@ export default function ScopeEditorPage() {
           <Link href="/settings/scope/library" className="text-sky-700 hover:underline text-sm">
             ← Library
           </Link>
-          <h1 className="text-3xl font-bold text-ink mt-1 truncate">
+          <h1 className="font-serif text-3xl font-bold text-ink mt-1 truncate">
             {isDraft ? 'New scope' : scope?.name}
           </h1>
           <p className="text-ink-2 mt-1 text-sm">

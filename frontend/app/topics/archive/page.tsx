@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import {
-  getArchivedTopics, updateArchivedTopic, deleteArchivedTopic,
+  getArchivedTopics, updateArchivedTopic, deleteArchivedTopic, getNotebookLMExportUrl,
   type ArchivedTopic, type TopicStatus
 } from '@/lib/api';
 
@@ -67,6 +67,18 @@ export default function TopicsPage() {
     } catch (error) {
       console.error('Failed to delete topic:', error);
     }
+  };
+
+  const handleExportNotebookLM = (topicId: number) => {
+    // trigger the zip download without navigating away from this page
+    const link = document.createElement('a');
+    link.href = getNotebookLMExportUrl(topicId);
+    link.download = '';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    // give the user a NotebookLM tab to drag the download into
+    window.open('https://notebooklm.google.com/', '_blank', 'noopener,noreferrer');
   };
 
   const StatusBadge = ({ status }: { status: TopicStatus }) => {
@@ -149,7 +161,7 @@ export default function TopicsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-ink">Topic Reviews</h1>
+          <h1 className="font-serif text-3xl font-bold text-ink">Topic Reviews</h1>
           <p className="text-ink-2 mt-1">
             {topics.length} topics reviewed • {topics.reduce((sum, t) => sum + t.review_count, 0)} total reviews
           </p>
@@ -221,7 +233,7 @@ export default function TopicsPage() {
       ) : (
         Object.entries(topicsByCourse).map(([courseName, courseTopics]) => (
           <div key={courseName} className="space-y-4">
-            <h2 className="text-lg font-bold text-ink flex items-center gap-2">
+            <h2 className="font-serif text-lg font-bold text-ink flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-moss"></span>
               {courseName}
               <span className="text-sm font-normal text-muted">({courseTopics.length} topics)</span>
@@ -356,6 +368,21 @@ export default function TopicsPage() {
                               {topic.user_notes || 'No notes yet.'}
                             </p>
                           )}
+                        </div>
+
+                        <div className="bg-paper rounded-lg p-4">
+                          <h4 className="font-semibold text-ink mb-1">Export to NotebookLM</h4>
+                          <p className="text-xs text-muted mb-2">
+                            Downloads a .zip with this review and its linked paper PDFs, then opens
+                            NotebookLM in a new tab — drag the files into a new notebook to get an
+                            audio overview or chat with your sources.
+                          </p>
+                          <button
+                            onClick={() => handleExportNotebookLM(topic.id)}
+                            className="px-3 py-1.5 bg-paper-2 border border-rule text-ink-2 text-sm rounded hover:bg-paper-3"
+                          >
+                            Export to NotebookLM
+                          </button>
                         </div>
 
                         <div className="flex justify-end">

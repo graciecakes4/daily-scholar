@@ -147,7 +147,7 @@ export default function TopicCatalogPage() {
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold text-ink">Topics</h1>
+          <h1 className="font-serif text-3xl font-bold text-ink">Topics</h1>
           <p className="text-ink-2 mt-1">
             Each topic drives both paper discovery (keywords + arXiv categories) and review/quiz generation.
           </p>

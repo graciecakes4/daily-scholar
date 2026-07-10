@@ -21,11 +21,11 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 ## Status overview
 
-- **Phase 1 · Login & Identity**: in-progress — signup/login/session auth is live; self-serve password reset (li3b) has shipped via real SMTP email, no gaps left here.
+- **Phase 1 · Login & Identity**: in-progress — signup/login/session auth is live; self-serve password reset (li3b) has shipped via real SMTP email; session/device management (li6) shipped in v2.7, no gaps left here.
 - **Phase 2 · Admin Controls**: in-progress — role gate + a 7-tab admin console (approvals/invites/users/audit/topics/cache/stats) shipped. Cache-bust is per-user only for now — see Phase 6 for the planned multi-select + global-clear follow-up.
-- **Phase 3 · Push Notifications Surface**: in-progress — settings page, per-type scheduling, and dead-subscription cleanup all shipped and more general than scoped; the actual "enable push" subscribe button isn't wired into any page yet.
+- **Phase 3 · Push Notifications Surface**: in-progress — settings page, per-type scheduling, dead-subscription cleanup, and (as of v2.7) the subscribe UI itself all shipped; per-topic toggles, quiet hours, and iOS notification grouping are still out.
 - **Phase 4 · Frontend Test Infrastructure**: proposed — confirmed nothing has been built here yet.
-- **Phase 5 · Frontend UI Enhancements**: in-progress — fd2 and fd3 are fully shipped (fd3: 10 themes — editorial, dark, observatory, soft morning, noir, brutalist, muted, high contrast, pride, random — plus multi-hue accent pickers on soft morning, noir, and high contrast; fd2: a theme-independent reading-font picker for generated content); fd0/fd1/fd4 are still not started. See fd3 entry for the one small new item discovered along the way (Random's rotation cadence).
+- **Phase 5 · Frontend UI Enhancements**: in-progress — fd2 and fd3 are fully shipped (fd3: 10 themes — editorial, dark, observatory, soft morning, noir, brutalist, muted, high contrast, pride, random — plus multi-hue accent pickers on soft morning, noir, and high contrast; fd2: a theme-independent reading-font picker for generated content); fd0's notebooklm export is scoped and in-progress, fd0's in-house podcast generator is scoped (build-our-own, not a fork — see below), fd0's llm chat item plus fd1/fd4 are still not started. See fd3 entry for the one small new item discovered along the way (Random's rotation cadence).
 
 ---
 
@@ -45,6 +45,8 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
   *Shipped (`backend/database.py::User`) — matches the scoped shape (`email`, `user_id`, `password_hash`, `status`, `role`, timestamps) plus two extras not originally scoped: `onboarded` and `tour_state` (JSON) for the onboarding wizard.*
 - [--] **li5** Migration helper: `migrate_email_user_ids_to_users_table.py`
   *Turned out unnecessary as scoped. Alembic `0005_users_and_sessions.py` notes the existing 9 user-scoped tables already stored `user_id` as a plain string (email or handle), so nothing needed backfilling or re-keying — the `users` table was added additively instead. `scripts/reassign_user_id.py` covers the separate, narrower concern of a user changing their handle post-signup.*
+- [x] **li6** Session (device) management UI
+  *Shipped in v2.7. New `/settings/account/sessions` page lists active `sessions` rows — device/browser parsed from `user_agent`, raw `ip`, relative last-active time — with per-session revoke and a "log out everywhere else" action. The `sessions` table (`li2`) already had `user_agent`/`ip`/`created_at`/`expires_at`/`revoked_at` and a full revoke service layer built for the password-change flow; its own docstring flagged the session-list UI as "a follow-up phase," which this closes. New: `list_sessions_for_user()` / `revoke_session_by_id()` (`backend/services/auth_sessions.py`), three endpoints on `auth_router`, and a `last_seen_at` column (migration `0015_session_last_seen`) written on a 15-minute throttle. Deliberately kept separate from the push-subscription "This device" card on `/settings/notifications` (`pn1`) — different table, different identity shape (`PushSubscription.user_id` is a string handle, `Session.user_id` is an integer FK), different lifecycle.*
 
 **Open questions**
 
@@ -101,10 +103,10 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 
 ## Phase 3 · Push Notifications Surface
 
-> **Phase brief.** The server-side Web Push primitive already shipped (VAPID + pywebpush + `push_subscriptions` table + service-worker registration) but nothing called it — no opt-in UI, no per-event granularity, no scheduled trigger. **Status: in-progress** — everything except the actual subscribe-button UI is wired end-to-end, and the notification-type system that shipped is considerably more general than what was originally scoped.
+> **Phase brief.** The server-side Web Push primitive already shipped (VAPID + pywebpush + `push_subscriptions` table + service-worker registration) but nothing called it — no opt-in UI, no per-event granularity, no scheduled trigger. **Status: in-progress** — the subscribe UI (pn1) shipped in v2.7, closing the last gap in the core surface; per-topic toggles, quiet hours, and iOS grouping are still out.
 
-- [x] **pn1** `/settings/push` subscription UI
-  *Scaffolded, not wired up. `frontend/hooks/useWebPush.ts` fully implements permission request → `pushManager.subscribe()` → `POST /push/subscribe`, graceful-503 handling for an unconfigured deployment, and even a `sendTest()` helper — but no page or component in the app actually calls this hook yet. It's currently dead code.*
+- [x] **pn1** Push subscription UI
+  *Shipped in v2.7 — as a "This device" card on `/settings/notifications` rather than a dedicated `/settings/push` page as originally scoped, since it's a natural fit alongside the per-type notification toggles already living there. `frontend/hooks/useWebPush.ts` (permission request → `pushManager.subscribe()` → `POST /push/subscribe`, graceful-503 handling, `sendTest()`) had been fully implemented since Phase 3's earlier rounds but was never called from any page — confirmed dead code via a repo-wide grep before this shipped. Also surfaces explicit messaging for unsupported browsers and for iOS Safari specifically when the app hasn't been added to the home screen yet (see the resolved open question below). A CSRF gap was found and fixed in the same PR — the hook's raw `fetch()` calls bypassed `lib/api.ts`'s automatic CSRF header injection, so every subscribe/unsubscribe/test call 403'd the first time this was actually exercised; see `CHANGELOG.md` under `[v2.7]`.*
 - [x] **pn2** Per-event notification toggles
   *Shipped, as a more general system than scoped. Instead of three fixed booleans (`push_daily_paper` / `push_topic_review` / `push_quiz_ready`), `backend/services/notifications.py` ships a registry (`study_reminder`, `paper_drop`, `weekly_status`, `quiz_nudge`), each with its own enable flag **and** a user-editable cron schedule, rendered at `/settings/notifications`.*
 - [x] **pn3** Scheduled push wire-up
@@ -115,7 +117,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 **Open questions**
 
 - [x] Does this need Login (Phase 1) first? *Resolved: no. Push subscriptions still key off the plain `user_id` string and are unaffected by the users-table work.*
-- [x] iOS 16.4+ install requirement messaging — still open, and moot until pn1 actually ships a subscribe UI to put the messaging in.
+- [x] iOS 16.4+ install requirement messaging — *Resolved in v2.7, shipped alongside pn1: the "This device" card detects iOS Safari running outside standalone/installed mode and shows an inline hint to Add to Home Screen first, instead of just silently reporting push as unsupported.*
 - [ ] VAPID key rotation story — not documented; `docs/DEPLOY.md` only notes using different VAPID keys per environment, not the "rotation invalidates every subscription" caveat.
 
 **Out of scope (deferred to followups)**
@@ -123,7 +125,7 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 - Per-topic push toggles — still out.
 - Quiet hours / Do Not Disturb window — still out.
 - Push notification grouping on iOS — still out.
-- "Try a test push" button — **partially shipped anyway**: `POST /push/test` exists in `backend/api/push.py` and `sendTest()` is implemented in `useWebPush.ts`, ahead of the UI that would surface it.
+- "Try a test push" button — **shipped in v2.7** as part of pn1: `POST /push/test` (`backend/api/push.py`) and `sendTest()` (`useWebPush.ts`) existed since an earlier release; the "This device" card now surfaces it as a "Send test push" button once subscribed.
 
 **Dependencies**
 
@@ -169,15 +171,26 @@ Tracker for substantial features under consideration for Daily Scholar. Not a ba
 > **Phase brief.** Update front end ui and ux. **Status: in-progress** — fd3's foundation slice shipped (see below); fd0/fd1/fd2/fd4 and the rest of fd3 are still not started.
 
 - [ ] **fd0** Integrations
-  *Not started*
-  - [ ] notebooklm
+  - [ ] notebooklm — **in-progress**, scoped as of 2026-07-05.
+    *Google has no public consumer API for NotebookLM — only a paid NotebookLM Enterprise API (GCP project + Gemini Enterprise/Education Premium license), which is too heavy for a ~30-user beta. Scoped as a manual handoff instead: NotebookLM itself already provides both target use cases (audio overviews, chat/Q&A over sources) once it has sources, so Daily Scholar's job is just getting the right files there with minimal friction, not reimplementing either capability.*
+    - [ ] V1: per-topic-review "Export to NotebookLM" action — zips the review's linked archived-paper PDFs plus a rendered markdown of the review content (key points, connections, practice suggestions, notes), triggers a download, and opens notebooklm.google.com in a new tab with on-screen instructions to drag the files into a new notebook.
+    - [ ] Landing surface: `frontend/app/topics/archive/page.tsx` (existing per-topic-review card). Backend: new topic→PDF resolver off `ArchivedTopicReview.linked_paper_ids` (a clean indexed list of `ArchivedPaper.id`, unlike the unindexed JSON-filter pattern `notifications.py` uses for `ArchivedPaper.linked_topic_ids`), a new zip-bundling service, and a new streaming export endpoint.
+    - *Out of scope for V1 — deferred, not decided against:* pushing the bundle straight to the user's Google Drive (skips the manual-upload step, since NotebookLM can add sources from Drive) — no Google OAuth infrastructure exists in this repo today, so this is a real follow-up once Login/Phase 1 patterns could be extended, not a beta-blocking need. **Gating condition:** WHEN manual zip-then-drag-in proves too clunky for beta testers, or WHEN Google ships a public consumer API.
+    - *Superseded in part by the in-house podcast generator below:* once that ships, it becomes the primary path for the audio-overview use case; the NotebookLM export stays as the path for the chat/Q&A-over-sources use case, which the podcast generator does not attempt to replace.
+  - [ ] in-house podcast generator (audio overviews) — **scoping**, as of 2026-07-06.
+    *Explored forking three open-source options first: [podcastfy](https://github.com/souzatharsis/podcastfy) (Apache-2.0, 6.3k★, supports free/keyless Edge-TTS), [podcast-creator](https://github.com/lfnovo/podcast-creator) (MIT, actively maintained, powers the real `open-notebook` NotebookLM clone, but no free TTS provider), and [podcast-llm](https://github.com/evandempsey/podcast-llm) (CC BY-NC, stale, ruled out). Prototyped podcastfy directly: confirmed it installs and imports fine despite a stated Python 3.11+ floor, but also surfaced a live bug in the 0.4.3 release — `content_generator.py` unconditionally pulls its conversation prompt from LangChain Hub at generation time, and a newer LangSmith client now blocks that pull by default, breaking a fresh `pip install podcastfy` independent of any environment issue. Wrote and verified a patch removing that dependency entirely. Decision: build our own instead of forking or adopting either library — the real value in both (tuned dialogue prompts, audio-stitching, multi-provider TTS abstraction) is outweighed by inherited dependency bloat (podcastfy alone pulled 380+ packages for a "free-tier" run: sphinx, pandas, three LLM SDKs, none of which we need) and ongoing upstream-patch maintenance. A from-scratch version reuses Daily Scholar's own `backend/services/llm/` provider abstraction and the storage service already built for the NotebookLM export, needs only the standalone `edge-tts` PyPI package (MIT, tiny, no framework baggage) plus `pydub` for stitching, and is explicitly also a deliberate learning project (prompt design for spoken dialogue, TTS API mechanics, audio stitching) rather than pure feature delivery.*
+    - [ ] V1 — single narrator: one LLM call turns a topic review into a spoken-style script (reusing `render_review_markdown()`'s assembled content as input), one Edge-TTS voice reads it straight through, output stored via the existing storage abstraction (same `papers/<key>` pattern, new `podcasts/` prefix) and served back for in-app playback.
+    - [ ] V2 — two-host dialogue: LLM prompt produces back-and-forth turns with speaker tags; turns are split, each synthesized with a different Edge-TTS voice, and concatenated with `pydub`. Most of the effort here is prompt iteration against real topic content (natural pacing, avoiding alternating-monologue stiffness), not code volume.
+    - [ ] V3 — polish: swap-in path to a paid TTS provider (ElevenLabs/OpenAI) behind the same interface for users who want it, configurable speaker personalities/voices, progress feedback in the UI for a generation that takes real wall-clock time, retry/backoff around TTS rate limits.
+    - *Out of scope for now:* background music/intro-outro production values; anything resembling NotebookLM's chat/Q&A over sources (still the NotebookLM-export path above).
+    **Open questions**
+    - [ ] Where does generation run — inline in the request (blocks on LLM + TTS latency), or as a background job (APScheduler already exists in this codebase for the daily-content job) with a "ready" notification via the existing push-notification registry (Phase 3)?
+    - [ ] Edge-TTS has no SLA or key — it's an unofficial wrapper around Microsoft Edge's read-aloud voices, and could break or get blocked with zero notice. Worth a documented fallback (V3's paid-provider swap-in) rather than a hard beta dependency on it.
+    **Dependencies**
+    - Builds directly on `render_review_markdown()` / `get_papers_and_pdfs_for_topic_review()` (`backend/services/notebooklm_export.py`, `backend/database.py`) and the storage abstraction (`backend/services/storage/`) — all already shipped.
+    - New deps: `edge-tts`, `pydub` (both MIT-equivalent-permissive, lightweight). No new paid API keys required for V1/V2.
   - [ ] llm chat
-  - [ ] Notion integration
-  - [ ] Obsidian integration
-  - [ ] Roam integration
-  - [ ] Logseq integration
-  - [ ] Zotero integration
-  - [ ] Mendeley integration
+    *Not started, not yet scoped — separate conversation from notebooklm.*
 - [ ] **fd1** additional notification settings
   *Not started*
   - [ ] Per-topic push toggles

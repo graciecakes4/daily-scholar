@@ -22,6 +22,11 @@ from .auth_security import generate_session_token
 # blast radius without the user noticing.
 DEFAULT_SESSION_TTL_DAYS = 30
 
+# how stale last_seen_at has to be before we bother writing it again.
+# avoids an UPDATE on every single request while still keeping the
+# session-list UI's "active N min ago" reasonably fresh.
+SESSION_LAST_SEEN_THROTTLE = timedelta(minutes=15)
+
 
 def create_session(
     user_id_int: int,
@@ -85,9 +90,77 @@ def lookup_session_user(token: str) -> Optional[User]:
             session.delete(row)
             session.commit()
             return None
+
+        # throttled last_seen_at write — only touch the row if it's stale
+        # by more than SESSION_LAST_SEEN_THROTTLE, so a chatty client
+        # doesn't turn into an UPDATE per request
+        if row.last_seen_at is None or (now - row.last_seen_at) > SESSION_LAST_SEEN_THROTTLE:
+            row.last_seen_at = now
+            session.commit()
+
         # detach so the caller can read fields after the session closes
         session.expunge(user)
         return user
+    finally:
+        session.close()
+
+
+def list_sessions_for_user(user_id_int: int) -> list[Session]:
+    """
+    Active (not revoked, not expired) sessions for a user, most-recently-
+    active first — powers /settings/account/sessions. Rows are detached
+    so callers can read fields after the DB session closes.
+    """
+    now = datetime.utcnow()
+    session = get_session()
+    try:
+        rows = (
+            session.query(Session)
+            .filter(
+                Session.user_id == user_id_int,
+                Session.revoked_at.is_(None),
+                Session.expires_at > now,
+            )
+            # nulls-last "most recently active" ordering: sqlite and
+            # postgres both sort NULL first on ASC, last on DESC, so a
+            # plain DESC on last_seen_at already puts never-seen rows at
+            # the bottom, then falls back to created_at for ties/nulls
+            .order_by(Session.last_seen_at.desc(), Session.created_at.desc())
+            .all()
+        )
+        for r in rows:
+            session.expunge(r)
+        return rows
+    finally:
+        session.close()
+
+
+def revoke_session_by_id(session_id: int, owner_user_id_int: int) -> Optional[str]:
+    """
+    Revoke one session by its row id, scoped to `owner_user_id_int` so a
+    user can only revoke their own sessions. Returns the revoked row's
+    token (so the caller can tell whether it just killed the request's
+    own cookie) or None if no matching active session was found —
+    privacy-through-indistinguishability, same 404-shape as friendzone's
+    equivalent endpoint: "not found" and "not yours" look identical.
+    """
+    session = get_session()
+    try:
+        row = (
+            session.query(Session)
+            .filter(
+                Session.id == session_id,
+                Session.user_id == owner_user_id_int,
+                Session.revoked_at.is_(None),
+            )
+            .first()
+        )
+        if row is None:
+            return None
+        row.revoked_at = datetime.utcnow()
+        token = row.token
+        session.commit()
+        return token
     finally:
         session.close()
 

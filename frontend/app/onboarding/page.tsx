@@ -99,7 +99,7 @@ export default function OnboardingPage() {
   return (
     <div className="max-w-2xl mx-auto mt-8 space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-ink">Welcome to Daily Scholar</h1>
+        <h1 className="font-serif text-3xl font-bold text-ink">Welcome to Daily Scholar</h1>
         <p className="text-ink-2 mt-1">
           Let's set up your first topic. Daily Scholar uses topics to discover
           relevant papers, generate reviews, and build quizzes — tell us what
@@ -245,7 +245,7 @@ export default function OnboardingPage() {
       {step === 'done' && (
         <section className="bg-paper-2 border border-rule rounded-lg p-6 space-y-4 text-center">
           <div className="text-4xl">🎓</div>
-          <h2 className="text-xl font-bold text-ink">You're all set</h2>
+          <h2 className="font-serif text-xl font-bold text-ink">You're all set</h2>
           <p className="text-sm text-ink-2">
             Your first topic is live. Here's what to explore next.
           </p>

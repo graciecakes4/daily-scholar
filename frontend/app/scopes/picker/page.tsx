@@ -82,7 +82,7 @@ export default function ScopePickerPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-3xl font-bold text-ink">Pick a scope to start</h1>
+        <h1 className="font-serif text-3xl font-bold text-ink">Pick a scope to start</h1>
         <p className="text-ink-2 mt-2 max-w-2xl">
           A scope decides which topics drive your daily papers, reviews, and
           quizzes. Pick a starter from the catalog below, browse what others

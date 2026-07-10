@@ -41,7 +41,7 @@ export default function EditTopicPage({ params }: PageProps) {
     <div className="space-y-6">
       <header>
         <Link href="/topics" className="text-sm text-muted hover:text-ink-2">← back to topics</Link>
-        <h1 className="text-3xl font-bold text-ink mt-2">{topic.name}</h1>
+        <h1 className="font-serif text-3xl font-bold text-ink mt-2">{topic.name}</h1>
         <p className="text-ink-2 mt-1">
           Editing topic <code className="text-sm">{topic.id}</code>
           {topic.created_via === 'yaml' && (

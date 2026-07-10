@@ -378,9 +378,17 @@ body::before {
 
 /* belt-and-suspenders against horizontal overflow on mobile — any rogue child
    that exceeds viewport width is clipped instead of producing a sideways
-   scrollbar that lets accidental thumb swipes hit the fixed bottom tab bar */
+   scrollbar that lets accidental thumb swipes hit the fixed bottom tab bar.
+   Uses `clip` rather than `hidden`: setting overflow-x to any non-visible
+   value while overflow-y stays at its default forces the UA to also treat
+   overflow-y as non-visible (per the CSS Overflow spec's axis-pairing rule),
+   which changes the containing block position:sticky resolves against and
+   silently breaks the sticky Sidebar (frontend/components/Sidebar.tsx) after
+   the page scrolls past one viewport height. `clip` guards the same
+   horizontal case without triggering that pairing — confirmed live that
+   overflow-y stays `visible` and the sidebar's sticky positioning holds. */
 html, body {
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100vw;
 }
 
