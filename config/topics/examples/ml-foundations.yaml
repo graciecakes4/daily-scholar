@@ -3,6 +3,8 @@ name: ML Foundations — Neural Networks, Training, Classification, Fine-tuning,
 stream: foundations
 active: true
 weight: 1.5
+track: praxis
+prerequisite_only: true
 keywords:
 - neural network
 - deep learning

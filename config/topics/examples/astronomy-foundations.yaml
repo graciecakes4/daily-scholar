@@ -3,6 +3,7 @@ name: Astronomy Foundations — Photometry, Spectroscopy, Transients, Variables
 stream: foundations
 active: true
 weight: 1.5
+track: astro
 keywords:
 - photometry
 - flux
