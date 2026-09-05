@@ -1,5 +1,60 @@
 # Changelog
 
+## [v2.9] — 2026-09-05
+
+v2.8 split paper discovery into research tracks; this release fixes the two reasons that still didn't produce a focused feed. **Within a track, only the highest-weight topic was actually being searched** (PR #77) — keyword aggregation ran depth-first, so a topic holding more keywords than the whole budget consumed it alone, and on the real topic set `missing-modality-learning` contributed no search terms at all despite equal weight. **Topics can now declare which field they belong to** (PR #78) — a new optional `require_any` gate means a topic can hold broad method vocabulary like "conditional diffusion" without matching every discipline that shares it, which is how a brain-MRI inpainting paper had been clearing the bar in an astronomy track. **One new migration, zero new dependencies, zero new environment variables.** Full release notes in [docs/releases/v2.9.md](docs/releases/v2.9.md).
+
+### Added
+
+#### Optional domain gate on topics (PR #78)
+
+- New `require_any` list on `Topic` (migration `0017_topic_require_any`). When non-empty, a paper must contain at least one of its terms before any of that topic's keywords are scored. Empty — the default, and every pre-existing row — disables it, so scoring is unchanged for topics that don't opt in.
+- Matching is **whole-word**, deliberately unlike keyword matching. The gate decides whether a topic is considered at all, so a false positive reopens the leak it exists to close: as substrings, "spectra" matches "spectral normalization" and "spectral clustering" — ordinary ML vocabulary — and "clip" matches "eclipse". There is a test for exactly this.
+- Gate terms never enter the relevance denominator, so the lists can be generous (37 terms) without costing score.
+- Applied to the three praxis topics and to `sim-to-real-transfer-astronomy`, whose vocabulary ("domain adaptation", "transfer learning", "distribution shift") is generic ML and would otherwise pull in robotics. `transient-photometric-classification` is deliberately left ungated — its vocabulary is already domain-locked, so a gate would be a no-op.
+- Exposed on `GET`/`POST`/`PUT /topics` and round-tripped through the YAML loader.
+
+#### Keyword pruning (PR #78)
+
+- Removed author surnames, one venue name, and short acronyms from three topics: `33 → 27`, `28 → 24`, `33 → 29`. Also dropped `AstroM³` as a duplicate spelling of `AstroM3`.
+- Two distinct kinds of pure denominator cost. Author names and `MICCAI` effectively never appear in an abstract. Short acronyms are worse than useless — keyword matching is substring-based, so `ECE` matched "pi**ece**", `ViT` matched "gra**vit**y", `CLIP` matched "e**clip**se", `LoRA` matched "f**lora**". In an astronomy corpus those fired constantly while contributing nothing.
+- Generic-but-core terms ("conditional diffusion", "contrastive learning") were **kept**. The gate is what makes them safe, which was the point of adding it.
+
+### Fixed
+
+#### Only one topic per track was being searched (PR #77)
+
+- `_aggregate_keywords()` walked topics depth-first, exhausting the highest-weight topic's list before touching the next. Any topic holding more keywords than the whole budget consumed it alone. With a five-keyword budget and `generative-cross-modal-imputation` (33 keywords) sorted first, the entire praxis track searched only cross-modal-imputation vocabulary; `missing-modality-learning` contributed nothing at equal weight, so the learnable-token half of the work was invisible to discovery. Same shape on the astro side.
+- v2.8's per-track grouping fixed the scope-level version of this and relocated the track-level one rather than removing it.
+- Aggregation is now round-robin — one value from each topic in turn, tiers ordered by weight so the highest-weight topic still picks first. Category aggregation had the identical shape at `limit=3` and got the same fix.
+- Measured on the live topic set, praxis went from one of three topics supplying terms to three of three, and astro from one of two to two of two.
+
+#### astronomy-foundations was winning the astro track (PR #77)
+
+- Marked prerequisite-only, mirroring `ml-foundations`. A live run had it taking **both** astro slots with general astronomy — ionized nebulae around symbiotic stars, hydrocarbon detection on Titan — rather than transient work, because it matches broadly and carried a 365-day recency window. It was single-handedly widening the track's window from the 90 days `transient-photometric-classification` asks for; removing it from the quota group drops the track to 180 days.
+
+### Operations
+
+- **One new migration, additive with an idempotent guard**: `0017_topic_require_any`. Parent `0016_topic_track`, single head. Verified upgrade → downgrade → upgrade against a copy of the dev database.
+- **`scripts/assign_topic_tracks.py --apply` is a required post-deploy step**, and carries more than it did in v2.8: the domain gates and pruned keyword lists as well as the track assignments. `config/topics/private/` is gitignored, so the database is the only place that configuration can live. Without this step the `require_any` column ships empty and the release changes nothing.
+- **Zero new Python or npm dependencies. Zero new environment variables.**
+- This range includes a back-merge of `main` into `develop`, which returned the v2.8 changelog and release notes to the integration branch. No product change.
+
+### Decisions
+
+- **The gate matches whole words while keywords match substrings.** They answer different questions. A keyword false positive costs a little score; a gate false positive admits an entire off-domain literature. Substring matching would have let "spectral normalization" satisfy an astronomy gate.
+- **Medical missing-modality vocabulary was kept, not deleted.** That literature is where learnable modality tokens come from. The gate scopes it to papers that also mention an astronomical context, rather than forcing a choice between losing the method literature and importing all of medical imaging.
+- **`min_relevance` was left unchanged.** Pruning raises scores for genuine matches and the gate removes a class of false positive; both push the same direction, so moving the threshold at the same time would risk emptying a track and make it impossible to attribute which change did what. Revisit after a few live runs.
+- **`transient-photometric-classification` is ungated.** Its vocabulary is already domain-locked; a gate would add maintenance for no filtering.
+
+### Followups
+
+- **An untracked remainder still receives its own paper quota.** With `scope_mode='all'`, untracked topics are grouped into a single bucket and `select_daily_papers()` treats it like any track. Round-robin made its character worse, not better: it previously searched five terms from one foundations topic, and now samples five unrelated fields (atmospheric physics, cell biology, classical mechanics, climate, financial economics). Scoping to the tracked topics (`scope_mode='multi'`) works around it. The code should probably not treat leftovers as a peer of tracks that were deliberately defined.
+- **Within a track, the loosest topic still sets the threshold.** Astro sits at `min_relevance` 0.17, inherited from the demoted `sim-to-real-transfer-astronomy`, rather than the 0.18 the primary topic asks for. Narrowest-wins versus weight-weighted remains an open preference call.
+- **`scripts/check_track_balance.py`'s "BEFORE" comparison is now inaccurate.** It calls the live `_aggregate_keywords`, which this release changed, so the BEFORE branch no longer reproduces the old depth-first behaviour — it reports round-robin over the whole scope instead. The label overstates the historical baseline (it now prints "5 of 22" where the true pre-v2.9 figure was "1 of 22"). Freezing that branch as an inline loop would fix it.
+- **The 0.6 keyword / 0.4 category weighting** means a paper can accumulate meaningful relevance from arXiv category overlap alone, which is part of why thresholds behave less intuitively than the keyword lists suggest. Not obviously wrong; not yet examined.
+- **No frontend surface for tracks or gates.** Both fields are on the API responses; there are no badges and no track-sectioned daily view.
+
 ## [v2.8] — 2026-09-04
 
 Paper discovery stops being monopolized by a single topic, and a v2.7 auth regression that broke the first request after every login gets fixed. **Research tracks ship** (PR #73) — topics now declare a `track`, and discovery runs an independent pass per track, so each gets its own keyword budget instead of competing for one global top-five list; on the live topic set that global list was supplied entirely by one topic, leaving six of seven topics contributing nothing to discovery at all. **A session-lookup regression from v2.7 is fixed** (PR #74) — the `last_seen_at` throttle added in `li6` committed while the `User` it was about to return was still in the identity map, stranding it and 500ing the first authenticated request after every login. **The Claude review workflow is repaired** (PR #75) — it had been passing v0.x input names to `claude-code-action@v1`, which dropped them, found no prompt, and cancelled the job on every PR. **One new migration, zero new dependencies, zero new environment variables.** Full release notes in [docs/releases/v2.8.md](docs/releases/v2.8.md).
