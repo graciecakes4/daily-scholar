@@ -61,6 +61,10 @@ class TopicResponse(BaseModel):
     stream: str
     active: bool
     weight: float
+    # research track driving per-track paper discovery; None = untracked
+    track: Optional[str] = None
+    # prerequisite topics inform reviews/quizzes but never consume a paper slot
+    prerequisite_only: bool = False
     keywords: list[str]
     arxiv_categories: list[str]
     recency_days: int
@@ -91,6 +95,8 @@ class TopicResponse(BaseModel):
             stream=t.stream,
             active=t.active,
             weight=t.weight,
+            track=t.track,
+            prerequisite_only=bool(t.prerequisite_only),
             keywords=list(t.keywords or []),
             arxiv_categories=list(t.arxiv_categories or []),
             recency_days=t.recency_days,
@@ -128,6 +134,8 @@ class TopicCreateRequest(BaseModel):
     stream: str = Field(default="uncategorized", max_length=100)
     active: bool = True
     weight: float = 1.0
+    track: Optional[str] = Field(default=None, max_length=50)
+    prerequisite_only: bool = False
     keywords: list[str] = Field(default_factory=list)
     arxiv_categories: list[str] = Field(default_factory=list)
     recency_days: int = 30
@@ -157,6 +165,8 @@ class TopicUpdateRequest(BaseModel):
     stream: Optional[str] = Field(default=None, max_length=100)
     active: Optional[bool] = None
     weight: Optional[float] = None
+    track: Optional[str] = Field(default=None, max_length=50)
+    prerequisite_only: Optional[bool] = None
     keywords: Optional[list[str]] = None
     arxiv_categories: Optional[list[str]] = None
     recency_days: Optional[int] = None
@@ -452,6 +462,8 @@ def create_topic(
             stream=body.stream,
             active=body.active,
             weight=body.weight,
+            track=body.track,
+            prerequisite_only=body.prerequisite_only,
             keywords=body.keywords,
             arxiv_categories=body.arxiv_categories,
             recency_days=body.recency_days,

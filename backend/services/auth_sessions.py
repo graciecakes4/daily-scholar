@@ -91,6 +91,26 @@ def lookup_session_user(token: str) -> Optional[User]:
             session.commit()
             return None
 
+        # detach the user BEFORE the last_seen_at write below.
+        #
+        # commit() expires every instance still in the identity map
+        # (expire_on_commit defaults to True on our sessionmaker), and an
+        # instance that is expired and *then* expunged can never reload
+        # itself — the caller gets DetachedInstanceError on the first
+        # attribute read. Expunging first takes `user` out of the identity
+        # map so the session-row write cannot strand it.
+        #
+        # The rest of this codebase solves the same problem with
+        # commit() -> refresh(obj) -> expunge(obj) (see services/scopes.py).
+        # That works too, but here `user` is not the object being written —
+        # `row` is — so refreshing it would re-read a row we already have
+        # purely to undo an expiry we caused, and it would add a failure
+        # mode: a concurrently deleted user turns refresh() into
+        # ObjectDeletedError, i.e. a 500 on a path that already has a
+        # clean "user is None" branch above. Expunging first has no such
+        # window.
+        session.expunge(user)
+
         # throttled last_seen_at write — only touch the row if it's stale
         # by more than SESSION_LAST_SEEN_THROTTLE, so a chatty client
         # doesn't turn into an UPDATE per request
@@ -98,8 +118,6 @@ def lookup_session_user(token: str) -> Optional[User]:
             row.last_seen_at = now
             session.commit()
 
-        # detach so the caller can read fields after the session closes
-        session.expunge(user)
         return user
     finally:
         session.close()

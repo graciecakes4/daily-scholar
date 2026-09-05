@@ -134,6 +134,34 @@ Existing users are migrated transparently by `scripts/migrate_to_scope_library.p
 
 ---
 
+## Research tracks
+
+A **track** groups the topics in a scope into parallel research threads that are discovered independently. Set `track:` on a topic YAML (any slug — e.g. `praxis`, `astro`) and paper discovery runs a full pass per track: each gets its own keyword budget, its own arXiv categories, its own recency window, and its own `min_relevance` threshold.
+
+This matters because keyword aggregation is truncated. Without tracks, the search terms are taken from the whole scope sorted by topic weight and cut at the top five — so a couple of high-weight topics can supply every term and another thread of work never gets queried at all. Weight tuning can't fix that, because the cut happens before weights are used for anything else. Grouping by track gives each thread its own budget.
+
+- `select_daily_papers(quota_per_track=N)` returns `{track: [papers]}`, guaranteeing N papers per track rather than N overall. A track with nothing above its threshold returns fewer papers rather than borrowing another track's slots.
+- Set `prerequisite_only: true` on foundations topics. They keep informing review and quiz generation but never become search terms and never consume a paper slot.
+- Topics with no `track` share a single untracked bucket, which behaves exactly like the pre-track single-pool discovery. Declaring tracks is opt-in.
+
+Both fields are exposed on `GET`/`POST`/`PUT /topics`, so the in-app editor round-trips them.
+
+```bash
+# assign tracks to topics that already exist in the DB (dry-run by default).
+# needed because config/topics/private/ is gitignored and never ships with a
+# deployment — those topics live only in the database.
+python scripts/assign_topic_tracks.py            # review
+python scripts/assign_topic_tracks.py --apply    # write
+
+# show what each track actually searches for, and what it gets back
+python scripts/check_track_balance.py            # budgets only, no network
+python scripts/check_track_balance.py --live     # plus a real discovery pass
+```
+
+`check_track_balance.py` prints a before/after comparison including how many topics contributed any search term at all — run it after changing topic weights or keywords.
+
+---
+
 ## Documentation
 
 | Doc | What's in it |

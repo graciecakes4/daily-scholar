@@ -30,6 +30,8 @@ jobs:
        github.event.issue.pull_request &&
        contains(github.event.comment.body, '@claude'))
     runs-on: ubuntu-latest
+    # v1 moved the timeout off the action input and onto the job
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,8 +41,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          timeout_minutes: 30
-          direct_prompt: |
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+
             Review this PR with the following strict standards. Organize feedback by severity (Critical, Warning, Suggestion).
 
             ## 1. Syntax & Style Consistency

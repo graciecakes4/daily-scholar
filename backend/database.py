@@ -335,6 +335,17 @@ class Topic(Base):
     # boosts relevance scoring for paper discovery
     weight = Column(Float, default=1.0, nullable=False)
 
+    # research track this topic belongs to, e.g. "praxis" or "astro".
+    # discovery aggregates keywords/categories per track so a high-weight
+    # track can't starve another one out of the search terms entirely.
+    # NULL = untracked; participates in scoring but in no track's quota.
+    track = Column(String(50), nullable=True, index=True)
+
+    # prerequisite topics inform review and quiz generation but never
+    # consume a daily paper slot. keeps foundations topics from spending
+    # a track's quota on material that isn't the point of the track.
+    prerequisite_only = Column(Boolean, default=False, nullable=False)
+
     # paper-discovery side (replaces interests.yaml content)
     keywords = Column(JSON, nullable=False, default=list)
     arxiv_categories = Column(JSON, nullable=False, default=list)

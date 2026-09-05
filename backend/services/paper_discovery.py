@@ -66,6 +66,8 @@ class Paper:
         self.citation_count = citation_count
         self.relevance_score = 0.0
         self.primary_category = ""
+        # which research track surfaced this paper; set by discovery
+        self.track: Optional[str] = None
     
     @property
     def unique_id(self) -> str:
@@ -93,6 +95,7 @@ class Paper:
             "citation_count": self.citation_count,
             "relevance_score": self.relevance_score,
             "primary_category": self.primary_category,
+            "track": self.track,
         }
 
 
@@ -160,6 +163,35 @@ class PaperDiscoveryService:
         """Widest recency window across active topics."""
         values = [t.recency_days for t in topics if t.recency_days]
         return max(values) if values else fallback
+
+    # ------------------------------------------------------------------
+    # Track helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _quota_eligible(topics: list[Topic]) -> list[Topic]:
+        """
+        Drop prerequisite-only topics.
+
+        Foundations topics shape review and quiz generation but should never
+        spend a track's daily paper slot — otherwise the quota fills with
+        introductory material instead of the work the track exists to follow.
+        """
+        return [t for t in topics if not getattr(t, "prerequisite_only", False)]
+
+    @staticmethod
+    def _group_by_track(topics: list[Topic]) -> dict[str | None, list[Topic]]:
+        """
+        Bucket topics by declared track, preserving weight-descending order.
+
+        Topics with no track share a single None bucket, so a scope that has
+        never declared tracks behaves exactly as it did before this existed:
+        one pool, one aggregation, one ranked list.
+        """
+        grouped: dict[str | None, list[Topic]] = {}
+        for topic in sorted(topics, key=lambda t: t.weight or 0.0, reverse=True):
+            grouped.setdefault(getattr(topic, "track", None), []).append(topic)
+        return grouped
     
     # =========================================================================
     # ARXIV API
@@ -582,42 +614,42 @@ class PaperDiscoveryService:
     # MAIN DISCOVERY METHODS
     # =========================================================================
     
-    async def discover_papers(
+    async def _discover_for_topics(
         self,
-        max_results: int = 20,
-        days_back: int | None = None,
-        sources: list[str] | None = None,
+        topics: list[Topic],
+        *,
+        max_results: int,
+        days_back: int | None,
+        sources: list[str],
     ) -> list[Paper]:
         """
-        Discover relevant papers from configured sources, scored against the
-        user's active topic scope.
+        Run one full discovery pass against a single group of topics.
 
-        `days_back` defaults to the widest recency_days across topics in scope.
-        `sources` defaults to DEFAULT_SOURCES.
+        This is the old whole-scope discover_papers body, narrowed to operate
+        on whichever group it is handed. Keyword and category truncation now
+        bite per group rather than across the entire scope, which is the whole
+        point: with a global limit of 5 keywords sorted by topic weight, the
+        two highest-weight topics supplied every search term and the other
+        track was never actually queried.
         """
-        topics = self._topics_in_scope()
         if not topics:
-            print("paper_discovery: no topics in scope; nothing to search for")
             return []
 
-        if sources is None:
-            sources = list(DEFAULT_SOURCES)
         if days_back is None:
             days_back = self._scope_max_recency(topics)
 
-        # aggregate search terms + arxiv categories across all topics in scope
         keywords = self._aggregate_keywords(topics, limit=5)
         categories = self._aggregate_categories(topics, limit=3)
 
-        all_papers: list[Paper] = []
         tasks = []
-
         for source in sources:
             for term in keywords:
                 if source == "arxiv":
                     tasks.append(self.search_arxiv(term, max_results=10, days_back=days_back))
                 elif source == "semantic_scholar":
-                    tasks.append(self.search_semantic_scholar(term, max_results=10, days_back=days_back))
+                    tasks.append(
+                        self.search_semantic_scholar(term, max_results=10, days_back=days_back)
+                    )
                 elif source == "core":
                     tasks.append(self.search_core(term, max_results=10, days_back=days_back))
 
@@ -625,6 +657,7 @@ class PaperDiscoveryService:
             for cat in categories:
                 tasks.append(self.search_arxiv_by_category(cat, max_results=10, days_back=days_back))
 
+        all_papers: list[Paper] = []
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for result in results:
             if isinstance(result, list):
@@ -632,7 +665,6 @@ class PaperDiscoveryService:
             elif isinstance(result, Exception):
                 print(f"Search error: {result}")
 
-        # dedupe
         seen_ids: set[str] = set()
         unique_papers: list[Paper] = []
         for paper in all_papers:
@@ -641,33 +673,158 @@ class PaperDiscoveryService:
             seen_ids.add(paper.unique_id)
             unique_papers.append(paper)
 
-        # score against the (already-loaded) topics — saves N DB hits
+        # score against this group only. scoring against the whole scope
+        # marked a strong praxis paper down for failing to match astro
+        # keywords, which is not information we want in the ranking.
         for paper in unique_papers:
             self.calculate_relevance_score(paper, topics=topics)
 
         unique_papers.sort(key=lambda p: p.relevance_score, reverse=True)
         return unique_papers[:max_results]
 
+    async def discover_papers_by_track(
+        self,
+        max_results_per_track: int = 20,
+        days_back: int | None = None,
+        sources: list[str] | None = None,
+    ) -> dict[str | None, list[Paper]]:
+        """
+        Discover papers independently for each track in the user's scope.
+
+        Returns {track: ranked papers}. Each track gets its own keyword
+        budget, its own arXiv categories, and its own recency window, so one
+        track's weights can no longer crowd another out of the search itself.
+
+        A paper that surfaces for more than one track is kept only where it
+        scored highest, so per-track quotas can't be filled twice over by the
+        same paper.
+        """
+        topics = self._quota_eligible(self._topics_in_scope())
+        if not topics:
+            print("paper_discovery: no quota-eligible topics in scope; nothing to search for")
+            return {}
+
+        if sources is None:
+            sources = list(DEFAULT_SOURCES)
+
+        grouped = self._group_by_track(topics)
+        track_names = list(grouped.keys())
+
+        passes = await asyncio.gather(*[
+            self._discover_for_topics(
+                grouped[name],
+                max_results=max_results_per_track,
+                days_back=days_back,
+                sources=sources,
+            )
+            for name in track_names
+        ])
+
+        # cross-track duplicates: the higher score keeps the paper
+        best: dict[str, tuple[str | None, Paper]] = {}
+        for name, papers in zip(track_names, passes):
+            for paper in papers:
+                incumbent = best.get(paper.unique_id)
+                if incumbent is None or paper.relevance_score > incumbent[1].relevance_score:
+                    best[paper.unique_id] = (name, paper)
+
+        by_track: dict[str | None, list[Paper]] = {name: [] for name in track_names}
+        for name, paper in best.values():
+            # stamped only once the winning track is settled
+            paper.track = name
+            by_track[name].append(paper)
+        for name in by_track:
+            by_track[name].sort(key=lambda p: p.relevance_score, reverse=True)
+        return by_track
+
+    async def discover_papers(
+        self,
+        max_results: int = 20,
+        days_back: int | None = None,
+        sources: list[str] | None = None,
+    ) -> list[Paper]:
+        """
+        Discover relevant papers across the whole scope, flattened and ranked.
+
+        Kept for callers that just want "the best N papers"; the per-track
+        structure is available from discover_papers_by_track(). Discovery still
+        runs per track underneath, so even this flattened list is drawn from
+        every track rather than whichever one owns the top keywords.
+        """
+        by_track = await self.discover_papers_by_track(
+            max_results_per_track=max_results,
+            days_back=days_back,
+            sources=sources,
+        )
+        merged = [paper for papers in by_track.values() for paper in papers]
+        merged.sort(key=lambda p: p.relevance_score, reverse=True)
+        return merged[:max_results]
+
+    async def select_daily_papers(
+        self,
+        quota_per_track: int = 1,
+        seen_ids: list[str] | None = None,
+        days_back: int | None = None,
+    ) -> dict[str | None, list[Paper]]:
+        """
+        Pick today's papers with a guaranteed quota per track.
+
+        Each track is filtered against ITS OWN min_relevance rather than the
+        most permissive threshold anywhere in the scope, so a loose topic in
+        one track can no longer lower the bar for the other.
+
+        A track with nothing above threshold yields fewer than quota_per_track
+        papers rather than borrowing the other track's slots. An under-filled
+        day is honest signal that the track's keywords or threshold need
+        attention, and silently backfilling it would hide exactly the problem
+        this change exists to fix.
+        """
+        seen = set(seen_ids or [])
+        grouped = self._group_by_track(self._quota_eligible(self._topics_in_scope()))
+
+        by_track = await self.discover_papers_by_track(
+            max_results_per_track=50,
+            days_back=days_back,
+        )
+
+        selected: dict[str | None, list[Paper]] = {}
+        for name, papers in by_track.items():
+            threshold = self._scope_min_relevance(grouped.get(name, []))
+            picks = [
+                paper for paper in papers
+                if paper.unique_id not in seen and paper.relevance_score >= threshold
+            ]
+            selected[name] = picks[:quota_per_track]
+            if not picks:
+                print(
+                    f"paper_discovery: nothing cleared {threshold:.2f} for track "
+                    f"'{name or 'untracked'}' — broaden its keywords or lower min_relevance"
+                )
+        return selected
+
     async def select_daily_paper(
         self,
         seen_ids: list[str] | None = None,
         days_back: int | None = None,
     ) -> Optional[Paper]:
-        """Select the best paper for today's learning."""
-        seen_ids = seen_ids or []
+        """
+        Select the single best paper for today.
 
-        topics = self._topics_in_scope()
-        min_relevance = self._scope_min_relevance(topics)
-
-        papers = await self.discover_papers(max_results=50, days_back=days_back)
-        papers = [p for p in papers if p.unique_id not in seen_ids]
-        papers = [p for p in papers if p.relevance_score >= min_relevance]
-
-        if not papers:
+        Thin wrapper over select_daily_papers for callers that still expect one
+        paper. It takes one candidate per track and then the highest scorer
+        among them, so even the single-paper path rotates across tracks instead
+        of always returning whichever track ranks highest overall.
+        """
+        selected = await self.select_daily_papers(
+            quota_per_track=1,
+            seen_ids=seen_ids,
+            days_back=days_back,
+        )
+        candidates = [paper for papers in selected.values() for paper in papers]
+        if not candidates:
             print(
                 "No suitable papers found. "
                 "Broaden the active topic scope, add keywords, or lower min_relevance."
             )
             return None
-
-        return papers[0]
+        return max(candidates, key=lambda p: p.relevance_score)

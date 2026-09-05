@@ -41,6 +41,8 @@ _YAML_FIELDS: tuple[str, ...] = (
     "stream",
     "active",
     "weight",
+    "track",
+    "prerequisite_only",
     "keywords",
     "arxiv_categories",
     "recency_days",
@@ -124,6 +126,24 @@ def _coerce_str_list(items: Any, *, source: str, field: str) -> list[str]:
     return out
 
 
+def _coerce_track(value: Any, *, source: str = "<unknown>") -> str | None:
+    """
+    Normalize the optional `track` key to a lowercase slug or None.
+
+    A topic with no track still contributes to relevance scoring; it just
+    isn't counted toward any track's daily paper quota.
+    """
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str):
+        logger.warning(
+            "%s :: track is not a string (%s); ignoring",
+            source, type(value).__name__,
+        )
+        return None
+    return value.strip().lower() or None
+
+
 def _extract_fields(data: dict[str, Any], *, source: str = "<unknown>") -> dict[str, Any]:
     """Map a parsed YAML dict to Topic model kwargs, applying defaults."""
     return {
@@ -131,6 +151,8 @@ def _extract_fields(data: dict[str, Any], *, source: str = "<unknown>") -> dict[
         "stream": data["stream"],
         "active": bool(data.get("active", True)),
         "weight": float(data.get("weight", 1.0)),
+        "track": _coerce_track(data.get("track"), source=source),
+        "prerequisite_only": bool(data.get("prerequisite_only", False)),
         "keywords": _coerce_str_list(data.get("keywords"), source=source, field="keywords"),
         "arxiv_categories": _coerce_str_list(
             data.get("arxiv_categories"), source=source, field="arxiv_categories"
