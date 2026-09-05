@@ -262,3 +262,101 @@ async def test_track_threshold_is_its_own_not_the_loosest_in_scope(monkeypatch):
     assert not selected["praxis"], (
         "strict track accepted a paper below its own min_relevance"
     )
+
+
+# ---------------------------------------------------------------------------
+# Keyword/category budget: every topic in a track must be represented.
+#
+# The original aggregation was depth-first — it exhausted the highest-weight
+# topic's keyword list before moving to the next. On the real topic set that
+# meant a 33-keyword topic consumed the entire 5-keyword budget by itself and
+# every other topic in its track was never searched for at all, however high
+# its weight. Per-track grouping alone didn't fix that; it just moved the
+# truncation from scope level to track level.
+# ---------------------------------------------------------------------------
+
+
+def _lopsided_keyword_group() -> list[FakeTopic]:
+    """One keyword-rich topic sorted first, two smaller ones behind it."""
+    return [
+        FakeTopic(
+            "rich",
+            weight=1.8,
+            track="praxis",
+            keywords=[f"rich-term-{i}" for i in range(33)],
+        ),
+        FakeTopic(
+            "learnable-tokens",
+            weight=1.8,
+            track="praxis",
+            keywords=["missing modality", "modality dropout", "learnable token"],
+        ),
+        FakeTopic(
+            "third",
+            weight=0.8,
+            track="praxis",
+            keywords=["multimodal foundation model", "cross-modal alignment"],
+        ),
+    ]
+
+
+class TestKeywordBudgetIsSharedAcrossTopics:
+
+    def test_every_topic_contributes_a_search_term(self, service):
+        """
+        The regression. Under depth-first ordering all five slots went to
+        'rich' and the other two topics contributed nothing.
+        """
+        group = _lopsided_keyword_group()
+
+        keywords = service._aggregate_keywords(group, limit=5)
+
+        assert len(keywords) == 5
+        for topic in group:
+            contributed = [k for k in keywords if k in topic.keywords]
+            assert contributed, (
+                f"topic {topic.id!r} contributed no search term; got {keywords}"
+            )
+
+    def test_highest_weight_topic_still_picks_first(self, service):
+        keywords = service._aggregate_keywords(_lopsided_keyword_group(), limit=5)
+        assert keywords[0] == "rich-term-0"
+
+    def test_budget_is_respected(self, service):
+        assert len(service._aggregate_keywords(_lopsided_keyword_group(), limit=2)) == 2
+        assert service._aggregate_keywords(_lopsided_keyword_group(), limit=None)
+
+    def test_duplicate_keywords_are_deduped_case_insensitively(self, service):
+        group = [
+            FakeTopic("a", weight=2.0, track="t", keywords=["Light Curve", "alpha"]),
+            FakeTopic("b", weight=1.0, track="t", keywords=["light curve", "beta"]),
+        ]
+        keywords = service._aggregate_keywords(group, limit=10)
+        lowered = [k.lower() for k in keywords]
+        assert lowered.count("light curve") == 1
+        assert "beta" in keywords
+
+    def test_categories_are_shared_across_topics_too(self, service):
+        group = [
+            FakeTopic("a", weight=2.0, track="t", keywords=["x"],
+                      categories=["astro-ph.IM", "astro-ph.HE", "astro-ph.SR"]),
+            FakeTopic("b", weight=1.0, track="t", keywords=["y"],
+                      categories=["cs.LG"]),
+        ]
+        categories = service._aggregate_categories(group, limit=3)
+        assert "cs.LG" in categories, (
+            f"the second topic's category was crowded out entirely: {categories}"
+        )
+
+    def test_single_topic_group_is_unchanged(self, service):
+        """Round-robin over one list must behave exactly like the old path."""
+        group = [FakeTopic("solo", weight=1.0, track="t",
+                           keywords=["a", "b", "c", "d", "e", "f"])]
+        assert service._aggregate_keywords(group, limit=4) == ["a", "b", "c", "d"]
+
+    def test_empty_keyword_lists_are_skipped(self, service):
+        group = [
+            FakeTopic("empty", weight=2.0, track="t", keywords=[]),
+            FakeTopic("full", weight=1.0, track="t", keywords=["only", "these"]),
+        ]
+        assert service._aggregate_keywords(group, limit=5) == ["only", "these"]

@@ -4,6 +4,7 @@ stream: foundations
 active: true
 weight: 1.5
 track: astro
+prerequisite_only: true
 keywords:
 - photometry
 - flux

@@ -53,13 +53,18 @@ from backend.database import Topic, get_session  # noqa: E402
 # The two straddlers are demoted to 0.8 rather than deactivated: they're
 # still genuinely relevant, they just shouldn't outrank the topics the
 # tracks exist to follow.
+#
+# Both foundations topics are prerequisite-only. A live run showed
+# astronomy-foundations winning both astro slots with general astronomy
+# (symbiotic stars, Titan spectroscopy) rather than transient work, and
+# widening the track's recency window from 90 to 365 days on its own.
 ASSIGNMENTS: dict[str, tuple[str, float | None, bool]] = {
     "generative-cross-modal-imputation":      ("praxis", None, False),
     "missing-modality-learning":              ("praxis", None, False),
     "multimodal-foundation-models-astronomy": ("praxis", 0.8,  False),
     "ml-foundations":                         ("praxis", None, True),
     "transient-photometric-classification":   ("astro",  None, False),
-    "astronomy-foundations":                  ("astro",  None, False),
+    "astronomy-foundations":                  ("astro",  None, True),
     "sim-to-real-transfer-astronomy":         ("astro",  0.8,  False),
 }
 
