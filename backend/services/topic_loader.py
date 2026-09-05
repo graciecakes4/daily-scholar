@@ -43,6 +43,7 @@ _YAML_FIELDS: tuple[str, ...] = (
     "weight",
     "track",
     "prerequisite_only",
+    "require_any",
     "keywords",
     "arxiv_categories",
     "recency_days",
@@ -153,6 +154,9 @@ def _extract_fields(data: dict[str, Any], *, source: str = "<unknown>") -> dict[
         "weight": float(data.get("weight", 1.0)),
         "track": _coerce_track(data.get("track"), source=source),
         "prerequisite_only": bool(data.get("prerequisite_only", False)),
+        "require_any": _coerce_str_list(
+            data.get("require_any"), source=source, field="require_any"
+        ),
         "keywords": _coerce_str_list(data.get("keywords"), source=source, field="keywords"),
         "arxiv_categories": _coerce_str_list(
             data.get("arxiv_categories"), source=source, field="arxiv_categories"
