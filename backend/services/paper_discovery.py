@@ -10,6 +10,8 @@ This service finds relevant research papers from multiple sources:
 import asyncio
 import hashlib
 import itertools
+import re
+from functools import lru_cache
 from datetime import datetime, date, timedelta
 from typing import Optional
 import xml.etree.ElementTree as ET
@@ -33,6 +35,31 @@ DEFAULT_SOURCES: tuple[str, ...] = ("arxiv", "semantic_scholar", "core")
 # bounded by the worst-behaving source. arXiv is reliable enough to keep
 # the default.
 _FLAKY_EXTERNAL_TIMEOUT_SECONDS: float = 8.0
+
+
+@lru_cache(maxsize=512)
+def _compile_gate(terms: tuple[str, ...]) -> re.Pattern:
+    """
+    Build a whole-word alternation for a topic's domain gate.
+
+    Whole-word rather than substring, unlike keyword matching, because the
+    gate decides whether a topic is considered at all — a false positive
+    here reopens the exact leak the gate exists to close. Substring matching
+    would let "spectral normalization" and "spectral clustering" satisfy an
+    astronomy gate on the strength of "spectra", and "eclipse" satisfy one
+    containing "clip". Cached because the term list is per-topic and stable
+    across a scoring pass.
+    """
+    return re.compile(
+        r"\b(?:" + "|".join(re.escape(t.lower()) for t in terms) + r")\b"
+    )
+
+
+def _passes_gate(text: str, terms: list[str]) -> bool:
+    """True when the topic has no gate, or the text satisfies it."""
+    if not terms:
+        return True
+    return _compile_gate(tuple(terms)).search(text) is not None
 
 
 class Paper:
@@ -600,6 +627,15 @@ class PaperDiscoveryService:
         best_topic_weight = -1.0
 
         for topic in topics:
+            # domain gate: a topic may require at least one context term
+            # before any of its keywords count. this is what lets a topic
+            # keep broad method vocabulary without matching every field
+            # that happens to share it — "conditional diffusion" is as
+            # common in medical imaging as in astronomy, and without a gate
+            # the only defence is deleting the term.
+            if not _passes_gate(searchable_text, getattr(topic, "require_any", None) or []):
+                continue
+
             keywords = topic.keywords or []
             cats = topic.arxiv_categories or []
 

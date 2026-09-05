@@ -346,6 +346,13 @@ class Topic(Base):
     # a track's quota on material that isn't the point of the track.
     prerequisite_only = Column(Boolean, default=False, nullable=False)
 
+    # optional domain gate. when non-empty, a paper must contain at least
+    # one of these terms to score against this topic at all, however many
+    # keywords it otherwise matches. lets a topic keep broad method
+    # vocabulary ("conditional diffusion", "modality dropout") without
+    # pulling in every field that shares it.
+    require_any = Column(JSON, nullable=False, default=list)
+
     # paper-discovery side (replaces interests.yaml content)
     keywords = Column(JSON, nullable=False, default=list)
     arxiv_categories = Column(JSON, nullable=False, default=list)
