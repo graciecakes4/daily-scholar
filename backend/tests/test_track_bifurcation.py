@@ -36,6 +36,7 @@ class FakeTopic:
         min_relevance: float = 0.1,
         recency_days: int = 30,
         prerequisite_only: bool = False,
+        require_any: list[str] | None = None,
     ):
         self.id = topic_id
         self.name = topic_id
@@ -46,6 +47,7 @@ class FakeTopic:
         self.min_relevance = min_relevance
         self.recency_days = recency_days
         self.prerequisite_only = prerequisite_only
+        self.require_any = require_any or []
 
 
 def _lopsided_scope() -> list[FakeTopic]:
@@ -262,3 +264,220 @@ async def test_track_threshold_is_its_own_not_the_loosest_in_scope(monkeypatch):
     assert not selected["praxis"], (
         "strict track accepted a paper below its own min_relevance"
     )
+
+
+# ---------------------------------------------------------------------------
+# Keyword/category budget: every topic in a track must be represented.
+#
+# The original aggregation was depth-first — it exhausted the highest-weight
+# topic's keyword list before moving to the next. On the real topic set that
+# meant a 33-keyword topic consumed the entire 5-keyword budget by itself and
+# every other topic in its track was never searched for at all, however high
+# its weight. Per-track grouping alone didn't fix that; it just moved the
+# truncation from scope level to track level.
+# ---------------------------------------------------------------------------
+
+
+def _lopsided_keyword_group() -> list[FakeTopic]:
+    """One keyword-rich topic sorted first, two smaller ones behind it."""
+    return [
+        FakeTopic(
+            "rich",
+            weight=1.8,
+            track="praxis",
+            keywords=[f"rich-term-{i}" for i in range(33)],
+        ),
+        FakeTopic(
+            "learnable-tokens",
+            weight=1.8,
+            track="praxis",
+            keywords=["missing modality", "modality dropout", "learnable token"],
+        ),
+        FakeTopic(
+            "third",
+            weight=0.8,
+            track="praxis",
+            keywords=["multimodal foundation model", "cross-modal alignment"],
+        ),
+    ]
+
+
+class TestKeywordBudgetIsSharedAcrossTopics:
+
+    def test_every_topic_contributes_a_search_term(self, service):
+        """
+        The regression. Under depth-first ordering all five slots went to
+        'rich' and the other two topics contributed nothing.
+        """
+        group = _lopsided_keyword_group()
+
+        keywords = service._aggregate_keywords(group, limit=5)
+
+        assert len(keywords) == 5
+        for topic in group:
+            contributed = [k for k in keywords if k in topic.keywords]
+            assert contributed, (
+                f"topic {topic.id!r} contributed no search term; got {keywords}"
+            )
+
+    def test_highest_weight_topic_still_picks_first(self, service):
+        keywords = service._aggregate_keywords(_lopsided_keyword_group(), limit=5)
+        assert keywords[0] == "rich-term-0"
+
+    def test_budget_is_respected(self, service):
+        assert len(service._aggregate_keywords(_lopsided_keyword_group(), limit=2)) == 2
+        assert service._aggregate_keywords(_lopsided_keyword_group(), limit=None)
+
+    def test_duplicate_keywords_are_deduped_case_insensitively(self, service):
+        group = [
+            FakeTopic("a", weight=2.0, track="t", keywords=["Light Curve", "alpha"]),
+            FakeTopic("b", weight=1.0, track="t", keywords=["light curve", "beta"]),
+        ]
+        keywords = service._aggregate_keywords(group, limit=10)
+        lowered = [k.lower() for k in keywords]
+        assert lowered.count("light curve") == 1
+        assert "beta" in keywords
+
+    def test_categories_are_shared_across_topics_too(self, service):
+        group = [
+            FakeTopic("a", weight=2.0, track="t", keywords=["x"],
+                      categories=["astro-ph.IM", "astro-ph.HE", "astro-ph.SR"]),
+            FakeTopic("b", weight=1.0, track="t", keywords=["y"],
+                      categories=["cs.LG"]),
+        ]
+        categories = service._aggregate_categories(group, limit=3)
+        assert "cs.LG" in categories, (
+            f"the second topic's category was crowded out entirely: {categories}"
+        )
+
+    def test_single_topic_group_is_unchanged(self, service):
+        """Round-robin over one list must behave exactly like the old path."""
+        group = [FakeTopic("solo", weight=1.0, track="t",
+                           keywords=["a", "b", "c", "d", "e", "f"])]
+        assert service._aggregate_keywords(group, limit=4) == ["a", "b", "c", "d"]
+
+    def test_empty_keyword_lists_are_skipped(self, service):
+        group = [
+            FakeTopic("empty", weight=2.0, track="t", keywords=[]),
+            FakeTopic("full", weight=1.0, track="t", keywords=["only", "these"]),
+        ]
+        assert service._aggregate_keywords(group, limit=5) == ["only", "these"]
+
+
+# ---------------------------------------------------------------------------
+# Domain gate.
+#
+# Relevance is matched_keywords / total_keywords, so a topic that wants broad
+# method vocabulary pays twice: the large denominator drags every score down,
+# forcing a low min_relevance, and the low threshold then admits papers from
+# every other field sharing that vocabulary. A live run put a brain-MRI
+# inpainting paper and a neural-compilation paper inside an astronomy praxis
+# track for exactly that reason. The gate separates "which methods" from
+# "which field" so neither has to be weakened to express the other.
+# ---------------------------------------------------------------------------
+
+
+def _paper(title: str, abstract: str = "", categories: list[str] | None = None) -> Paper:
+    return Paper(
+        title=title,
+        authors=["A. Author"],
+        abstract=abstract,
+        url="https://example.test/p",
+        source="arxiv",
+        arxiv_id=f"0000.{abs(hash(title)) % 10000:04d}",
+        published_date=date.today(),
+        categories=categories or ["cs.LG"],
+    )
+
+
+ASTRO_GATE = ["spectra", "spectrum", "spectroscopy", "photometry",
+              "galaxy", "galaxies", "astronomy", "transient", "light curve"]
+
+
+class TestDomainGate:
+
+    def test_ungated_topic_scores_as_before(self, service):
+        topic = FakeTopic("ungated", weight=1.0, track="praxis",
+                          keywords=["conditional diffusion", "cross-modal"])
+        paper = _paper("A conditional diffusion model for cross-modal inpainting")
+
+        score = service.calculate_relevance_score(paper, topics=[topic])
+
+        assert score > 0, "a topic with no gate must behave exactly as before"
+
+    def test_gate_blocks_a_paper_with_no_context_term(self, service):
+        """The brain-MRI case: right methods, wrong field."""
+        topic = FakeTopic("praxis", weight=1.0, track="praxis",
+                          keywords=["conditional diffusion", "cross-modal", "imputation"],
+                          require_any=ASTRO_GATE)
+        paper = _paper(
+            "An SSIM-Aligned Residual Refiner for Brain-MRI Inpainting",
+            abstract="We apply conditional diffusion to cross-modal imputation of MRI volumes.",
+        )
+
+        score = service.calculate_relevance_score(paper, topics=[topic])
+
+        assert score == 0.0, "gated topic scored a paper with no domain term"
+
+    def test_gate_admits_a_paper_with_a_context_term(self, service):
+        topic = FakeTopic("praxis", weight=1.0, track="praxis",
+                          keywords=["conditional diffusion", "cross-modal", "imputation"],
+                          require_any=ASTRO_GATE)
+        paper = _paper(
+            "Conditional diffusion for cross-modal imputation of galaxy spectra",
+            abstract="We predict spectra from photometry for galaxies in a survey.",
+        )
+
+        score = service.calculate_relevance_score(paper, topics=[topic])
+
+        assert score > 0
+
+    def test_gate_matches_each_listed_word_form(self, service):
+        topic = FakeTopic("praxis", weight=1.0, track="praxis", keywords=["cross-modal"],
+                          require_any=["spectrum", "spectra", "spectroscopy"])
+        for word in ("spectrum", "spectra", "spectroscopy"):
+            paper = _paper(f"Cross-modal prediction of {word}")
+            assert service.calculate_relevance_score(paper, topics=[topic]) > 0, word
+
+    def test_gate_does_not_match_inside_a_longer_word(self, service):
+        """
+        The reason the gate matches whole words. Under substring matching
+        "spectral normalization" and "spectral clustering" — ordinary ML
+        vocabulary — would satisfy an astronomy gate via "spectra", and
+        "eclipse" would satisfy one containing "clip", reopening the very
+        leak the gate exists to close.
+        """
+        topic = FakeTopic("praxis", weight=1.0, track="praxis",
+                          keywords=["conditional diffusion"],
+                          require_any=["spectra", "spectrum"])
+        for title in (
+            "Spectral normalization for conditional diffusion models",
+            "Spectral clustering with conditional diffusion priors",
+        ):
+            paper = _paper(title, abstract="conditional diffusion throughout")
+            assert service.calculate_relevance_score(paper, topics=[topic]) == 0.0, title
+
+    def test_gate_is_case_insensitive(self, service):
+        topic = FakeTopic("praxis", weight=1.0, track="praxis",
+                          keywords=["cross-modal"], require_any=["galaxy"])
+        paper = _paper("Cross-modal synthesis for GALAXY surveys")
+        assert service.calculate_relevance_score(paper, topics=[topic]) > 0
+
+    def test_a_gated_topic_does_not_block_an_ungated_sibling(self, service):
+        """The gate is per-topic; one topic's gate must not suppress another."""
+        gated = FakeTopic("gated", weight=2.0, track="praxis",
+                          keywords=["conditional diffusion"], require_any=ASTRO_GATE)
+        ungated = FakeTopic("ungated", weight=1.0, track="praxis",
+                            keywords=["conditional diffusion"])
+        paper = _paper("Conditional diffusion for medical volumes")
+
+        score = service.calculate_relevance_score(paper, topics=[gated, ungated])
+
+        assert score > 0, "the ungated topic should still have scored this paper"
+        assert paper.primary_category == "ungated"
+
+    def test_empty_gate_list_is_not_a_gate(self, service):
+        topic = FakeTopic("praxis", weight=1.0, track="praxis",
+                          keywords=["cross-modal"], require_any=[])
+        assert service.calculate_relevance_score(paper=_paper("Cross-modal thing"),
+                                                 topics=[topic]) > 0

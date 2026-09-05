@@ -9,6 +9,9 @@ This service finds relevant research papers from multiple sources:
 
 import asyncio
 import hashlib
+import itertools
+import re
+from functools import lru_cache
 from datetime import datetime, date, timedelta
 from typing import Optional
 import xml.etree.ElementTree as ET
@@ -32,6 +35,31 @@ DEFAULT_SOURCES: tuple[str, ...] = ("arxiv", "semantic_scholar", "core")
 # bounded by the worst-behaving source. arXiv is reliable enough to keep
 # the default.
 _FLAKY_EXTERNAL_TIMEOUT_SECONDS: float = 8.0
+
+
+@lru_cache(maxsize=512)
+def _compile_gate(terms: tuple[str, ...]) -> re.Pattern:
+    """
+    Build a whole-word alternation for a topic's domain gate.
+
+    Whole-word rather than substring, unlike keyword matching, because the
+    gate decides whether a topic is considered at all — a false positive
+    here reopens the exact leak the gate exists to close. Substring matching
+    would let "spectral normalization" and "spectral clustering" satisfy an
+    astronomy gate on the strength of "spectra", and "eclipse" satisfy one
+    containing "clip". Cached because the term list is per-topic and stable
+    across a scoring pass.
+    """
+    return re.compile(
+        r"\b(?:" + "|".join(re.escape(t.lower()) for t in terms) + r")\b"
+    )
+
+
+def _passes_gate(text: str, terms: list[str]) -> bool:
+    """True when the topic has no gate, or the text satisfies it."""
+    if not terms:
+        return True
+    return _compile_gate(tuple(terms)).search(text) is not None
 
 
 class Paper:
@@ -121,36 +149,64 @@ class PaperDiscoveryService:
         return get_topics_for_scope(self.user_id)
 
     @staticmethod
-    def _aggregate_keywords(topics: list[Topic], *, limit: int | None = None) -> list[str]:
-        """Dedup-keeping-order across topics, optionally truncated."""
+    def _round_robin(
+        per_topic: list[list[str]],
+        *,
+        limit: int | None,
+        fold_case: bool,
+    ) -> list[str]:
+        """
+        Take one value from each topic in turn until the budget is spent.
+
+        Depth-first ordering — exhaust topic 1, then topic 2 — meant any topic
+        holding more values than the whole budget consumed it alone. With a
+        5-keyword budget and a 33-keyword topic sorted first, every other topic
+        in the group contributed nothing to the search, so its subject was
+        never actually queried however high its weight.
+
+        Round-robin guarantees every topic is represented before any topic gets
+        a second term. Order within a tier still follows weight, so the
+        highest-weight topic keeps first pick.
+        """
         seen: set[str] = set()
         out: list[str] = []
-        # iterate by weight descending so higher-priority topics' keywords sort first
-        for topic in sorted(topics, key=lambda t: t.weight, reverse=True):
-            for kw in topic.keywords or []:
-                key = kw.lower()
+        for tier in itertools.zip_longest(*per_topic):
+            for value in tier:
+                if value is None:
+                    continue
+                key = value.lower() if fold_case else value
                 if key in seen:
                     continue
                 seen.add(key)
-                out.append(kw)
+                out.append(value)
                 if limit and len(out) >= limit:
                     return out
         return out
 
     @staticmethod
+    def _order_by_weight(topics: list[Topic]) -> list[Topic]:
+        """Weight-descending, so the highest-weight topic gets first pick."""
+        return sorted(topics, key=lambda t: t.weight or 0.0, reverse=True)
+
+    @staticmethod
+    def _aggregate_keywords(topics: list[Topic], *, limit: int | None = None) -> list[str]:
+        """Round-robin across topics, deduped case-insensitively, optionally truncated."""
+        ordered = PaperDiscoveryService._order_by_weight(topics)
+        return PaperDiscoveryService._round_robin(
+            [list(t.keywords or []) for t in ordered],
+            limit=limit,
+            fold_case=True,
+        )
+
+    @staticmethod
     def _aggregate_categories(topics: list[Topic], *, limit: int | None = None) -> list[str]:
-        """Dedup arxiv categories across topics, optionally truncated."""
-        seen: set[str] = set()
-        out: list[str] = []
-        for topic in sorted(topics, key=lambda t: t.weight, reverse=True):
-            for cat in topic.arxiv_categories or []:
-                if cat in seen:
-                    continue
-                seen.add(cat)
-                out.append(cat)
-                if limit and len(out) >= limit:
-                    return out
-        return out
+        """Round-robin arxiv categories across topics, optionally truncated."""
+        ordered = PaperDiscoveryService._order_by_weight(topics)
+        return PaperDiscoveryService._round_robin(
+            [list(t.arxiv_categories or []) for t in ordered],
+            limit=limit,
+            fold_case=False,
+        )
 
     @staticmethod
     def _scope_min_relevance(topics: list[Topic], fallback: float = 0.18) -> float:
@@ -571,6 +627,15 @@ class PaperDiscoveryService:
         best_topic_weight = -1.0
 
         for topic in topics:
+            # domain gate: a topic may require at least one context term
+            # before any of its keywords count. this is what lets a topic
+            # keep broad method vocabulary without matching every field
+            # that happens to share it — "conditional diffusion" is as
+            # common in medical imaging as in astronomy, and without a gate
+            # the only defence is deleting the term.
+            if not _passes_gate(searchable_text, getattr(topic, "require_any", None) or []):
+                continue
+
             keywords = topic.keywords or []
             cats = topic.arxiv_categories or []
 

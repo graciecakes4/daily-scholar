@@ -65,6 +65,8 @@ class TopicResponse(BaseModel):
     track: Optional[str] = None
     # prerequisite topics inform reviews/quizzes but never consume a paper slot
     prerequisite_only: bool = False
+    # optional domain gate; empty means no gate
+    require_any: list[str] = []
     keywords: list[str]
     arxiv_categories: list[str]
     recency_days: int
@@ -97,6 +99,7 @@ class TopicResponse(BaseModel):
             weight=t.weight,
             track=t.track,
             prerequisite_only=bool(t.prerequisite_only),
+            require_any=list(t.require_any or []),
             keywords=list(t.keywords or []),
             arxiv_categories=list(t.arxiv_categories or []),
             recency_days=t.recency_days,
@@ -136,6 +139,7 @@ class TopicCreateRequest(BaseModel):
     weight: float = 1.0
     track: Optional[str] = Field(default=None, max_length=50)
     prerequisite_only: bool = False
+    require_any: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
     arxiv_categories: list[str] = Field(default_factory=list)
     recency_days: int = 30
@@ -167,6 +171,7 @@ class TopicUpdateRequest(BaseModel):
     weight: Optional[float] = None
     track: Optional[str] = Field(default=None, max_length=50)
     prerequisite_only: Optional[bool] = None
+    require_any: Optional[list[str]] = None
     keywords: Optional[list[str]] = None
     arxiv_categories: Optional[list[str]] = None
     recency_days: Optional[int] = None
@@ -464,6 +469,7 @@ def create_topic(
             weight=body.weight,
             track=body.track,
             prerequisite_only=body.prerequisite_only,
+            require_any=body.require_any,
             keywords=body.keywords,
             arxiv_categories=body.arxiv_categories,
             recency_days=body.recency_days,

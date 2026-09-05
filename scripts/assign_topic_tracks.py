@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Assign research tracks (and prerequisite-only flags) to existing topics.
+Apply the track configuration to existing topics: tracks, weights,
+prerequisite-only flags, domain gates, and keyword pruning.
 
 Why this exists as a script rather than a YAML change: `config/topics/private/`
 is gitignored, so the topics that actually matter here never travel with a
@@ -53,13 +54,62 @@ from backend.database import Topic, get_session  # noqa: E402
 # The two straddlers are demoted to 0.8 rather than deactivated: they're
 # still genuinely relevant, they just shouldn't outrank the topics the
 # tracks exist to follow.
+#
+# Both foundations topics are prerequisite-only. A live run showed
+# astronomy-foundations winning both astro slots with general astronomy
+# (symbiotic stars, Titan spectroscopy) rather than transient work, and
+# widening the track's recency window from 90 to 365 days on its own.
+# Astronomy context terms. A gated topic scores a paper only if the paper
+# contains at least one of these as a WHOLE WORD. Gate terms never enter the
+# relevance denominator, so the list can be generous without costing score.
+#
+# Whole-word matching matters: as substrings, "spectra" matches "spectral
+# normalization" and "spectral clustering" — ordinary ML vocabulary — which
+# would reopen the leak the gate exists to close.
+ASTRO_GATE: tuple[str, ...] = (
+    "spectrum", "spectra", "spectroscopy", "spectroscopic",
+    "photometry", "photometric", "galaxy", "galaxies",
+    "astronomy", "astronomical", "astrophysics", "astrophysical",
+    "telescope", "telescopes", "observatory", "redshift", "redshifts",
+    "quasar", "quasars", "supernova", "supernovae",
+    "transient", "transients", "light curve", "light curves",
+    "stellar", "exoplanet", "exoplanets", "cosmology", "cosmological",
+    "nebula", "nebulae", "LSST", "ZTF", "JWST", "SDSS", "Rubin",
+)
+
+# Topics whose vocabulary is generic enough to match other fields.
+# transient-photometric-classification is deliberately absent — its
+# vocabulary is already domain-locked, so a gate would be a no-op.
+GATED_TOPICS: tuple[str, ...] = (
+    "generative-cross-modal-imputation",
+    "missing-modality-learning",
+    "multimodal-foundation-models-astronomy",
+    "sim-to-real-transfer-astronomy",
+)
+
+# Keywords to remove. Two kinds, both pure denominator cost:
+#   - author surnames and a venue: effectively never appear in an abstract
+#   - short acronyms: keyword matching is substring-based, so ECE matches
+#     "piece", ViT matches "gravity", CLIP matches "eclipse", LoRA matches
+#     "flora" — constant noise in an astronomy corpus
+# AstroM³ is dropped as a duplicate spelling of AstroM3.
+PRUNE_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "generative-cross-modal-imputation": (
+        "Doorenbos", "Pearce-Casey", "Xue diffusion deconvolution",
+        "DDPM", "DDIM", "ECE",
+    ),
+    "missing-modality-learning": ("Saito", "Gu et al", "MICCAI", "ModDrop"),
+    "multimodal-foundation-models-astronomy": ("ViT", "CLIP", "LoRA", "AstroM³"),
+}
+
+
 ASSIGNMENTS: dict[str, tuple[str, float | None, bool]] = {
     "generative-cross-modal-imputation":      ("praxis", None, False),
     "missing-modality-learning":              ("praxis", None, False),
     "multimodal-foundation-models-astronomy": ("praxis", 0.8,  False),
     "ml-foundations":                         ("praxis", None, True),
     "transient-photometric-classification":   ("astro",  None, False),
-    "astronomy-foundations":                  ("astro",  None, False),
+    "astronomy-foundations":                  ("astro",  None, True),
     "sim-to-real-transfer-astronomy":         ("astro",  0.8,  False),
 }
 
@@ -86,6 +136,21 @@ def assign(*, apply: bool) -> int:
             if bool(topic.prerequisite_only) != prereq:
                 deltas.append(f"prerequisite_only {bool(topic.prerequisite_only)} -> {prereq}")
                 topic.prerequisite_only = prereq
+
+            want_gate = list(ASTRO_GATE) if topic_id in GATED_TOPICS else []
+            if list(topic.require_any or []) != want_gate:
+                deltas.append(
+                    f"require_any {len(topic.require_any or [])} -> {len(want_gate)} terms"
+                )
+                topic.require_any = want_gate
+
+            drop = {k.lower() for k in PRUNE_KEYWORDS.get(topic_id, ())}
+            if drop:
+                kept = [k for k in (topic.keywords or []) if k.lower() not in drop]
+                if len(kept) != len(topic.keywords or []):
+                    removed = len(topic.keywords or []) - len(kept)
+                    deltas.append(f"keywords {len(topic.keywords or [])} -> {len(kept)} (-{removed})")
+                    topic.keywords = kept
 
             if deltas:
                 changed += 1
